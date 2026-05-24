@@ -1,0 +1,25 @@
+/* Reset global styles that bleed onto the chatter page from app/globals.css
+   so the design renders pixel-perfect to Create_prompt_design. */
+
+/* Kill the global radial-gradient noise overlay */
+body:has(.chatter-root)::before {
+  display: none !important;
+}
+
+/* Force body to the chatter background so nothing peeks through */
+body:has(.chatter-root) {
+  background: #0d1117 !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif !important;
+}
+
+/* Restore the design's button/input baseline — globals.css sets explicit
+   font-size/weight via `button { ... }` and `input { ... }` which collides
+   with Tailwind utility classes inside the chatter UI. */
+.chatter-root button,
+.chatter-root input,
+.chatter-root textarea,
+.chatter-root label {
+  font: inherit;
+  font-family: inherit;
+  line-height: inherit;
+}

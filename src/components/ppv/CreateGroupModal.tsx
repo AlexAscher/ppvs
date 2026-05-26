@@ -78,8 +78,11 @@ export function CreateGroupModal({ modelId, agencyUserId, allTags, onClose, onSa
       const savedItems: PpvItem[] = [];
       for (const it of items) {
         let mediaUrl: string | null = null;
+        let previewUrl: string | null = null;
         if (it.file) {
-          mediaUrl = await uploadPpvMedia(supabase, agencyUserId, it.file);
+          const uploaded = await uploadPpvMedia(supabase, agencyUserId, it.file);
+          mediaUrl = uploaded.mediaUrl;
+          previewUrl = uploaded.previewUrl;
         }
         const { data, error: itErr } = await supabase
           .from("ppvs")
@@ -91,6 +94,7 @@ export function CreateGroupModal({ modelId, agencyUserId, allTags, onClose, onSa
             description: it.description.trim() || null,
             price: Number(it.price),
             media_url: mediaUrl,
+            preview_url: previewUrl,
           })
           .select("id, created_at")
           .single();

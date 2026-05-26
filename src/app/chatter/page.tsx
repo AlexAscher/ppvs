@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import { Topbar } from "@/components/chatter-page/Topbar";
 import { ModelSelectorBar } from "@/components/chatter-page/ModelSelectorBar";
-import { TelegramChat, type ChatListItem, type Message as ChatMessage } from "@/components/chatter-page/TelegramChat";
+import { TelegramChat, type ChatListItem, type Message as ChatMessage, type MessageMediaInfo } from "@/components/chatter-page/TelegramChat";
 import { ActionPanel, type PpvItem, type PpvTag } from "@/components/chatter-page/ActionPanel";
 
 // ─── types ──────────────────────────────────────────────────────────────────
@@ -24,7 +24,37 @@ type Dialog = {
   status: string | null;
 };
 
-type ApiMessage = { id: number; text: string; date: number; isOutgoing: boolean };
+type ApiMessageMedia =
+  | { type: "photo"; thumbDataUrl: string | null; width: number | null; height: number | null }
+  | {
+      type: "video";
+      thumbDataUrl: string | null;
+      width: number | null;
+      height: number | null;
+      durationSec: number | null;
+    }
+  | {
+      type: "document";
+      thumbDataUrl: string | null;
+      fileName: string | null;
+      mimeType: string | null;
+      sizeBytes: number | null;
+    };
+
+type ApiMessage = {
+  id: number;
+  text: string;
+  date: number;
+  isOutgoing: boolean;
+  media?: ApiMessageMedia | null;
+  groupedId?: string | null;
+};
+
+type ActivityState = {
+  typing: boolean;
+  online: boolean;
+  lastActiveAgoSec: number | null;
+};
 
 type Tab = "ppv" | "tips" | "notes" | "stats";
 
@@ -32,6 +62,8 @@ type Tab = "ppv" | "tips" | "notes" | "stats";
 // modest and additionally guard with in-flight refs (see fetchDialogs/fetchMessages).
 const DIALOGS_POLL_MS = 10_000;
 const MESSAGES_POLL_MS = 5_000;
+// Activity is light (in-memory read, no gramJS hop) so we poll faster.
+const ACTIVITY_POLL_MS = 3_000;
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -71,11 +103,14 @@ export default function ChatterPage() {
   const [dialogsByModel, setDialogsByModel] = useState<Record<string, Dialog[]>>({});
   const [selectedDialog, setSelectedDialog] = useState<Dialog | null>(null);
   const [apiMessages, setApiMessages] = useState<ApiMessage[]>([]);
+  const [activity, setActivity] = useState<ActivityState | null>(null);
 
   const [search, setSearch] = useState("");
   const [inputText, setInputText] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  // Non-error transient banner — used for "PPV delivering…" / "✅ Delivered".
+  const [notice, setNotice] = useState("");
 
   const [activeTab, setActiveTab] = useState<Tab>("ppv");
   const [ppvItems, setPpvItems] = useState<PpvItem[]>([]);
@@ -328,6 +363,42 @@ export default function ChatterPage() {
     };
   }, [selectedModelId, selectedDialog, fetchMessages]);
 
+  // ── activity polling (typing / fresh online) ──────────────────────────────
+
+  const fetchActivity = useCallback(async (modelId: string, dialog: Dialog) => {
+    try {
+      const url = new URL(`/api/telegram/activity/${modelId}`, window.location.origin);
+      url.searchParams.set("peerId", dialog.id);
+      if (dialog.accessHash) url.searchParams.set("accessHash", dialog.accessHash);
+      const res = await fetch(url.toString());
+      if (!res.ok) return;
+      const data = (await res.json()) as ActivityState;
+      setActivity(data);
+    } catch {
+      // ignore — activity is a UX nicety, not critical
+    }
+  }, []);
+
+  useEffect(() => {
+    // Reset + first fetch deferred to next tick — React 19 strict effects
+    // forbid synchronous setState in effect body.
+    const resetTid = setTimeout(() => setActivity(null), 0);
+    if (!selectedModelId || !selectedDialog) {
+      return () => clearTimeout(resetTid);
+    }
+    const tid = setTimeout(() => {
+      void fetchActivity(selectedModelId, selectedDialog);
+    }, 0);
+    const iv = setInterval(() => {
+      void fetchActivity(selectedModelId, selectedDialog);
+    }, ACTIVITY_POLL_MS);
+    return () => {
+      clearTimeout(resetTid);
+      clearTimeout(tid);
+      clearInterval(iv);
+    };
+  }, [selectedModelId, selectedDialog, fetchActivity]);
+
   // ── handlers ──────────────────────────────────────────────────────────────
 
   function handleModelSelect(id: string) {
@@ -432,22 +503,78 @@ export default function ChatterPage() {
 
   async function handleSendPpv() {
     if (!selectedDialog || !selectedModelId || !selectedItems.length) return;
-    const selected = ppvItems.filter((i) => selectedItems.includes(i.id));
-    const total = selected.reduce((s, i) => s + Number(i.price ?? 0), 0);
-    const names = selected.map((i) => i.name).join(", ");
-    const body = [caption.trim(), `🔒 PPV: ${names}`, `Total: $${total}`].filter(Boolean).join("\n");
+    // Preserve the chatter's selection order — the server uses `ppvIds`
+    // ordering to lay out the album and the /pay grid.
+    const ordered = selectedItems.filter((id) => ppvItems.some((p) => p.id === id));
     setSending(true);
     setError("");
+    setNotice("");
     try {
-      await sendTelegramMessage(selectedModelId, selectedDialog, body);
+      const res = await fetch("/api/ppv/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          modelId: selectedModelId,
+          peerId: selectedDialog.id,
+          accessHash: selectedDialog.accessHash,
+          peerUsername: selectedDialog.username,
+          caption,
+          ppvIds: ordered,
+        }),
+      });
+      let data: { ok?: boolean; error?: string; code?: string; payUrl?: string } = {};
+      try { data = await res.json(); } catch {}
+      if (!res.ok || data.error) {
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      // POST returns immediately now — Telegram upload runs in background
+      // via next/server `after()`. Clear UI optimistically and follow the
+      // outcome by polling the status endpoint.
       setSelectedItems([]);
       setCaption("");
-      void fetchDialogs(selectedModelId, false);
+      setNotice("Sending PPV to fan…");
+      const sentCode = data.code;
+      const modelIdForRefresh = selectedModelId;
+      if (sentCode) {
+        void pollPpvSendStatus(sentCode, modelIdForRefresh);
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? `PPV send failed: ${e.message}` : "PPV send failed");
     } finally {
       setSending(false);
     }
+  }
+
+  // Polls the background delivery state for ~90s. Resolves silently when
+  // status reaches a terminal state; surfaces failure as a setError call.
+  async function pollPpvSendStatus(code: string, modelIdForRefresh: string) {
+    const start = Date.now();
+    const POLL_INTERVAL_MS = 2_000;
+    const MAX_WAIT_MS = 90_000;
+    while (Date.now() - start < MAX_WAIT_MS) {
+      try {
+        const res = await fetch(`/api/ppv/send/status?code=${encodeURIComponent(code)}`);
+        const data = (await res.json()) as { status?: string; error?: string | null };
+        if (data.status === "sent" || data.status === "paid" || data.status === "delivered") {
+          setNotice("✅ PPV delivered to fan");
+          // refresh sidebar so the new outgoing messages appear in the chat
+          void fetchDialogs(modelIdForRefresh, false);
+          // auto-dismiss the success notice after a few seconds
+          setTimeout(() => setNotice((n) => (n === "✅ PPV delivered to fan" ? "" : n)), 4_000);
+          return;
+        }
+        if (data.status === "failed") {
+          setNotice("");
+          setError(`PPV send failed: ${data.error ?? "unknown error"}`);
+          return;
+        }
+      } catch {
+        // network blip — keep polling
+      }
+      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+    }
+    setNotice("");
+    setError("PPV send is taking too long — check /pay link or retry.");
   }
 
   async function handleSendTip() {
@@ -510,13 +637,54 @@ export default function ChatterPage() {
 
   const chatMessages = useMemo(
     (): ChatMessage[] =>
-      apiMessages.map((m) => ({
-        id: String(m.id),
-        text: m.text || "—",
-        time: formatTime(m.date),
-        isChatter: m.isOutgoing,
-      })),
-    [apiMessages],
+      apiMessages.map((m): ChatMessage => {
+        let media: MessageMediaInfo | null = null;
+        if (m.media && selectedModelId && selectedDialog && m.id > 0) {
+          // Optimistic messages have id < 0 — we have no real Telegram messageId
+          // to fetch the full file with, so skip media for them.
+          const params = new URLSearchParams({
+            peerId: selectedDialog.id,
+            messageId: String(m.id),
+          });
+          if (selectedDialog.accessHash) params.set("accessHash", selectedDialog.accessHash);
+          const fullUrl = `/api/telegram/media/${selectedModelId}?${params.toString()}`;
+          if (m.media.type === "photo") {
+            media = {
+              type: "photo",
+              thumbDataUrl: m.media.thumbDataUrl,
+              fullUrl,
+              width: m.media.width,
+              height: m.media.height,
+            };
+          } else if (m.media.type === "video") {
+            media = {
+              type: "video",
+              thumbDataUrl: m.media.thumbDataUrl,
+              fullUrl,
+              width: m.media.width,
+              height: m.media.height,
+              durationSec: m.media.durationSec,
+            };
+          } else {
+            media = {
+              type: "document",
+              thumbDataUrl: m.media.thumbDataUrl,
+              fullUrl,
+              fileName: m.media.fileName,
+              mimeType: m.media.mimeType,
+              sizeBytes: m.media.sizeBytes,
+            };
+          }
+        }
+        return {
+          id: String(m.id),
+          text: m.text || (media ? "" : "—"),
+          time: formatTime(m.date),
+          isChatter: m.isOutgoing,
+          media,
+        };
+      }),
+    [apiMessages, selectedModelId, selectedDialog],
   );
 
   const selectedChatItem = useMemo((): ChatListItem | null => {
@@ -525,6 +693,12 @@ export default function ChatterPage() {
     // dialogs refresh in the background.
     const live = currentDialogs.find((d) => d.id === selectedDialog.id);
     const source = live ?? selectedDialog;
+    // Activity beats stale `entity.status` from getDialogs. If the fan was
+    // typing/messaging within the last minute we show "online" / "typing…"
+    // even when Telegram privacy reports only "last seen recently".
+    let status = source.status;
+    if (activity?.typing) status = "typing…";
+    else if (activity?.online) status = "online";
     return {
       id: source.id,
       username: source.username ?? source.title,
@@ -532,9 +706,9 @@ export default function ChatterPage() {
       time: formatTime(source.lastMessageDate),
       unread: source.unreadCount ?? 0,
       avatar: initialsFromTitle(source.title),
-      status: source.status,
+      status,
     };
-  }, [selectedDialog, currentDialogs]);
+  }, [selectedDialog, currentDialogs, activity]);
 
   const totalPrice = useMemo(
     () => ppvItems.filter((i) => selectedItems.includes(i.id)).reduce((s, i) => s + Number(i.price ?? 0), 0),
@@ -569,6 +743,18 @@ export default function ChatterPage() {
         <div className="px-5 py-1.5 bg-red-500/10 border-b border-red-500/30 text-[11px] text-red-400 flex items-center justify-between">
           <span>{error}</span>
           <button onClick={() => setError("")} className="text-[#6b7280] hover:text-white ml-4">×</button>
+        </div>
+      )}
+      {notice && !error && (
+        <div className="px-5 py-1.5 bg-emerald-500/10 border-b border-emerald-500/30 text-[11px] text-emerald-300 flex items-center justify-between">
+          <span>{notice}</span>
+          <button
+            onClick={() => setNotice("")}
+            className="text-[#6b7280] hover:text-white ml-4"
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
         </div>
       )}
       <div className="flex-1 flex overflow-hidden">

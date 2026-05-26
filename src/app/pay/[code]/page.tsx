@@ -2,41 +2,62 @@ import { notFound } from "next/navigation";
 import { createAdminSupabaseClient } from "@/lib/supabase-server";
 import { PayClient } from "./PayClient";
 
-type LinkWithItem = {
-  price: number;
-  vault_items: {
-    title: string;
-    thumb_path: string;
-    file_type: "image" | "video";
-    default_price: number;
-  } | null;
+type SendRow = {
+  id: string;
+  total_price: number | string;
+  caption: string | null;
+  peer_username: string | null;
+  status: string;
+};
+
+// Supabase's typed select infers the relation as an array even though the FK
+// is many-to-one; we accept both shapes and normalize.
+type ItemRowRaw = {
+  ordinal: number;
+  ppvs:
+    | { name: string; media_url: string | null; preview_url: string | null }
+    | { name: string; media_url: string | null; preview_url: string | null }[]
+    | null;
 };
 
 export default async function PayPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = await params;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const admin = createAdminSupabaseClient() as any;
+  const admin = createAdminSupabaseClient();
 
-  const { data: link } = await admin
-    .from("ppv_links")
-    .select("price, vault_items(title, thumb_path, file_type, default_price)")
+  // Fetch the send + its id in one query so we don't round-trip twice.
+  const { data: sendRaw } = await admin
+    .from("ppv_sends")
+    .select("id, total_price, caption, peer_username, status")
     .eq("code", code)
-    .single() as { data: LinkWithItem | null };
+    .maybeSingle();
+  if (!sendRaw) notFound();
+  const send = sendRaw as SendRow;
 
-  if (!link) notFound();
+  const { data: itemsRaw } = await admin
+    .from("ppv_send_items")
+    .select("ordinal, ppvs(name, media_url, preview_url)")
+    .eq("send_id", send.id)
+    .order("ordinal", { ascending: true });
 
-  const item = link.vault_items;
-  if (!item) notFound();
-
-  const { data: thumbData } = admin.storage.from("vault").getPublicUrl(item.thumb_path);
+  // For the locked preview we prefer `preview_url` (~50 KB pre-blurred jpeg)
+  // over `media_url` (full original, often multi-MB). The fan's browser
+  // loads it directly from Supabase CDN — no server hop.
+  const items = ((itemsRaw ?? []) as unknown as ItemRowRaw[]).map((it) => {
+    const ppv = Array.isArray(it.ppvs) ? it.ppvs[0] ?? null : it.ppvs;
+    return {
+      name: ppv?.name ?? "Item",
+      media_url: ppv?.preview_url ?? ppv?.media_url ?? null,
+    };
+  });
 
   return (
     <PayClient
       code={code}
-      title={item.title}
-      price={link.price}
-      thumbUrl={thumbData.publicUrl}
-      fileType={item.file_type}
+      items={items}
+      price={Number(send.total_price ?? 0)}
+      caption={send.caption ?? ""}
+      recipient={send.peer_username ?? null}
+      initiallyDelivered={send.status === "delivered"}
     />
   );
 }

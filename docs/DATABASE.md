@@ -154,9 +154,98 @@ CREATE POLICY "Service role bypass agency_chatters" ON agency_chatters USING (tr
 
 ---
 
+## ALTER: speed pack (preview_url + send error tracking)
+
+Run these on top of the original schema to enable pre-blurred previews +
+background PPV sends with surfaced errors:
+
+```sql
+ALTER TABLE ppvs ADD COLUMN IF NOT EXISTS preview_url text;
+ALTER TABLE ppv_sends ADD COLUMN IF NOT EXISTS error text;
+```
+
+`ppvs.preview_url` is the public URL of a 720px Gaussian-blurred JPEG generated
+client-side at vault upload time. When chatter clicks "Send PPV" we download
+this (~30–80 KB) instead of the full original (often 2–8 MB), then forward it
+to Telegram — cuts the round-trip from minutes to seconds.
+
+`ppv_sends.error` captures the Telegram-side failure message when a background
+delivery fails, so the chatter UI can show "Send failed: TIMEOUT" etc.
+
+`ppv_sends.status` now uses these values (text column, no enum change needed):
+| value | meaning |
+|---|---|
+| `pending` | Row inserted, background delivery not yet started (transient) |
+| `sending` | Background task actively uploading to Telegram |
+| `sent` | Preview + pay link delivered, waiting on fan to click Pay |
+| `paid` | Fan clicked Pay |
+| `delivered` | Originals successfully sent to fan |
+| `failed` | Delivery failed — see `error` column |
+
+## Table: `ppv_sends` (PPV-send transactions)
+
+One row per "Send PPV" click from /chatter. Links N selected `ppvs` items to a
+fan via the chatter's Telegram peer info, and tracks the pay/deliver lifecycle.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | gen_random_uuid() |
+| code | text UNIQUE | 8-char random, used in /pay/{code} URL |
+| model_id | uuid | References models(id) |
+| chatter_id | uuid | References auth.users(id) — who clicked Send |
+| peer_id | text | Telegram peer id (positive = user/bot, `-…` chat, `-100…` channel) |
+| peer_access_hash | text nullable | gramJS accessHash, needed to address user/channel peers |
+| peer_username | text nullable | Snapshot for display on /pay page |
+| caption | text nullable | Chatter's optional caption |
+| total_price | numeric | Snapshot sum at send time |
+| status | text | `pending` → `sending` → `sent` → `paid` → `delivered` (or `failed`) |
+| error | text nullable | Last Telegram-side error if `status='failed'` |
+| created_at | timestamptz | Default now() |
+| paid_at | timestamptz nullable | When Pay button clicked |
+| delivered_at | timestamptz nullable | When originals sent back to fan |
+
+```sql
+CREATE TABLE ppv_sends (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  code text UNIQUE NOT NULL,
+  model_id uuid NOT NULL REFERENCES models(id) ON DELETE CASCADE,
+  chatter_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE SET NULL,
+  peer_id text NOT NULL,
+  peer_access_hash text,
+  peer_username text,
+  caption text,
+  total_price numeric NOT NULL DEFAULT 0,
+  status text NOT NULL DEFAULT 'pending',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  paid_at timestamptz,
+  delivered_at timestamptz
+);
+ALTER TABLE ppv_sends ENABLE ROW LEVEL SECURITY;
+-- Service role bypass (server-side admin client does all writes)
+CREATE POLICY "Service role full access" ON ppv_sends USING (true) WITH CHECK (true);
+```
+
+## Table: `ppv_send_items` (M:N junction)
+
+Which `ppvs` items belong to a given send.
+
+```sql
+CREATE TABLE ppv_send_items (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  send_id uuid NOT NULL REFERENCES ppv_sends(id) ON DELETE CASCADE,
+  ppv_id uuid NOT NULL REFERENCES ppvs(id) ON DELETE CASCADE,
+  ordinal int NOT NULL DEFAULT 0
+);
+ALTER TABLE ppv_send_items ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Service role full access" ON ppv_send_items USING (true) WITH CHECK (true);
+```
+
+---
+
 ## Storage Buckets
 
 | Bucket | Access | Contents |
 |---|---|---|
 | `vault` | **Public** | Blur thumbnails (JPEG). Path: `{user_id}/{uuid}_thumb.jpg` |
 | `content` | **Private** | Full original files. Path: `{user_id}/{uuid}.ext`. Accessed via signed URLs (3600s expiry). |
+| `ppvs` | **Public** | Original PPV media uploaded from /ppvs page. Blurred previews are generated on the fly with sharp; no separate blurred-copy stored. |

@@ -2,30 +2,19 @@ import { NextRequest } from "next/server";
 import { Api } from "telegram";
 import { authorizeModelAccess } from "@/lib/telegram-authorize";
 import { withTelegramClient } from "@/lib/telegram-pool";
-import bigInt from "big-integer";
+import { buildPeer } from "@/lib/telegram-peer";
+import { extractMessageMedia, type MessageMedia } from "@/lib/telegram-media";
 
 export type MessageItem = {
   id: number;
   text: string;
   date: number;
   isOutgoing: boolean;
+  media: MessageMedia | null;
+  // Telegram groups album items by the same groupedId so the UI can
+  // render them as one bubble.
+  groupedId: string | null;
 };
-
-function buildPeer(peerId: string, accessHash: string | null): Api.TypeInputPeer {
-  if (peerId.startsWith("-100")) {
-    return new Api.InputPeerChannel({
-      channelId: bigInt(peerId.slice(4)),
-      accessHash: bigInt(accessHash ?? "0"),
-    });
-  }
-  if (peerId.startsWith("-")) {
-    return new Api.InputPeerChat({ chatId: bigInt(peerId.slice(1)) });
-  }
-  return new Api.InputPeerUser({
-    userId: bigInt(peerId),
-    accessHash: bigInt(accessHash ?? "0"),
-  });
-}
 
 export async function GET(
   req: NextRequest,
@@ -56,6 +45,8 @@ export async function GET(
             text: m.message ?? "",
             date: m.date,
             isOutgoing: !!m.out,
+            media: extractMessageMedia(m),
+            groupedId: m.groupedId ? m.groupedId.toString() : null,
           }))
           .reverse();
       },
@@ -94,12 +85,15 @@ export async function POST(
     );
 
     // Return the real message metadata so the client can replace its
-    // optimistic placeholder and the next poll de-dupes by id.
+    // optimistic placeholder and the next poll de-dupes by id. A plain
+    // text send has no media / groupedId.
     const message: MessageItem = {
       id: sent.id,
       text: sent.message ?? text,
       date: sent.date ?? Math.floor(Date.now() / 1000),
       isOutgoing: true,
+      media: null,
+      groupedId: null,
     };
     return Response.json({ ok: true, message });
   } catch (err: unknown) {

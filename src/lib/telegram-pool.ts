@@ -1,6 +1,10 @@
 import { TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions";
 import { buildTelegramClientOptions } from "@/lib/telegram-client";
+import {
+  subscribeActivityEvents,
+  clearActivitySubscription,
+} from "@/lib/telegram-activity";
 
 type Entry = {
   client: TelegramClient;
@@ -27,7 +31,9 @@ globalThis.__ppvs_tg_connect_locks__ = connectLocks;
 const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 min
 // Hard cap on a single gramJS operation. If the underlying socket hangs
 // (proxy hiccup, dead Telegram DC) we abort so the next caller isn't blocked.
-const OPERATION_TIMEOUT_MS = 20_000;
+// Per-call override is supported (see withTelegramClient's `timeoutMs` param) —
+// heavier ops like PPV send (download+blur+upload N files) need 2–3 minutes.
+const DEFAULT_OPERATION_TIMEOUT_MS = 20_000;
 
 function scheduleCleanup() {
   if (globalThis.__ppvs_tg_cleanup__) return;
@@ -75,6 +81,7 @@ const DEAD_CONNECTION_RE =
 function evictBroken(modelId: string, entry: Entry) {
   pool.delete(modelId);
   connectLocks.delete(modelId);
+  clearActivitySubscription(modelId);
   entry.client.disconnect().catch(() => {});
 }
 
@@ -98,13 +105,17 @@ async function connectOrGetClient(
       buildTelegramClientOptions(),
     );
     try {
-      await runWithTimeout(client.connect(), OPERATION_TIMEOUT_MS, "connect");
+      await runWithTimeout(client.connect(), DEFAULT_OPERATION_TIMEOUT_MS, "connect");
     } catch (e) {
       try { await client.disconnect(); } catch {}
       throw e;
     }
     pool.set(modelId, { client, lastUsedAt: Date.now() });
     scheduleCleanup();
+    // Attach event listeners for typing / new-message activity — used
+    // by /api/telegram/activity to derive a fresh "online" badge even
+    // when Telegram privacy hides the real user status.
+    subscribeActivityEvents(modelId, client);
     return client;
   })();
 
@@ -124,7 +135,7 @@ async function connectOrGetClient(
  *   Sender already serializes the wire format; serializing again at this
  *   layer caused one hung request to block POST sends and every other
  *   poll for 60+ seconds.
- * - Each operation is hard-capped at OPERATION_TIMEOUT_MS; on
+ * - Each operation is hard-capped at DEFAULT_OPERATION_TIMEOUT_MS; on
  *   timeout / dead-connection errors the entry is evicted and the next
  *   caller reconnects.
  */
@@ -134,11 +145,12 @@ export async function withTelegramClient<T>(
   apiId: number,
   apiHash: string,
   fn: (client: TelegramClient) => Promise<T>,
+  timeoutMs: number = DEFAULT_OPERATION_TIMEOUT_MS,
 ): Promise<T> {
   const client = await connectOrGetClient(modelId, sessionString, apiId, apiHash);
 
   try {
-    const result = await runWithTimeout(fn(client), OPERATION_TIMEOUT_MS, "operation");
+    const result = await runWithTimeout(fn(client), timeoutMs, "operation");
     const entry = pool.get(modelId);
     if (entry) entry.lastUsedAt = Date.now();
     return result;

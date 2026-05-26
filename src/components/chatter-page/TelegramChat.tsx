@@ -1,13 +1,41 @@
 "use client";
 
-import { Send, Search } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { Send, Search, Smile, Play, FileText, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { EmojiPicker } from "./EmojiPicker";
+import { twemoji } from "@/lib/twemoji";
+
+export type MessageMediaInfo =
+  | {
+      type: "photo";
+      thumbDataUrl: string | null;
+      fullUrl: string;
+      width: number | null;
+      height: number | null;
+    }
+  | {
+      type: "video";
+      thumbDataUrl: string | null;
+      fullUrl: string;
+      width: number | null;
+      height: number | null;
+      durationSec: number | null;
+    }
+  | {
+      type: "document";
+      thumbDataUrl: string | null;
+      fullUrl: string;
+      fileName: string | null;
+      mimeType: string | null;
+      sizeBytes: number | null;
+    };
 
 export interface Message {
   id: string;
   text: string;
   time: string;
   isChatter: boolean;
+  media?: MessageMediaInfo | null;
 }
 
 export interface ChatListItem {
@@ -35,6 +63,144 @@ interface TelegramChatProps {
   sending: boolean;
 }
 
+function formatDuration(s: number | null): string {
+  if (!s || s <= 0) return "";
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${String(r).padStart(2, "0")}`;
+}
+
+function MediaBubble({
+  media,
+  onOpen,
+  isChatter,
+}: {
+  media: MessageMediaInfo;
+  onOpen: () => void;
+  isChatter: boolean;
+}) {
+  // Photo or video — render the stripped thumb as a square preview.
+  if (media.type === "photo" || media.type === "video") {
+    const aspect =
+      media.width && media.height ? media.width / media.height : 1;
+    const w = 220;
+    const h = Math.round(w / Math.max(0.6, Math.min(1.8, aspect)));
+    return (
+      <button
+        type="button"
+        onClick={onOpen}
+        className="block relative rounded-lg overflow-hidden border border-[#2a2d35] hover:opacity-90 transition-opacity"
+        style={{ width: w, height: h }}
+      >
+        {media.thumbDataUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={media.thumbDataUrl}
+            alt=""
+            className="w-full h-full object-cover"
+            style={{ filter: "blur(0.6px)" }}
+          />
+        ) : (
+          <div className="w-full h-full bg-gradient-to-br from-[#1f2937] to-[#111827]" />
+        )}
+        {media.type === "video" && (
+          <>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-12 h-12 rounded-full bg-black/55 border border-white/15 flex items-center justify-center">
+                <Play className="w-5 h-5 text-white" fill="white" />
+              </div>
+            </div>
+            {media.durationSec ? (
+              <div className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded bg-black/65 text-white text-[10px] font-medium">
+                {formatDuration(media.durationSec)}
+              </div>
+            ) : null}
+          </>
+        )}
+      </button>
+    );
+  }
+
+  // Generic document — small row with icon + filename.
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className={`flex items-center gap-2.5 px-3 py-2 rounded-lg ${
+        isChatter ? "bg-white/15" : "bg-[#374151]"
+      } hover:opacity-90 transition-opacity max-w-[260px]`}
+    >
+      <div className="w-9 h-9 rounded-full bg-black/30 flex items-center justify-center flex-shrink-0">
+        <FileText className="w-4 h-4 text-white" />
+      </div>
+      <div className="min-w-0 text-left">
+        <div className="text-[12px] text-white truncate">{media.fileName ?? "Document"}</div>
+        {media.sizeBytes ? (
+          <div className="text-[10px] text-white/70">
+            {(media.sizeBytes / 1024 / 1024).toFixed(2)} MB
+          </div>
+        ) : null}
+      </div>
+    </button>
+  );
+}
+
+function Lightbox({ media, onClose }: { media: MessageMediaInfo; onClose: () => void }) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] bg-black/85 flex items-center justify-center p-6"
+      onClick={onClose}
+    >
+      <button
+        type="button"
+        className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white"
+        onClick={onClose}
+        aria-label="Close"
+      >
+        <X className="w-5 h-5" />
+      </button>
+      <div
+        className="max-w-[92vw] max-h-[92vh] flex items-center justify-center"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {media.type === "video" ? (
+          <video
+            src={media.fullUrl}
+            controls
+            autoPlay
+            className="max-w-[92vw] max-h-[92vh] rounded-md"
+          />
+        ) : media.type === "photo" ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={media.fullUrl}
+            alt=""
+            className="max-w-[92vw] max-h-[92vh] object-contain rounded-md"
+          />
+        ) : (
+          <a
+            href={media.fullUrl}
+            target="_blank"
+            rel="noreferrer"
+            download
+            className="px-5 py-3 bg-[#6366f1] text-white rounded-lg font-semibold"
+          >
+            Download {media.fileName ?? "file"}
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function TelegramChat({
   chatList,
   selectedChat,
@@ -51,6 +217,9 @@ export function TelegramChat({
 }: TelegramChatProps) {
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const atBottomRef = useRef(true);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [showEmoji, setShowEmoji] = useState(false);
+  const [openMedia, setOpenMedia] = useState<MessageMediaInfo | null>(null);
 
   useEffect(() => {
     const el = messagesRef.current;
@@ -58,16 +227,44 @@ export function TelegramChat({
     if (atBottomRef.current) el.scrollTop = el.scrollHeight;
   }, [messages, selected?.id]);
 
+  // Close emoji picker on outside click.
+  useEffect(() => {
+    if (!showEmoji) return;
+    function onDown() {
+      setShowEmoji(false);
+    }
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [showEmoji]);
+
   function handleScroll(e: React.UIEvent<HTMLDivElement>) {
     const el = e.currentTarget;
     atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 50;
+  }
+
+  function insertEmoji(emoji: string) {
+    const el = inputRef.current;
+    if (!el) {
+      onInputChange(inputText + emoji);
+      return;
+    }
+    const start = el.selectionStart ?? inputText.length;
+    const end = el.selectionEnd ?? inputText.length;
+    const next = inputText.slice(0, start) + emoji + inputText.slice(end);
+    onInputChange(next);
+    // Restore cursor right after the inserted emoji on the next tick.
+    requestAnimationFrame(() => {
+      el.focus();
+      const pos = start + emoji.length;
+      el.setSelectionRange(pos, pos);
+    });
   }
 
   return (
     <div className="flex-1 bg-[#0d1117] flex">
       {/* Chat List Sidebar */}
       <div className="w-[280px] bg-[#161a22] border-r border-[#2a2d35] flex flex-col">
-        {/* Search — smaller */}
+        {/* Search */}
         <div className="p-2.5 border-b border-[#2a2d35]">
           <div className="relative">
             <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[#6b7280]" />
@@ -105,7 +302,7 @@ export function TelegramChat({
                 </div>
                 <div className="flex items-center justify-between">
                   <p className="text-[11px] text-[#9ca3af] truncate">
-                    {chat.lastMessage}
+                    {twemoji(chat.lastMessage, `cl-${chat.id}`)}
                   </p>
                   {chat.unread > 0 && (
                     <div className="ml-2 min-w-[18px] h-[18px] bg-[#6366f1] rounded-full flex items-center justify-center">
@@ -134,7 +331,11 @@ export function TelegramChat({
                 {selected ? `@${selected.username}` : ""}
               </div>
               <div
-                className={`text-[11px] ${selected?.status === "online" ? "text-[#10b981]" : "text-[#6b7280]"}`}
+                className={`text-[11px] ${
+                  selected?.status === "online" || selected?.status === "typing…"
+                    ? "text-[#10b981]"
+                    : "text-[#6b7280]"
+                }`}
               >
                 {selected?.status ?? ""}
               </div>
@@ -162,17 +363,42 @@ export function TelegramChat({
               <div
                 className={`max-w-[65%] ${message.isChatter ? "items-end" : "items-start"} flex flex-col gap-1`}
               >
-                <div
-                  className={`px-4 py-2.5 rounded-2xl ${
-                    message.isChatter
-                      ? "bg-gradient-to-br from-[#6366f1] to-[#5558e3] text-white rounded-br-sm"
-                      : "bg-[#1f2937] text-[#e5e7eb] rounded-bl-sm"
-                  }`}
-                >
-                  <div className="text-[13px] leading-relaxed whitespace-pre-wrap break-words">
-                    {message.text}
+                {message.media ? (
+                  <div
+                    className={`p-1 rounded-2xl ${
+                      message.isChatter
+                        ? "bg-gradient-to-br from-[#6366f1] to-[#5558e3] rounded-br-sm"
+                        : "bg-[#1f2937] rounded-bl-sm"
+                    }`}
+                  >
+                    <MediaBubble
+                      media={message.media}
+                      isChatter={message.isChatter}
+                      onOpen={() => setOpenMedia(message.media!)}
+                    />
+                    {message.text && message.text !== "—" ? (
+                      <div
+                        className={`text-[13px] leading-relaxed whitespace-pre-wrap break-words px-3 pt-2 pb-1 ${
+                          message.isChatter ? "text-white" : "text-[#e5e7eb]"
+                        }`}
+                      >
+                        {twemoji(message.text, `m-${message.id}`)}
+                      </div>
+                    ) : null}
                   </div>
-                </div>
+                ) : (
+                  <div
+                    className={`px-4 py-2.5 rounded-2xl ${
+                      message.isChatter
+                        ? "bg-gradient-to-br from-[#6366f1] to-[#5558e3] text-white rounded-br-sm"
+                        : "bg-[#1f2937] text-[#e5e7eb] rounded-bl-sm"
+                    }`}
+                  >
+                    <div className="text-[13px] leading-relaxed whitespace-pre-wrap break-words">
+                      {twemoji(message.text, `m-${message.id}`)}
+                    </div>
+                  </div>
+                )}
                 <div
                   className={`text-[10px] text-[#6b7280] px-1 ${message.isChatter ? "text-right" : "text-left"}`}
                 >
@@ -184,8 +410,9 @@ export function TelegramChat({
         </div>
 
         {/* Input Area */}
-        <div className="h-[64px] bg-[#161a22] border-t border-[#2a2d35] px-5 flex items-center gap-3">
+        <div className="h-[64px] bg-[#161a22] border-t border-[#2a2d35] px-5 flex items-center gap-3 relative">
           <input
+            ref={inputRef}
             type="text"
             value={inputText}
             onChange={(e) => onInputChange(e.target.value)}
@@ -198,6 +425,31 @@ export function TelegramChat({
             placeholder="Type a message..."
             className="flex-1 px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1]"
           />
+          <div className="relative">
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                // mousedown not click — so the outside-click handler doesn't fire before us
+                e.preventDefault();
+                e.stopPropagation();
+                setShowEmoji((v) => !v);
+              }}
+              className={`w-10 h-10 flex items-center justify-center rounded-lg transition-colors ${
+                showEmoji
+                  ? "bg-[#374151] text-[#6366f1]"
+                  : "bg-[#1f2937] text-[#9ca3af] hover:text-white hover:bg-[#374151]"
+              }`}
+              aria-label="Emoji picker"
+            >
+              <Smile className="w-5 h-5" />
+            </button>
+            {showEmoji && (
+              <EmojiPicker
+                onSelect={insertEmoji}
+                onClose={() => setShowEmoji(false)}
+              />
+            )}
+          </div>
           <button
             onClick={onSend}
             disabled={sending || !inputText.trim() || !selected}
@@ -208,6 +460,8 @@ export function TelegramChat({
           </button>
         </div>
       </div>
+
+      {openMedia && <Lightbox media={openMedia} onClose={() => setOpenMedia(null)} />}
     </div>
   );
 }

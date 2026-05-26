@@ -56,11 +56,19 @@ export function PpvFormModal({
     setError("");
     try {
       let mediaUrl = existing?.media_url ?? null;
+      let previewUrl: string | null = null;
       if (file) {
         if (existing?.media_url) {
-          await deletePpvMedia(supabase, existing.media_url).catch(() => {});
+          // Delete both the old original and any stale preview alongside it.
+          await deletePpvMedia(
+            supabase,
+            existing.media_url,
+            (existing as { preview_url?: string | null }).preview_url ?? null,
+          ).catch(() => {});
         }
-        mediaUrl = await uploadPpvMedia(supabase, agencyUserId, file);
+        const uploaded = await uploadPpvMedia(supabase, agencyUserId, file);
+        mediaUrl = uploaded.mediaUrl;
+        previewUrl = uploaded.previewUrl;
       }
 
       let savedId: string;
@@ -77,6 +85,7 @@ export function PpvFormModal({
             description: description.trim() || null,
             price: priceNum,
             media_url: mediaUrl,
+            preview_url: previewUrl,
           })
           .select("id, created_at")
           .single();
@@ -85,14 +94,20 @@ export function PpvFormModal({
         createdAt = data.created_at;
       } else {
         if (!existing) throw new Error("No existing PPV");
+        const updatePayload: Record<string, unknown> = {
+          name: name.trim(),
+          description: description.trim() || null,
+          price: priceNum,
+        };
+        // Only overwrite media columns when a new file was uploaded —
+        // editing name/price without changing the file shouldn't wipe them.
+        if (file) {
+          updatePayload.media_url = mediaUrl;
+          updatePayload.preview_url = previewUrl;
+        }
         const { error: dbError } = await supabase
           .from("ppvs")
-          .update({
-            name: name.trim(),
-            description: description.trim() || null,
-            price: priceNum,
-            media_url: mediaUrl,
-          })
+          .update(updatePayload)
           .eq("id", existing.id);
         if (dbError) throw new Error(dbError.message);
         savedId = existing.id;

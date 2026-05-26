@@ -1,44 +1,42 @@
 "use server";
 
-import { createAdminSupabaseClient } from "@/lib/supabase-server";
+import { headers } from "next/headers";
 
-type LinkWithItem = {
-  id: string;
-  price: number;
-  is_paid: boolean;
-  vault_items: { file_path: string; file_type: string } | null;
+export type DeliverItem = {
+  name: string;
+  mediaUrl: string;
+  isVideo: boolean;
 };
 
-export async function unlockPpv(code: string): Promise<{ url?: string; error?: string }> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const admin = createAdminSupabaseClient() as any;
+export type PayResult =
+  | { ok: true; items: DeliverItem[]; caption: string | null }
+  | { error: string };
 
-  const { data: link, error: fetchErr } = await admin
-    .from("ppv_links")
-    .select("id, price, is_paid, vault_items(file_path, file_type)")
-    .eq("code", code)
-    .eq("is_paid", false)
-    .single() as { data: LinkWithItem | null; error: unknown };
+/**
+ * Mark a PPV send as paid + delivered, return the list of original media
+ * URLs so the page can swap blurred previews for the real thing. No real
+ * payment provider yet — this is a placeholder that pretends the fan paid.
+ */
+export async function payAndDeliver(code: string): Promise<PayResult> {
+  try {
+    const h = await headers();
+    const host = h.get("host");
+    const proto = h.get("x-forwarded-proto") ?? "http";
+    const base = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || `${proto}://${host}`;
 
-  if (fetchErr || !link) {
-    return { error: "Link not found or already used." };
+    const res = await fetch(`${base}/api/ppv/deliver`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+      cache: "no-store",
+    });
+    let data: { ok?: boolean; error?: string; items?: DeliverItem[]; caption?: string | null } = {};
+    try { data = await res.json(); } catch {}
+    if (!res.ok || data.error) {
+      return { error: data.error || `HTTP ${res.status}` };
+    }
+    return { ok: true, items: data.items ?? [], caption: data.caption ?? null };
+  } catch (e: unknown) {
+    return { error: e instanceof Error ? e.message : "Failed" };
   }
-
-  const { error: updateErr } = await admin
-    .from("ppv_links")
-    .update({ is_paid: true, paid_at: new Date().toISOString() })
-    .eq("id", link.id) as { error: unknown };
-
-  if (updateErr) return { error: "Failed to process payment." };
-
-  const filePath = link.vault_items?.file_path;
-  if (!filePath) return { error: "Content not found." };
-
-  const { data: signedData, error: signErr } = await admin.storage
-    .from("content")
-    .createSignedUrl(filePath, 3600) as { data: { signedUrl: string } | null; error: unknown };
-
-  if (signErr || !signedData) return { error: "Failed to generate download link." };
-
-  return { url: signedData.signedUrl };
 }

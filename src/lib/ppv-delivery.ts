@@ -1,25 +1,35 @@
-import { Api, TelegramClient } from "telegram";
+import sharp from "sharp";
+import { TelegramClient } from "telegram";
 import { CustomFile } from "telegram/client/uploads";
-import bigInt from "big-integer";
 import { buildPeer } from "@/lib/telegram-peer";
 
 /**
- * PPV delivery via Telegram MTProto.
+ * PPV delivery via Telegram MTProto — buffer-upload path.
  *
- * Primary path — external URL: ask Telegram to fetch the URL itself via
- * `InputMediaPhotoExternal` / `InputMediaDocumentExternal`. Telegram → AWS
- * (Supabase) is a fat datacenter pipe, so the chatter's home Wi-Fi only
- * carries a tiny API request (the URL string) instead of the file payload.
+ * Trade-offs we made and undid:
+ *   - `InputMediaPhotoExternal` (Telegram fetches the URL itself) failed
+ *     with `400: MEDIA_INVALID` for Supabase storage URLs. Removed.
+ *   - Web-only delivery (no Telegram album) worked but loses the "fan gets
+ *     content in Telegram DM" UX the chatter expects. Restored.
  *
- * Fallback — buffer upload: Telegram's external-URL fetcher is picky
- * (sometimes returns MEDIA_INVALID — domain quirks, content-type mismatch,
- * size limits). On any failure we fall back to downloading from Supabase
- * server-side and uploading the raw bytes via `tg.uploadFile()`. Slower,
- * but works whenever the external path doesn't.
+ * Current path: download from Supabase → upload via `tg.sendFile()` as
+ * `CustomFile` buffers, with **retry on failure** (3 attempts, exponential
+ * backoff). This is the same approach that produced the working screenshot
+ * the user shared — sharp-blur fallback for legacy items without
+ * `preview_url`, pre-blurred preview for new items.
+ *
+ * For files >5 MB on flaky networks the upload may still time out — the
+ * retry helps for transient drops, but the only architectural cure is a
+ * VPS with a stable link to both Supabase and Telegram DC.
  */
 
 const TG_ALBUM_LIMIT = 10;
-const FETCH_TIMEOUT_MS = 120_000;
+const FETCH_TIMEOUT_MS = 60_000;
+const RETRY_ATTEMPTS = 3;
+const RETRY_BACKOFF_BASE_MS = 2_000;
+// Concurrency cap on parallel downloads — Supabase storage on flaky home
+// internet hates 10+ parallel fetches from the same client.
+const DOWNLOAD_CONCURRENCY = 2;
 
 /** Generate an 8-char URL-safe code for /pay/{code}. */
 export function generatePpvCode(): string {
@@ -46,16 +56,34 @@ function basenameFromUrl(url: string, fallback: string): string {
   }
 }
 
-/** Cryptographically-random 64-bit BigInteger for Telegram's randomId. */
-function randomId(): bigInt.BigInteger {
-  let hex = "";
-  for (let i = 0; i < 16; i++) {
-    hex += Math.floor(Math.random() * 16).toString(16);
+/**
+ * Retry an async operation up to RETRY_ATTEMPTS times with exponential
+ * backoff. Survives transient network drops (the "terminated" errors that
+ * killed deliveries on flaky home internet).
+ */
+async function withRetry<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+      const msg = e instanceof Error ? e.message : String(e);
+      if (attempt < RETRY_ATTEMPTS) {
+        const wait = RETRY_BACKOFF_BASE_MS * attempt;
+        console.warn(
+          `[ppv-delivery] ${label} attempt ${attempt}/${RETRY_ATTEMPTS} failed (${msg}). Retrying in ${wait}ms…`,
+        );
+        await new Promise((r) => setTimeout(r, wait));
+      } else {
+        console.error(`[ppv-delivery] ${label} all ${RETRY_ATTEMPTS} attempts failed: ${msg}`);
+      }
+    }
   }
-  return bigInt(hex, 16);
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
-async function fetchBuffer(url: string, label = "fetch"): Promise<Buffer> {
+async function fetchBuffer(url: string, label: string): Promise<Buffer> {
   const controller = new AbortController();
   let aborted = false;
   const t = setTimeout(() => {
@@ -81,161 +109,75 @@ async function fetchBuffer(url: string, label = "fetch"): Promise<Buffer> {
 }
 
 /**
- * Primary path — hand Telegram the URL via UploadMedia/external. Returns
- * an `InputMediaPhoto`/`InputMediaDocument` reference to the resulting
- * already-uploaded file on Telegram's CDN, ready for SendMultiMedia.
+ * Run an array of async tasks with a small concurrency cap. Preserves
+ * ordering — returns an array `T[]` aligned with the input task array.
  */
-async function externalUrlToInputMedia(
-  tg: TelegramClient,
-  peer: Api.TypeInputPeer,
-  url: string,
-): Promise<Api.TypeInputMedia> {
-  const external = isLikelyVideoUrl(url)
-    ? new Api.InputMediaDocumentExternal({ url })
-    : new Api.InputMediaPhotoExternal({ url });
-
-  const result = await tg.invoke(new Api.messages.UploadMedia({ peer, media: external }));
-
-  if (result instanceof Api.MessageMediaPhoto && result.photo instanceof Api.Photo) {
-    return new Api.InputMediaPhoto({
-      id: new Api.InputPhoto({
-        id: result.photo.id,
-        accessHash: result.photo.accessHash,
-        fileReference: result.photo.fileReference,
-      }),
-    });
-  }
-  if (
-    result instanceof Api.MessageMediaDocument &&
-    result.document instanceof Api.Document
-  ) {
-    return new Api.InputMediaDocument({
-      id: new Api.InputDocument({
-        id: result.document.id,
-        accessHash: result.document.accessHash,
-        fileReference: result.document.fileReference,
-      }),
-    });
-  }
-  throw new Error(`Unexpected media type from UploadMedia for ${url}`);
-}
-
-/**
- * Fallback path — download the file to our server, upload the raw bytes to
- * Telegram via gramJS. Slower (two hops through the chatter's network) but
- * works whenever Telegram refuses to fetch the external URL itself.
- */
-async function uploadedBufferToInputMedia(
-  tg: TelegramClient,
-  url: string,
-): Promise<Api.TypeInputMedia> {
-  const buf = await fetchBuffer(url, "fallback download");
-  const name = basenameFromUrl(url, "file.bin");
-  const file = new CustomFile(name, buf.length, "", buf);
-
-  const uploaded = await tg.uploadFile({ file, workers: 4 });
-
-  if (isLikelyVideoUrl(url)) {
-    // For videos we have to tell Telegram the mime-type explicitly via
-    // InputMediaUploadedDocument; without it Telegram may not recognise
-    // it as a streamable video.
-    return new Api.InputMediaUploadedDocument({
-      file: uploaded,
-      mimeType: "video/mp4",
-      attributes: [new Api.DocumentAttributeFilename({ fileName: name })],
-    });
-  }
-  return new Api.InputMediaUploadedPhoto({ file: uploaded });
-}
-
-/**
- * Resolve a URL into an InputMedia reference, preferring the fast external
- * path. Logs which path was used so we can spot patterns of failure.
- */
-async function urlToInputMediaWithFallback(
-  tg: TelegramClient,
-  peer: Api.TypeInputPeer,
-  url: string,
-): Promise<Api.TypeInputMedia> {
-  try {
-    return await externalUrlToInputMedia(tg, peer, url);
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.warn(
-      `[ppv-delivery] external URL rejected by Telegram (${msg}). Falling back to buffer upload for ${url}`,
-    );
-    return await uploadedBufferToInputMedia(tg, url);
-  }
-}
-
-/**
- * Send a list of URLs as one or more Telegram albums, optional caption on
- * the first item. Each URL is first turned into an InputMedia reference
- * (preferring the external-URL fast path), then album-sent.
- */
-async function sendUrlsAsAlbums(
-  tg: TelegramClient,
-  peer: Api.TypeInputPeer,
-  urls: string[],
-  caption: string,
-): Promise<void> {
-  if (urls.length === 0) return;
-
-  const inputs: Api.TypeInputMedia[] = [];
-  for (const url of urls) {
-    inputs.push(await urlToInputMediaWithFallback(tg, peer, url));
-  }
-
-  let captionPlaced = false;
-  const trimmedCaption = caption.trim();
-  for (let i = 0; i < inputs.length; i += TG_ALBUM_LIMIT) {
-    const chunk = inputs.slice(i, i + TG_ALBUM_LIMIT);
-    if (chunk.length === 0) continue;
-
-    const chunkCaption: string =
-      !captionPlaced && trimmedCaption ? trimmedCaption : "";
-    if (chunkCaption) captionPlaced = true;
-
-    if (chunk.length === 1) {
-      await tg.invoke(
-        new Api.messages.SendMedia({
-          peer,
-          media: chunk[0],
-          message: chunkCaption,
-          randomId: randomId(),
-        }),
-      );
-    } else {
-      const multiMedia = chunk.map(
-        (m, idx) =>
-          new Api.InputSingleMedia({
-            media: m,
-            message: idx === 0 ? chunkCaption : "",
-            randomId: randomId(),
-          }),
-      );
-      await tg.invoke(new Api.messages.SendMultiMedia({ peer, multiMedia }));
+async function mapWithConcurrency<I, O>(
+  items: I[],
+  limit: number,
+  fn: (item: I, index: number) => Promise<O>,
+): Promise<O[]> {
+  const out: O[] = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (true) {
+      const idx = next++;
+      if (idx >= items.length) return;
+      out[idx] = await fn(items[idx], idx);
     }
   }
+  const workers = Array.from({ length: Math.min(limit, items.length) }, () => worker());
+  await Promise.all(workers);
+  return out;
+}
+
+/**
+ * Build a CustomFile from a remote URL — downloads bytes with retry and
+ * wraps them so gramJS can upload via tg.sendFile.
+ */
+async function customFileFromUrl(
+  url: string,
+  namePrefix: string,
+  label = "download",
+): Promise<CustomFile> {
+  const buf = await withRetry(`${label} ${url}`, () => fetchBuffer(url, label));
+  const name = basenameFromUrl(url, `${namePrefix}.bin`);
+  return new CustomFile(name, buf.length, "", buf);
+}
+
+/**
+ * Slow-path blur: download original, blur with sharp, return CustomFile.
+ * Used when a PPV row has no `preview_url` (legacy item uploaded before
+ * client-side blurring landed). Newer uploads already have a 30–80 KB
+ * pre-blurred jpeg in storage and skip sharp entirely.
+ */
+async function blurredCustomFileFromUrl(url: string, idx: number): Promise<CustomFile> {
+  const buf = await withRetry(`blur-source ${url}`, () =>
+    fetchBuffer(url, "download original for slow-path blur"),
+  );
+  let pipeline = sharp(buf, { failOn: "none" })
+    .resize(720, 720, { fit: "inside", withoutEnlargement: true })
+    .modulate({ brightness: 0.85 });
+  try {
+    pipeline = pipeline.blur(40);
+  } catch {
+    // sharp.blur throws on some weird inputs; fall through without blur.
+  }
+  const out = await pipeline.jpeg({ quality: 60 }).toBuffer();
+  return new CustomFile(`preview_${idx + 1}.jpg`, out.length, "", out);
 }
 
 export type PpvPreviewItem = {
-  /** Public URL of the original (used if preview_url is null — videos, legacy rows). */
+  /** Public URL of the original (slow-path fallback if previewUrl missing). */
   mediaUrl: string;
-  /** Public URL of the pre-blurred 720px JPEG. Null for videos or legacy rows. */
+  /** Public URL of the pre-blurred 720px jpeg. Null for videos / legacy rows. */
   previewUrl: string | null;
 };
 
 /**
- * Send a single text message to the fan with the pay link.
- *
- * Web-delivery mode: chatter's gramJS only posts the announcement; previews
- * + originals are served from the /pay/{code} page directly by Supabase
- * CDN to the fan's browser. The chatter's flaky network only carries this
- * single text message instead of multi-MB photo albums.
- *
- * If/when we move to a VPS with stable Telegram + Supabase reachability,
- * see `sendUrlsAsAlbums` below — it's still here for the future flip back.
+ * Send the blurred preview album + pay-link caption to the fan in one
+ * Telegram message group. The caption is attached to the first album chunk
+ * so Telegram displays it inline with the album.
  */
 export async function sendBlurredPreviewWithLink(
   tg: TelegramClient,
@@ -248,18 +190,59 @@ export async function sendBlurredPreviewWithLink(
 ): Promise<void> {
   const peer = buildPeer(peerId, accessHash);
 
+  // Skip video items from the preview album — sending unblurred would
+  // defeat the locked-preview UX. Describe video PPVs in the caption.
+  type Src = { url: string; preBlurred: boolean };
+  const sources: Src[] = items
+    .filter((it) => it.mediaUrl && !isLikelyVideoUrl(it.mediaUrl))
+    .map((it) =>
+      it.previewUrl
+        ? { url: it.previewUrl, preBlurred: true }
+        : { url: it.mediaUrl, preBlurred: false },
+    );
+
+  const files = await mapWithConcurrency(sources, DOWNLOAD_CONCURRENCY, async (s, i) =>
+    s.preBlurred
+      ? customFileFromUrl(s.url, `preview_${i + 1}.jpg`, "download preview")
+      : blurredCustomFileFromUrl(s.url, i),
+  );
+
   const lines = [
     caption.trim(),
     `🔒 Locked content — ${items.length} item${items.length === 1 ? "" : "s"}`,
     `💰 $${totalPrice}`,
     `Tap to unlock: ${payUrl}`,
   ].filter(Boolean);
-  await tg.sendMessage(peer, { message: lines.join("\n") });
+  const messageCaption = lines.join("\n");
+
+  // Fallback: if no preview files (e.g. all videos), just send the text.
+  if (files.length === 0) {
+    await tg.sendMessage(peer, { message: messageCaption });
+    return;
+  }
+
+  let captionPlaced = false;
+  for (let i = 0; i < files.length; i += TG_ALBUM_LIMIT) {
+    const chunk = files.slice(i, i + TG_ALBUM_LIMIT);
+    if (chunk.length === 0) continue;
+
+    const chunkCaption = !captionPlaced ? messageCaption : "";
+    if (chunkCaption) captionPlaced = true;
+
+    await withRetry(`upload preview chunk ${Math.floor(i / TG_ALBUM_LIMIT) + 1}`, async () => {
+      if (chunk.length === 1) {
+        await tg.sendFile(peer, { file: chunk[0], caption: chunkCaption });
+      } else {
+        await tg.sendFile(peer, { file: chunk, caption: chunkCaption });
+      }
+    });
+  }
 }
 
 /**
- * After "payment" — deliver the original (unblurred) files back to the fan
- * as one or more albums via the same external-URL-with-fallback path.
+ * Deliver originals to the fan as one or more Telegram albums after they
+ * click Pay. The web-side reveal already happened immediately on the
+ * /pay page; this is the second copy via Telegram DM.
  */
 export async function sendOriginalsAlbum(
   tg: TelegramClient,
@@ -270,5 +253,26 @@ export async function sendOriginalsAlbum(
 ): Promise<void> {
   const peer = buildPeer(peerId, accessHash);
   const urls = mediaUrls.filter((u) => !!u);
-  await sendUrlsAsAlbums(tg, peer, urls, caption);
+
+  const files = await mapWithConcurrency(urls, DOWNLOAD_CONCURRENCY, (u, i) =>
+    customFileFromUrl(u, `original_${i + 1}`, "download original"),
+  );
+
+  let captionPlaced = false;
+  const trimmed = caption.trim();
+  for (let i = 0; i < files.length; i += TG_ALBUM_LIMIT) {
+    const chunk = files.slice(i, i + TG_ALBUM_LIMIT);
+    if (chunk.length === 0) continue;
+
+    const chunkCaption = !captionPlaced && trimmed ? trimmed : "";
+    if (chunkCaption) captionPlaced = true;
+
+    await withRetry(`upload original chunk ${Math.floor(i / TG_ALBUM_LIMIT) + 1}`, async () => {
+      if (chunk.length === 1) {
+        await tg.sendFile(peer, { file: chunk[0], caption: chunkCaption });
+      } else {
+        await tg.sendFile(peer, { file: chunk, caption: chunkCaption });
+      }
+    });
+  }
 }

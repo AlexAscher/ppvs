@@ -79,12 +79,17 @@ function MediaBubble({
   onOpen: () => void;
   isChatter: boolean;
 }) {
-  // Photo or video — render the stripped thumb as a square preview.
+  // Progressive loading: stripped thumb shows instantly (data URL, ~30px),
+  // then ~800px HQ preview from /api/telegram/media?quality=thumb fades in
+  // over it once downloaded. Lightbox click loads the full original.
+  const [hqLoaded, setHqLoaded] = useState(false);
+
   if (media.type === "photo" || media.type === "video") {
     const aspect =
       media.width && media.height ? media.width / media.height : 1;
     const w = 220;
     const h = Math.round(w / Math.max(0.6, Math.min(1.8, aspect)));
+    const hqUrl = `${media.fullUrl}&quality=thumb`;
     return (
       <button
         type="button"
@@ -93,25 +98,42 @@ function MediaBubble({
         style={{ width: w, height: h }}
       >
         {media.thumbDataUrl ? (
+          // Stripped-thumb base layer. Heavy blur while HQ loads; sharpens
+          // once HQ image is on top (filter no longer matters).
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={media.thumbDataUrl}
             alt=""
-            className="w-full h-full object-cover"
-            style={{ filter: "blur(0.6px)" }}
+            className="absolute inset-0 w-full h-full object-cover"
+            style={{
+              filter: hqLoaded ? "none" : "blur(8px)",
+              transition: "filter 0.3s",
+            }}
+            draggable={false}
           />
         ) : (
-          <div className="w-full h-full bg-gradient-to-br from-[#1f2937] to-[#111827]" />
+          <div className="absolute inset-0 w-full h-full bg-gradient-to-br from-[#1f2937] to-[#111827]" />
         )}
+        {/* HQ overlay — fetched via media endpoint at preview quality */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={hqUrl}
+          alt=""
+          className="absolute inset-0 w-full h-full object-cover transition-opacity duration-300"
+          style={{ opacity: hqLoaded ? 1 : 0 }}
+          onLoad={() => setHqLoaded(true)}
+          onError={() => { /* keep stripped thumb if HQ fails */ }}
+          draggable={false}
+        />
         {media.type === "video" && (
           <>
-            <div className="absolute inset-0 flex items-center justify-center">
+            <div className="absolute inset-0 flex items-center justify-center z-10">
               <div className="w-12 h-12 rounded-full bg-black/55 border border-white/15 flex items-center justify-center">
                 <Play className="w-5 h-5 text-white" fill="white" />
               </div>
             </div>
             {media.durationSec ? (
-              <div className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded bg-black/65 text-white text-[10px] font-medium">
+              <div className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded bg-black/65 text-white text-[10px] font-medium z-10">
                 {formatDuration(media.durationSec)}
               </div>
             ) : null}

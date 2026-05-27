@@ -3,10 +3,27 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
-import { Topbar } from "@/components/chatter-page/Topbar";
-import { ModelSelectorBar } from "@/components/chatter-page/ModelSelectorBar";
-import { TelegramChat, type ChatListItem, type Message as ChatMessage, type MessageMediaInfo } from "@/components/chatter-page/TelegramChat";
-import { ActionPanel, type PpvItem, type PpvTag } from "@/components/chatter-page/ActionPanel";
+import { Topbar as TopbarAgency } from "@/components/chatter-page/Topbar";
+import { ModelSelectorBar as ModelSelectorBarAgency } from "@/components/chatter-page/ModelSelectorBar";
+import {
+  TelegramChat as TelegramChatAgency,
+  type ChatListItem,
+  type Message as ChatMessage,
+  type MessageMediaInfo,
+} from "@/components/chatter-page/TelegramChat";
+import {
+  ActionPanel as ActionPanelAgency,
+  type PpvItem,
+  type PpvTag,
+  type PpvGroup,
+} from "@/components/chatter-page/ActionPanel";
+// Pixel-match Create_prompt_design components — rendered for role === "chatter".
+// Same prop interface as agency variants, so we can swap them by role with a
+// single `const X = role === "chatter" ? ClassicX : AgencyX`.
+import { Topbar as TopbarClassic } from "@/components/chatter-page-classic/Topbar";
+import { ModelSelectorBar as ModelSelectorBarClassic } from "@/components/chatter-page-classic/ModelSelectorBar";
+import { TelegramChat as TelegramChatClassic } from "@/components/chatter-page-classic/TelegramChat";
+import { ActionPanel as ActionPanelClassic } from "@/components/chatter-page-classic/ActionPanel";
 
 // ─── types ──────────────────────────────────────────────────────────────────
 
@@ -115,6 +132,7 @@ export default function ChatterPage() {
   const [activeTab, setActiveTab] = useState<Tab>("ppv");
   const [ppvItems, setPpvItems] = useState<PpvItem[]>([]);
   const [ppvTags, setPpvTags] = useState<PpvTag[]>([]);
+  const [ppvGroups, setPpvGroups] = useState<PpvGroup[]>([]);
   const [activeFilter, setActiveFilter] = useState("All");
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [caption, setCaption] = useState("");
@@ -199,17 +217,27 @@ export default function ChatterPage() {
         if (cancelled) return;
         setPpvItems([]);
         setPpvTags([]);
+        setPpvGroups([]);
         return;
       }
-      const [{ data: tagsRaw }, { data: itemsRaw }, { data: links }] = await Promise.all([
-        supabase.from("ppv_tags").select("id, model_id, name, color, emoji").eq("model_id", selectedModelId),
-        supabase
-          .from("ppvs")
-          .select("id, model_id, name, price, media_url, created_at")
-          .eq("model_id", selectedModelId)
-          .order("created_at", { ascending: false }),
-        supabase.from("ppv_item_tags").select("ppv_id, tag_id"),
-      ]);
+      const [{ data: tagsRaw }, { data: itemsRaw }, { data: links }, { data: groupsRaw }] =
+        await Promise.all([
+          supabase
+            .from("ppv_tags")
+            .select("id, model_id, name, color, emoji")
+            .eq("model_id", selectedModelId),
+          supabase
+            .from("ppvs")
+            .select("id, model_id, group_id, name, price, media_url, created_at")
+            .eq("model_id", selectedModelId)
+            .order("created_at", { ascending: false }),
+          supabase.from("ppv_item_tags").select("ppv_id, tag_id"),
+          supabase
+            .from("ppv_groups")
+            .select("id, name, created_at")
+            .eq("model_id", selectedModelId)
+            .order("created_at", { ascending: false }),
+        ]);
       if (cancelled) return;
       const tags = (tagsRaw ?? []) as PpvTag[];
       const tagMap = new Map(tags.map((t) => [t.id, t]));
@@ -226,15 +254,22 @@ export default function ChatterPage() {
         name: string;
         price: number | string;
         media_url: string | null;
+        group_id: string | null;
       }>).map((row) => ({
         id: row.id,
         name: row.name,
         price: row.price,
         media_url: row.media_url,
+        group_id: row.group_id,
         tags: linksByItem.get(row.id) ?? [],
       }));
+      const groups: PpvGroup[] = ((groupsRaw ?? []) as Array<{
+        id: string;
+        name: string;
+      }>).map((g) => ({ id: g.id, name: g.name }));
       setPpvTags(tags);
       setPpvItems(items);
+      setPpvGroups(groups);
       setActiveFilter("All");
       setSelectedItems([]);
     })();
@@ -728,6 +763,16 @@ export default function ChatterPage() {
 
   if (role === null) return null;
 
+  // Role-gated UI variants. Chatters see the pixel-match of
+  // Create_prompt_design (chatter-page-classic/*). Agencies see the
+  // pre-shrink medium variant (chatter-page/*). Both share interfaces and
+  // data wiring — only sizes/classNames differ.
+  const isChatter = role === "chatter";
+  const Topbar = isChatter ? TopbarClassic : TopbarAgency;
+  const ModelSelectorBar = isChatter ? ModelSelectorBarClassic : ModelSelectorBarAgency;
+  const TelegramChat = isChatter ? TelegramChatClassic : TelegramChatAgency;
+  const ActionPanel = isChatter ? ActionPanelClassic : ActionPanelAgency;
+
   return (
     <div
       className="chatter-root h-screen w-screen flex flex-col bg-[#0d1117] text-white overflow-hidden"
@@ -777,6 +822,7 @@ export default function ChatterPage() {
           onTabChange={setActiveTab}
           ppvItems={ppvItems}
           ppvTags={ppvTags}
+          ppvGroups={ppvGroups}
           activeFilter={activeFilter}
           onFilterChange={setActiveFilter}
           selectedItems={selectedItems}

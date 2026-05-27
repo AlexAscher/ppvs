@@ -154,6 +154,78 @@ CREATE POLICY "Service role bypass agency_chatters" ON agency_chatters USING (tr
 
 ---
 
+## RLS: chatter sees their assigned model's data
+
+Without these policies, a chatter user logged in to `/chatter` sees an
+empty UI: the browser-side Supabase client reads return zero rows
+because RLS denies access to tables they don't own. These additive
+policies grant SELECT to authenticated users whose `auth.uid()` is
+linked to the row's model via `agency_chatters`. Agency-owner policies
+(if any) are not touched — multiple SELECT policies are OR'd.
+
+Run once in Supabase SQL Editor. Re-runnable (DROP IF EXISTS guards).
+
+```sql
+-- agency_chatters: chatter reads their own link row
+DROP POLICY IF EXISTS "Chatter reads own link" ON agency_chatters;
+CREATE POLICY "Chatter reads own link" ON agency_chatters
+  FOR SELECT TO authenticated
+  USING (chatter_id = auth.uid());
+
+-- models: chatter reads the model they're assigned to
+DROP POLICY IF EXISTS "Chatter reads assigned model" ON models;
+CREATE POLICY "Chatter reads assigned model" ON models
+  FOR SELECT TO authenticated
+  USING (
+    id IN (SELECT model_id FROM agency_chatters WHERE chatter_id = auth.uid())
+  );
+
+-- ppvs: chatter reads PPV items of their assigned model
+DROP POLICY IF EXISTS "Chatter reads ppvs of assigned model" ON ppvs;
+CREATE POLICY "Chatter reads ppvs of assigned model" ON ppvs
+  FOR SELECT TO authenticated
+  USING (
+    model_id IN (SELECT model_id FROM agency_chatters WHERE chatter_id = auth.uid())
+  );
+
+-- ppv_tags: chatter reads tags of their assigned model
+DROP POLICY IF EXISTS "Chatter reads ppv_tags of assigned model" ON ppv_tags;
+CREATE POLICY "Chatter reads ppv_tags of assigned model" ON ppv_tags
+  FOR SELECT TO authenticated
+  USING (
+    model_id IN (SELECT model_id FROM agency_chatters WHERE chatter_id = auth.uid())
+  );
+
+-- ppv_groups: chatter reads groups of their assigned model
+DROP POLICY IF EXISTS "Chatter reads ppv_groups of assigned model" ON ppv_groups;
+CREATE POLICY "Chatter reads ppv_groups of assigned model" ON ppv_groups
+  FOR SELECT TO authenticated
+  USING (
+    model_id IN (SELECT model_id FROM agency_chatters WHERE chatter_id = auth.uid())
+  );
+
+-- ppv_item_tags: link table — reach assigned-model PPVs through ppvs
+DROP POLICY IF EXISTS "Chatter reads ppv_item_tags of assigned model" ON ppv_item_tags;
+CREATE POLICY "Chatter reads ppv_item_tags of assigned model" ON ppv_item_tags
+  FOR SELECT TO authenticated
+  USING (
+    ppv_id IN (
+      SELECT id FROM ppvs WHERE model_id IN (
+        SELECT model_id FROM agency_chatters WHERE chatter_id = auth.uid()
+      )
+    )
+  );
+```
+
+After running this, a chatter logged in to /chatter should see:
+- The model they're assigned to in the model selector bar
+- All PPV items + tags + groups from the agency's vault for that model
+- Live Telegram dialogs and messages for that model (the API endpoints
+  already authorize chatter access server-side via the same
+  `agency_chatters` link)
+
+---
+
 ## ALTER: speed pack (preview_url + send error tracking)
 
 Run these on top of the original schema to enable pre-blurred previews +

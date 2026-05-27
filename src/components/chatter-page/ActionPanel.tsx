@@ -1,6 +1,7 @@
 "use client";
 
-import { Check } from "lucide-react";
+import { Check, Folder, ChevronLeft } from "lucide-react";
+import { useState } from "react";
 
 export interface PpvTag {
   id: string;
@@ -15,7 +16,13 @@ export interface PpvItem {
   name: string;
   price: number | string;
   media_url?: string | null;
+  group_id?: string | null;
   tags: PpvTag[];
+}
+
+export interface PpvGroup {
+  id: string;
+  name: string;
 }
 
 type Tab = "ppv" | "tips" | "notes" | "stats";
@@ -25,6 +32,7 @@ interface ActionPanelProps {
   onTabChange: (t: Tab) => void;
   ppvItems: PpvItem[];
   ppvTags: PpvTag[];
+  ppvGroups: PpvGroup[];
   activeFilter: string;
   onFilterChange: (f: string) => void;
   selectedItems: string[];
@@ -50,6 +58,7 @@ export function ActionPanel({
   onTabChange,
   ppvItems,
   ppvTags,
+  ppvGroups,
   activeFilter,
   onFilterChange,
   selectedItems,
@@ -69,14 +78,33 @@ export function ActionPanel({
   onNotesChange,
   hasRecipient,
 }: ActionPanelProps) {
+  // Navigation: null = root (folders + orphan files), or a specific group id.
+  // We only nav into one folder at a time — no nested folders in the schema.
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  const currentFolder = currentFolderId
+    ? ppvGroups.find((g) => g.id === currentFolderId) ?? null
+    : null;
+
+  // Scope items to the current view: at root → only orphans (group_id null);
+  // inside a folder → only items belonging to that folder.
+  const scopedItems = currentFolderId
+    ? ppvItems.filter((i) => i.group_id === currentFolderId)
+    : ppvItems.filter((i) => !i.group_id);
+
+  // Apply tag filter on top of the scoped view.
   const filteredItems =
     activeFilter === "All"
-      ? ppvItems
-      : ppvItems.filter((i) => i.tags.some((t) => t.id === activeFilter));
+      ? scopedItems
+      : scopedItems.filter((i) => i.tags.some((t) => t.id === activeFilter));
+
+  // Item counts per folder, used in the folder-tile badge at root.
+  function itemCountInGroup(groupId: string): number {
+    return ppvItems.filter((i) => i.group_id === groupId).length;
+  }
 
   return (
     <div className="w-[30%] bg-[#161a22] flex flex-col">
-      {/* Tabs — smaller */}
+      {/* Tabs — medium (pre-shrink) */}
       <div className="h-[34px] border-b border-[#2a2d35] flex">
         {(["ppv", "tips", "notes", "stats"] as Tab[]).map((tab) => (
           <button
@@ -96,7 +124,25 @@ export function ActionPanel({
       <div className="flex-1 overflow-y-auto p-3">
         {activeTab === "ppv" && (
           <div className="space-y-3">
-            {/* Filter chips — smaller */}
+            {/* Breadcrumb / back button — only inside a folder */}
+            {currentFolder && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentFolderId(null)}
+                  className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium text-[#9ca3af] hover:text-white hover:bg-[#1f2937] transition-colors"
+                  aria-label="Back to root"
+                >
+                  <ChevronLeft className="w-3 h-3" />
+                  Back
+                </button>
+                <div className="flex items-center gap-1 text-[10px] text-[#9ca3af] min-w-0">
+                  <Folder className="w-3 h-3 flex-shrink-0" />
+                  <span className="truncate font-medium text-white">{currentFolder.name}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Filter chips */}
             <div className="flex flex-wrap gap-1.5">
               <button
                 onClick={() => onFilterChange("All")}
@@ -127,8 +173,30 @@ export function ActionPanel({
               })}
             </div>
 
-            {/* PPV grid — smaller gap, smaller labels */}
+            {/* Grid: folders first (only at root), then files */}
             <div className="grid grid-cols-3 gap-2">
+              {/* Folder tiles — only when at root and there are groups */}
+              {!currentFolderId &&
+                ppvGroups.map((group) => {
+                  const count = itemCountInGroup(group.id);
+                  return (
+                    <button
+                      key={`folder-${group.id}`}
+                      onClick={() => setCurrentFolderId(group.id)}
+                      className="relative aspect-square rounded-md border-2 border-[#2a2d35] hover:border-[#6366f1]/50 transition-all overflow-hidden bg-gradient-to-br from-[#1f2937] to-[#111827] flex flex-col items-center justify-center group"
+                    >
+                      <Folder className="w-8 h-8 text-[#6366f1] group-hover:scale-110 transition-transform" />
+                      <div className="text-[9px] text-white font-medium mt-2 truncate max-w-full px-2">
+                        {group.name}
+                      </div>
+                      <div className="text-[8px] text-[#6b7280] mt-0.5">
+                        {count} {count === 1 ? "item" : "items"}
+                      </div>
+                    </button>
+                  );
+                })}
+
+              {/* PPV file tiles */}
               {filteredItems.map((item) => (
                 <button
                   key={item.id}
@@ -167,9 +235,21 @@ export function ActionPanel({
                   </div>
                 </button>
               ))}
+
+              {/* Empty state — folder is empty, or no orphan files at root */}
+              {filteredItems.length === 0 &&
+                (currentFolderId || ppvGroups.length === 0) && (
+                  <div className="col-span-3 py-6 text-center text-[10px] text-[#6b7280]">
+                    {currentFolderId
+                      ? "This folder is empty"
+                      : ppvItems.length === 0
+                        ? "No PPV items yet"
+                        : "No items matching this filter"}
+                  </div>
+                )}
             </div>
 
-            {/* Send section — smaller */}
+            {/* Send section */}
             {selectedItems.length > 0 && (
               <div className="space-y-2.5 pt-3 border-t border-[#2a2d35]">
                 <div>

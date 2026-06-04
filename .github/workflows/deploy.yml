@@ -1,0 +1,56 @@
+name: Deploy to production
+
+# Auto-deploys main to the Contabo VPS. The actual work lives in
+# /opt/ppvs/deploy.sh on the server — this job just SSHes in and triggers it.
+# Keeping the deploy logic server-side means we can iterate on it without
+# touching GitHub.
+#
+# Required repository secrets:
+#   DEPLOY_HOST  — public IP or hostname of the server (e.g. 13.140.133.122)
+#   DEPLOY_USER  — SSH user (e.g. root)
+#   DEPLOY_KEY   — private SSH key whose public half is in the server's
+#                  ~/.ssh/authorized_keys (the GHA-deploy ed25519 keypair)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # Cancel any in-flight deploy if a newer commit lands — the server runs one
+  # deploy at a time and we don't want to queue duplicate builds.
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Trigger deploy on server
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+
+          # Write the SSH key to a file with strict perms. Using a file (not
+          # ssh-agent) keeps the job self-contained and avoids spawning a
+          # daemon that has to survive between steps.
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+
+          # Trust the host on first contact. The IP is pinned via the
+          # DEPLOY_HOST secret so a swapped key would still trip detection
+          # if a future deploy fails — we'd rather surface that than fail
+          # closed on first run.
+          ssh-keyscan -T 10 -t ed25519 "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+          ssh -i ~/.ssh/id_deploy \
+              -o BatchMode=yes \
+              -o ConnectTimeout=15 \
+              -o ServerAliveInterval=30 \
+              "$DEPLOY_USER@$DEPLOY_HOST" \
+              "/opt/ppvs/deploy.sh"

@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { createAdminSupabaseClient } from "@/lib/supabase-server";
+import { PLATFORM_FEE_PCT } from "@/lib/platform";
 import { PayClient } from "./PayClient";
 
 type SendRow = {
@@ -51,11 +52,21 @@ export default async function PayPage({ params }: { params: Promise<{ code: stri
     };
   });
 
+  // Buyer-facing price = chatter's base + platform fee on top. We must
+  // compute the same total here as in /api/payments/malum/create so what
+  // the buyer sees on /pay matches the Malum checkout total to the cent.
+  // Math.round on cents avoids floating-point drift on e.g. $9.99 × 1.10.
+  const basePrice = Number(send.total_price ?? 0);
+  const fee = Math.round(basePrice * PLATFORM_FEE_PCT * 100) / 100;
+  const total = Math.round(basePrice * (1 + PLATFORM_FEE_PCT) * 100) / 100;
+
   return (
     <PayClient
       code={code}
       items={items}
-      price={Number(send.total_price ?? 0)}
+      basePrice={basePrice}
+      fee={fee}
+      total={total}
       caption={send.caption ?? ""}
       recipient={send.peer_username ?? null}
       initiallyDelivered={send.status === "delivered"}

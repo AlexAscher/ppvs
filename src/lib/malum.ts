@@ -35,8 +35,13 @@ export type MalumCreatePaymentParams = {
   success_url: string;
   /** Where the buyer lands if they hit cancel. */
   cancel_url: string;
-  /** Surface gateway fees on the buyer-facing checkout. */
+  /** Surface gateway fees on the buyer-facing checkout. Mutually exclusive
+   *  with `merchant_pays_gw_fees`. */
   buyer_pays_fees?: boolean;
+  /** Merchant absorbs the gateway fee — buyer sees one clean price. We
+   *  use this so the platform's 10% surcharge already covers Malum's cut
+   *  and the buyer doesn't get a confusing "Gateway fee" line item. */
+  merchant_pays_gw_fees?: boolean;
   /** Free-text, max 254 chars. We stuff the PPV `code` here so the webhook
    *  can look up the send without trusting the txn id alone. */
   metadata?: string;

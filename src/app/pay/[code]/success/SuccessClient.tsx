@@ -179,7 +179,7 @@ export function SuccessClient({ code, items, price, caption, recipient, initiall
                   </div>
                 </div>
                 <div className="flex items-baseline gap-1.5 mt-3">
-                  <span style={{ fontSize: 18, fontWeight: 700, color: "#8b949e" }}>${price}</span>
+                  <span style={{ fontSize: 18, fontWeight: 700, color: "#8b949e" }}>${price.toFixed(2)}</span>
                   <span style={{ fontSize: 12, color: "#484f58" }}>charged</span>
                 </div>
               </div>

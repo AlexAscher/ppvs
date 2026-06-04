@@ -7,7 +7,12 @@ type Item = { name: string; media_url: string | null };
 type Props = {
   code: string;
   items: Item[];
-  price: number;
+  /** Chatter's price — what the agency expects to receive. */
+  basePrice: number;
+  /** Platform's 10% surcharge. Buyer pays it on top. */
+  fee: number;
+  /** basePrice + fee. This is the number sent to Malum and shown big. */
+  total: number;
   caption: string;
   recipient: string | null;
   initiallyDelivered: boolean;
@@ -20,7 +25,16 @@ function isVideoUrl(url: string): boolean {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export function PayClient({ code, items, price, caption, recipient, initiallyDelivered }: Props) {
+export function PayClient({
+  code,
+  items,
+  basePrice,
+  fee,
+  total,
+  caption,
+  recipient,
+  initiallyDelivered,
+}: Props) {
   const [state, setState] = useState<"locked" | "loading" | "delivered" | "error">(
     initiallyDelivered ? "delivered" : "locked",
   );
@@ -166,11 +180,19 @@ export function PayClient({ code, items, price, caption, recipient, initiallyDel
               </div>
             ) : (
               <div>
-                <div className="flex items-baseline gap-1.5 mb-4 mt-2">
+                <div className="flex items-baseline gap-1.5 mb-2 mt-2">
                   <span style={{ fontSize: 32, fontWeight: 800, color: "#6366f1", letterSpacing: "-0.03em" }}>
-                    ${price}
+                    ${total.toFixed(2)}
                   </span>
                   <span style={{ fontSize: 13, color: "#8b949e" }}>one-time unlock</span>
+                </div>
+
+                {/* Breakdown — keeps the buyer informed there's a small
+                    service fee on top, so the Malum checkout total isn't
+                    a surprise. The 10% covers gateway + platform commission. */}
+                <div className="text-[11px] text-[#8b949e] mb-4 leading-relaxed">
+                  Content&nbsp;<span className="text-[#c9d1d9]">${basePrice.toFixed(2)}</span>{" "}
+                  · Service fee&nbsp;<span className="text-[#c9d1d9]">${fee.toFixed(2)}</span>
                 </div>
 
                 <label className="block text-[12px] text-[#8b949e] mb-1.5">Email for receipt</label>
@@ -200,7 +222,7 @@ export function PayClient({ code, items, price, caption, recipient, initiallyDel
                     color: "white",
                   }}
                 >
-                  {state === "loading" ? "Opening checkout..." : `Pay $${price} & Unlock`}
+                  {state === "loading" ? "Opening checkout..." : `Pay $${total.toFixed(2)} & Unlock`}
                 </button>
 
                 <div style={{ textAlign: "center", marginTop: 12, fontSize: 11, color: "#484f58" }}>

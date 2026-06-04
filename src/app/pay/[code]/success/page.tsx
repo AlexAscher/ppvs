@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { createAdminSupabaseClient } from "@/lib/supabase-server";
+import { PLATFORM_FEE_PCT } from "@/lib/platform";
 import { SuccessClient } from "./SuccessClient";
 
 type SendRow = {
@@ -71,7 +72,9 @@ export default async function SuccessPage({ params }: { params: Promise<{ code: 
     <SuccessClient
       code={code}
       items={items}
-      price={Number(send.total_price ?? 0)}
+      price={
+        Math.round(Number(send.total_price ?? 0) * (1 + PLATFORM_FEE_PCT) * 100) / 100
+      }
       caption={send.caption ?? ""}
       recipient={send.peer_username ?? null}
       initiallyPaid={paid}

@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase-server";
 import { createMalumPayment } from "@/lib/malum";
 import { consume, getClientIp, tooManyRequests } from "@/lib/rate-limit";
+import { PLATFORM_FEE_PCT } from "@/lib/platform";
 
 export const maxDuration = 30;
 
@@ -64,8 +65,17 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: "This order is already paid" }, { status: 409 });
     }
 
-    const amount = Number(send.total_price ?? 0);
-    if (!Number.isFinite(amount) || amount < 0.5) {
+    // The chatter's price is what the agency expects to receive ($5 = $5
+    // gross to the agency). We charge the buyer an extra `PLATFORM_FEE_PCT`
+    // on top that covers (a) the platform's commission and (b) the
+    // gateway's processing fee — see `merchant_pays_gw_fees` below. Rounded
+    // to whole cents so Malum's checkout doesn't show a fractional total.
+    const basePrice = Number(send.total_price ?? 0);
+    if (!Number.isFinite(basePrice) || basePrice <= 0) {
+      return Response.json({ error: "Invalid order amount" }, { status: 400 });
+    }
+    const amount = Math.round(basePrice * (1 + PLATFORM_FEE_PCT) * 100) / 100;
+    if (amount < 0.5) {
       return Response.json(
         { error: "Order amount is below the gateway minimum ($0.50)" },
         { status: 400 },
@@ -89,6 +99,10 @@ export async function POST(req: NextRequest) {
         webhook_url: `${baseUrl}/api/webhooks/malum`,
         success_url: `${baseUrl}/pay/${encodeURIComponent(code)}/success`,
         cancel_url: `${baseUrl}/pay/${encodeURIComponent(code)}`,
+        // Buyer sees a single clean total (our base + 10% service fee).
+        // Malum's processing cut comes out of that 10%, so we never expose
+        // a "Gateway fee" line item on the checkout.
+        merchant_pays_gw_fees: true,
         // Stash the pay code in metadata — that's the authoritative key we
         // use to resolve the send from the webhook, since two sandbox txns
         // could collide in development.

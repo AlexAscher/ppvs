@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { payAndDeliver, type DeliverItem } from "./actions";
 
 type Item = { name: string; media_url: string | null };
 
@@ -19,41 +18,59 @@ function isVideoUrl(url: string): boolean {
   return /\.(mp4|mov|webm|m4v|mkv)$/.test(u);
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export function PayClient({ code, items, price, caption, recipient, initiallyDelivered }: Props) {
   const [state, setState] = useState<"locked" | "loading" | "delivered" | "error">(
     initiallyDelivered ? "delivered" : "locked",
   );
-  const [delivered, setDelivered] = useState<DeliverItem[]>([]);
+  const [email, setEmail] = useState("");
   const [errMsg, setErrMsg] = useState("");
 
   async function handlePay() {
-    setState("loading");
-    setErrMsg("");
-    const result = await payAndDeliver(code);
-    if ("error" in result) {
-      setErrMsg(result.error);
+    const e = email.trim().toLowerCase();
+    if (!EMAIL_RE.test(e)) {
+      setErrMsg("Enter a valid email");
       setState("error");
       return;
     }
-    setDelivered(result.items);
-    setState("delivered");
+    setState("loading");
+    setErrMsg("");
+    try {
+      const res = await fetch("/api/payments/malum/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, email: e }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
+      if (!res.ok || !data.url) {
+        setErrMsg(data.error || `Could not open checkout (HTTP ${res.status})`);
+        setState("error");
+        return;
+      }
+      // Hand the buyer off to Malum's hosted checkout. They land back on
+      // /pay/{code}/success on completion (or /pay/{code} on cancel).
+      window.location.href = data.url;
+    } catch (err: unknown) {
+      setErrMsg(err instanceof Error ? err.message : "Network error");
+      setState("error");
+    }
   }
 
-  const isLocked = state === "locked" || state === "loading" || state === "error";
+  const isLocked = state !== "delivered";
 
-  // Once delivered, prefer the server's list of original URLs (paid path).
-  // Otherwise show the items we got from the SSR render (locked previews).
-  const tilesToRender =
-    state === "delivered" && delivered.length > 0
-      ? delivered.map((d) => ({ name: d.name, media_url: d.mediaUrl, isVideo: d.isVideo }))
-      : items.map((it) => ({
-          name: it.name,
-          media_url: it.media_url,
-          isVideo: it.media_url ? isVideoUrl(it.media_url) : false,
-        }));
+  // Until paid, we render the blurred previews shipped from SSR. The
+  // "delivered" branch is reached only when this page is re-opened after a
+  // webhook flipped status — at that point the user is on /success which
+  // does its own originals fetch, so here we just show a tasteful state.
+  const tilesToRender = items.map((it) => ({
+    name: it.name,
+    media_url: it.media_url,
+    isVideo: it.media_url ? isVideoUrl(it.media_url) : false,
+  }));
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 bg-[#0d1117] py-10">
+    <div className="min-h-screen flex items-center justify-center px-3 sm:px-4 bg-[#0d1117] py-6 sm:py-10">
       <div
         className="pointer-events-none fixed inset-0 z-0"
         style={{ background: "radial-gradient(ellipse 70% 50% at 50% 0%, rgba(99,102,241,0.07) 0%, transparent 70%)" }}
@@ -71,7 +88,7 @@ export function PayClient({ code, items, price, caption, recipient, initiallyDel
         </div>
 
         <div className="bg-[#161b22] border border-[#30363d] rounded-[16px] overflow-hidden">
-          {/* Preview / Unlocked grid */}
+          {/* Preview grid */}
           <div className="p-3">
             <div
               className={`grid gap-2 ${
@@ -85,31 +102,25 @@ export function PayClient({ code, items, price, caption, recipient, initiallyDel
               {tilesToRender.map((it, i) => (
                 <div
                   key={i}
-                  className="relative aspect-square rounded-md overflow-hidden bg-[#0d1117] border border-[#30363d]"
+                  className="relative aspect-square rounded-md overflow-hidden bg-gradient-to-br from-[#1f2937] to-[#111827] border border-[#30363d] flex items-center justify-center"
                 >
+                  <span className="text-[28px] opacity-40 select-none">🔒</span>
                   {it.media_url ? (
-                    it.isVideo && state === "delivered" ? (
-                      <video
-                        src={it.media_url}
-                        controls
-                        className="w-full h-full object-cover bg-black"
-                      />
-                    ) : (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={it.media_url}
-                        alt={it.name}
-                        className="w-full h-full object-cover"
-                        style={
-                          isLocked
-                            ? { filter: "blur(22px) brightness(0.55)", transform: "scale(1.15)" }
-                            : undefined
-                        }
-                      />
-                    )
-                  ) : (
-                    <div className="w-full h-full bg-gradient-to-br from-[#1f2937] to-[#111827]" />
-                  )}
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={it.media_url}
+                      alt={it.name}
+                      className="absolute inset-0 w-full h-full object-cover"
+                      style={
+                        isLocked
+                          ? { filter: "blur(22px) brightness(0.55)", transform: "scale(1.15)" }
+                          : undefined
+                      }
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).style.display = "none";
+                      }}
+                    />
+                  ) : null}
                   {isLocked && (
                     <div className="absolute inset-0 flex items-center justify-center">
                       <div className="w-9 h-9 rounded-full bg-black/55 border border-white/10 flex items-center justify-center">
@@ -119,18 +130,6 @@ export function PayClient({ code, items, price, caption, recipient, initiallyDel
                         </svg>
                       </div>
                     </div>
-                  )}
-                  {state === "delivered" && it.media_url && !it.isVideo && (
-                    <a
-                      href={it.media_url}
-                      download
-                      target="_blank"
-                      rel="noreferrer"
-                      className="absolute bottom-1 right-1 px-2 py-1 rounded bg-black/65 text-white text-[10px] font-medium hover:bg-black/85"
-                      title="Download"
-                    >
-                      ⬇ Save
-                    </a>
                   )}
                 </div>
               ))}
@@ -156,7 +155,13 @@ export function PayClient({ code, items, price, caption, recipient, initiallyDel
             {state === "delivered" ? (
               <div className="mt-2">
                 <div className="rounded-[10px] bg-emerald-500/10 border border-emerald-500/20 px-3.5 py-3 text-[13px] text-emerald-300 leading-relaxed">
-                  ✅ Content unlocked. Tap any tile to view full size; use ⬇ Save to download.
+                  ✅ Already unlocked.{" "}
+                  <a
+                    href={`/pay/${code}/success`}
+                    className="underline underline-offset-2"
+                  >
+                    View your content →
+                  </a>
                 </div>
               </div>
             ) : (
@@ -167,6 +172,18 @@ export function PayClient({ code, items, price, caption, recipient, initiallyDel
                   </span>
                   <span style={{ fontSize: 13, color: "#8b949e" }}>one-time unlock</span>
                 </div>
+
+                <label className="block text-[12px] text-[#8b949e] mb-1.5">Email for receipt</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  inputMode="email"
+                  autoComplete="email"
+                  disabled={state === "loading"}
+                  className="w-full mb-3 px-3.5 py-2.5 rounded-[8px] bg-[#0d1117] border border-[#30363d] text-[13px] text-[#e6edf3] outline-none focus:border-[#6366f1] placeholder:text-[#484f58]"
+                />
 
                 {state === "error" && (
                   <div className="mb-3 bg-red-500/10 border border-red-500/20 rounded-[8px] px-3.5 py-2.5 text-[12px] text-red-400">
@@ -183,11 +200,11 @@ export function PayClient({ code, items, price, caption, recipient, initiallyDel
                     color: "white",
                   }}
                 >
-                  {state === "loading" ? "Unlocking..." : `Pay $${price} & Unlock`}
+                  {state === "loading" ? "Opening checkout..." : `Pay $${price} & Unlock`}
                 </button>
 
                 <div style={{ textAlign: "center", marginTop: 12, fontSize: 11, color: "#484f58" }}>
-                  Payment provider not yet connected — clicking Pay unlocks the content right here for testing.
+                  Secure card payment via Malum · You will be redirected.
                 </div>
               </div>
             )}

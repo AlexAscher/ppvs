@@ -24,10 +24,24 @@ import { Topbar as TopbarClassic } from "@/components/chatter-page-classic/Topba
 import { ModelSelectorBar as ModelSelectorBarClassic } from "@/components/chatter-page-classic/ModelSelectorBar";
 import { TelegramChat as TelegramChatClassic } from "@/components/chatter-page-classic/TelegramChat";
 import { ActionPanel as ActionPanelClassic } from "@/components/chatter-page-classic/ActionPanel";
+import type { FanRow, FanNote } from "@/lib/fan-types";
+import { QuickReplyModal } from "@/components/chatter-page/QuickReplyModal";
+import { FanProfileDrawer } from "@/components/chatter-page/FanProfileDrawer";
+import { DeleteMessageModal } from "@/components/chatter-page/DeleteMessageModal";
+
+export type StatsPayload = {
+  todayNet: number;
+  allTimeNet: number;
+  todaySales: number;
+  allTimeSales: number;
+  unlocks: number;
+  todayMessages: number;
+  allTimeMessages: number;
+};
 
 // ─── types ──────────────────────────────────────────────────────────────────
 
-type Model = { id: string; name: string; username: string | null; avatar_url: string | null };
+type Model = { id: string; name: string; username: string | null; avatar_url: string | null; session_status?: string | null };
 
 type Dialog = {
   id: string;
@@ -51,6 +65,14 @@ type ApiMessageMedia =
       durationSec: number | null;
     }
   | {
+      type: "sticker";
+      thumbDataUrl: string | null;
+      width: number | null;
+      height: number | null;
+      mimeType: string | null;
+      isAnimated: boolean;
+    }
+  | {
       type: "document";
       thumbDataUrl: string | null;
       fileName: string | null;
@@ -65,6 +87,7 @@ type ApiMessage = {
   isOutgoing: boolean;
   media?: ApiMessageMedia | null;
   groupedId?: string | null;
+  replyTo?: { msgId: number; quoteText: string | null } | null;
 };
 
 type ActivityState = {
@@ -140,6 +163,50 @@ export default function ChatterPage() {
   const [tipMessage, setTipMessage] = useState("");
   const [notes, setNotes] = useState("");
 
+  // Per-fan data (notes + emoji tags + total_spent). Loaded from
+  // /api/fans/[modelId]?peerId=… when a dialog is selected. `fan` is the
+  // canonical snapshot from DB; `notes` above is the in-progress textarea
+  // value that diverges until the user hits Save.
+  const [fan, setFan] = useState<FanRow | null>(null);
+  const [notesSaving, setNotesSaving] = useState(false);
+  // Running log of timestamped notes (fan_notes table). `notes` (above)
+  // is the draft for the next note to add.
+  const [fanNotes, setFanNotes] = useState<FanNote[]>([]);
+
+  // Aggregate stats — per model. Refetched every 60s + after each
+  // successful PPV send/deliver. Initial null = "loading…".
+  const [stats, setStats] = useState<StatsPayload | null>(null);
+
+  // Mobile single-panel view switch (under md). Desktop shows all three
+  // panels side by side regardless. "list" = dialog list, "chat" = open
+  // conversation, "actions" = Send PPV / Tips / Notes / Stats panel.
+  const [mobileView, setMobileView] = useState<"list" | "chat" | "actions">("list");
+
+  // Quick reply modal — opens from a button next to the message input.
+  const [quickReplyOpen, setQuickReplyOpen] = useState(false);
+  // Fan profile drawer — opens when user clicks fan name/avatar in header.
+  const [fanDrawerOpen, setFanDrawerOpen] = useState(false);
+
+  // Right-click context-menu actions: reply / edit mode. Both blockers
+  // for handleSend — when `editing` is set, Send actually edits via PUT;
+  // when `replyingTo` is set, Send adds replyToMsgId. Mutually exclusive.
+  const [replyingTo, setReplyingTo] = useState<{
+    id: number;
+    text: string;
+    isChatter: boolean;
+    quote: string | null;
+  } | null>(null);
+  const [editing, setEditing] = useState<{ id: number; originalText: string } | null>(null);
+
+  // Delete confirmation modal — caches the message id + text + revoke
+  // permission so the modal can render a preview and pick the right
+  // default option ("for everyone" only on outgoing).
+  const [deletingMessage, setDeletingMessage] = useState<{
+    id: number;
+    text: string;
+    canRevoke: boolean;
+  } | null>(null);
+
   const autoSelectedRef = useRef<string | null>(null);
   // Track in-flight network requests so polling never piles up requests
   // against the per-model gramJS serializer in the server-side pool.
@@ -172,12 +239,23 @@ export default function ChatterPage() {
       setDisplayName(name);
 
       if (r === "agency") {
-        const { data } = await supabase
+        // Try with session_status; if that column doesn't exist yet (no
+        // migration run), fall back to the base columns so the page still
+        // loads instead of 400-ing the whole query.
+        const withStatus = await supabase
           .from("models")
-          .select("id, name, username, avatar_url")
+          .select("id, name, username, avatar_url, session_status")
           .eq("agency_user_id", user.id);
+        let rows = (withStatus.data ?? null) as Model[] | null;
+        if (withStatus.error) {
+          const base = await supabase
+            .from("models")
+            .select("id, name, username, avatar_url")
+            .eq("agency_user_id", user.id);
+          rows = (base.data ?? null) as Model[] | null;
+        }
         if (cancelled) return;
-        const list = (data ?? []) as Model[];
+        const list = rows ?? [];
         setModels(list);
         if (list.length > 0) setSelectedModelId(list[0].id);
       } else {
@@ -189,16 +267,24 @@ export default function ChatterPage() {
         if (cancelled) return;
         const modelId = (ac as { model_id: string | null } | null)?.model_id ?? null;
         if (modelId) {
-          const { data: m } = await supabase
+          const withStatus = await supabase
             .from("models")
-            .select("id, name, username, avatar_url")
+            .select("id, name, username, avatar_url, session_status")
             .eq("id", modelId)
             .maybeSingle();
+          let row = (withStatus.data ?? null) as Model | null;
+          if (withStatus.error) {
+            const base = await supabase
+              .from("models")
+              .select("id, name, username, avatar_url")
+              .eq("id", modelId)
+              .maybeSingle();
+            row = (base.data ?? null) as Model | null;
+          }
           if (cancelled) return;
-          if (m) {
-            const model = m as Model;
-            setModels([model]);
-            setSelectedModelId(model.id);
+          if (row) {
+            setModels([row]);
+            setSelectedModelId(row.id);
           }
         }
       }
@@ -434,6 +520,135 @@ export default function ChatterPage() {
     };
   }, [selectedModelId, selectedDialog, fetchActivity]);
 
+  // ── SSE realtime stream (typing + new messages) ───────────────────────────
+  // Replaces tight polling — server pushes events as gramJS emits them.
+  // Polling stays as a backstop so a dropped SSE doesn't strand the UI.
+
+  useEffect(() => {
+    if (!selectedModelId) return;
+    const modelId = selectedModelId;
+    const es = new EventSource(`/api/telegram/stream/${modelId}`);
+    es.onmessage = (e) => {
+      try {
+        const ev = JSON.parse(e.data) as {
+          kind: "typing" | "message";
+          peerId: string;
+        };
+        // Only refresh for the currently-open dialog — other dialogs'
+        // updates surface on the next dialogs poll.
+        if (!selectedDialog || ev.peerId !== selectedDialog.id) return;
+        if (ev.kind === "message") {
+          void fetchMessages(modelId, selectedDialog);
+        } else if (ev.kind === "typing") {
+          void fetchActivity(modelId, selectedDialog);
+        }
+      } catch {
+        // ignore malformed payloads
+      }
+    };
+    return () => es.close();
+  }, [selectedModelId, selectedDialog, fetchMessages, fetchActivity]);
+
+  // ── stats polling ─────────────────────────────────────────────────────────
+  // 60s is plenty — the chatter doesn't watch Stats live, and we re-fetch
+  // immediately after a successful deliver below to make the green numbers
+  // jump on a fresh sale.
+
+  const fetchStats = useCallback(async (modelId: string) => {
+    try {
+      const scope = role === "chatter" ? "me" : "model";
+      const url = new URL(`/api/stats/${modelId}`, window.location.origin);
+      url.searchParams.set("scope", scope);
+      const res = await fetch(url.toString());
+      if (!res.ok) return;
+      const data = (await res.json()) as StatsPayload;
+      setStats(data);
+    } catch {
+      // best-effort
+    }
+  }, [role]);
+
+  // Lazy: only hit /api/stats when the Stats tab is actually open. On a
+  // slow uplink the stats query was competing with dialogs/messages at page
+  // load and stalling everything — keep it off the critical path.
+  useEffect(() => {
+    if (!selectedModelId || activeTab !== "stats") return;
+    const modelId = selectedModelId;
+    // Defer out of the effect body (React 19 strict effects) + keep it
+    // refreshing while the tab stays open.
+    const tid = setTimeout(() => void fetchStats(modelId), 0);
+    const iv = setInterval(() => void fetchStats(modelId), 60_000);
+    return () => {
+      clearTimeout(tid);
+      clearInterval(iv);
+    };
+  }, [selectedModelId, activeTab, fetchStats]);
+
+  // ── fan profile (notes + tags + total_spent) ──────────────────────────────
+  // One fetch per (model, peer). On open we also touch last_seen_at and
+  // ensure the row exists with the latest telegram username/name snapshot so
+  // the fan list (future) and drawer have something to show even before the
+  // chatter saves notes.
+
+  useEffect(() => {
+    // Reset fan + note draft + note list first (deferred for React 19).
+    const resetTid = setTimeout(() => {
+      setFan(null);
+      setNotes("");
+      setFanNotes([]);
+    }, 0);
+    if (!selectedModelId || !selectedDialog) {
+      return () => clearTimeout(resetTid);
+    }
+    const modelId = selectedModelId;
+    const dialog = selectedDialog;
+    let cancelled = false;
+    (async () => {
+      try {
+        // 1. Fetch fan row + note log in parallel.
+        const fanUrl = new URL(`/api/fans/${modelId}`, window.location.origin);
+        fanUrl.searchParams.set("peerId", dialog.id);
+        const notesUrl = new URL(`/api/fans/${modelId}/notes`, window.location.origin);
+        notesUrl.searchParams.set("peerId", dialog.id);
+
+        const [fanRes, notesRes] = await Promise.all([
+          fetch(fanUrl.toString()),
+          fetch(notesUrl.toString()),
+        ]);
+        if (cancelled) return;
+        if (fanRes.ok) {
+          const data = (await fanRes.json()) as { fan: FanRow | null };
+          if (!cancelled && data.fan) setFan(data.fan);
+        }
+        if (notesRes.ok) {
+          const nd = (await notesRes.json()) as { notes: FanNote[] };
+          if (!cancelled) setFanNotes(nd.notes ?? []);
+        }
+
+        // 2. Upsert with latest telegram snapshot + touch last_seen_at.
+        const upsertRes = await fetch(`/api/fans/${modelId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            peerId: dialog.id,
+            telegramUsername: dialog.username,
+            telegramName: dialog.title,
+            touchLastSeen: true,
+          }),
+        });
+        if (cancelled || !upsertRes.ok) return;
+        const upserted = (await upsertRes.json()) as { fan: FanRow };
+        if (!cancelled) setFan(upserted.fan);
+      } catch {
+        // best-effort: notes/tags just stay empty
+      }
+    })();
+    return () => {
+      cancelled = true;
+      clearTimeout(resetTid);
+    };
+  }, [selectedModelId, selectedDialog]);
+
   // ── handlers ──────────────────────────────────────────────────────────────
 
   function handleModelSelect(id: string) {
@@ -449,6 +664,9 @@ export default function ChatterPage() {
     const d = list.find((x) => x.id === id) ?? null;
     setSelectedDialog(d);
     setApiMessages([]);
+    // On mobile, opening a chat swaps the single visible panel to the
+    // conversation view (desktop shows everything at once anyway).
+    setMobileView("chat");
 
     // Open == read: zero the unread count locally right now so both the
     // sidebar badge and the model badge update instantly, then tell
@@ -483,13 +701,21 @@ export default function ChatterPage() {
     modelId: string,
     dialog: Dialog,
     text: string,
+    replyToMsgId?: number,
+    quoteText?: string | null,
   ): Promise<ApiMessage | null> {
     sendInFlightRef.current = true;
     try {
       const res = await fetch(`/api/telegram/messages/${modelId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ peerId: dialog.id, accessHash: dialog.accessHash, text }),
+        body: JSON.stringify({
+          peerId: dialog.id,
+          accessHash: dialog.accessHash,
+          text,
+          replyToMsgId,
+          quoteText,
+        }),
       });
       let data: { ok?: boolean; error?: string; message?: ApiMessage } = {};
       try { data = await res.json(); } catch {}
@@ -502,6 +728,58 @@ export default function ChatterPage() {
     }
   }
 
+  // PUT edit + DELETE — both bypass the optimistic-merge flow since we
+  // already know the message's real id.
+  async function editTelegramMessage(
+    modelId: string,
+    dialog: Dialog,
+    messageId: number,
+    text: string,
+  ): Promise<void> {
+    sendInFlightRef.current = true;
+    try {
+      const res = await fetch(`/api/telegram/messages/${modelId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          peerId: dialog.id,
+          accessHash: dialog.accessHash,
+          messageId,
+          text,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+    } finally {
+      sendInFlightRef.current = false;
+    }
+  }
+
+  async function deleteTelegramMessage(
+    modelId: string,
+    dialog: Dialog,
+    messageId: number,
+    revoke: boolean,
+  ): Promise<void> {
+    sendInFlightRef.current = true;
+    try {
+      const res = await fetch(`/api/telegram/messages/${modelId}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          peerId: dialog.id,
+          accessHash: dialog.accessHash,
+          messageIds: [messageId],
+          revoke,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+    } finally {
+      sendInFlightRef.current = false;
+    }
+  }
+
   async function handleSend() {
     if (!inputText.trim() || !selectedModelId || !selectedDialog) return;
     setSending(true);
@@ -509,7 +787,37 @@ export default function ChatterPage() {
     const text = inputText;
     const dialog = selectedDialog;
     const modelId = selectedModelId;
+
+    // EDIT MODE: replace the existing bubble's text instead of sending new.
+    if (editing) {
+      const editId = editing.id;
+      setInputText("");
+      // Optimistic local edit so the user sees the change instantly.
+      setApiMessages((prev) =>
+        prev.map((m) => (m.id === editId ? { ...m, text } : m)),
+      );
+      try {
+        await editTelegramMessage(modelId, dialog, editId, text);
+        setEditing(null);
+      } catch (e: unknown) {
+        setError(e instanceof Error ? `Edit failed: ${e.message}` : "Edit failed");
+        // Restore both the original input and the bubble text on failure.
+        setInputText(text);
+        setApiMessages((prev) =>
+          prev.map((m) =>
+            m.id === editId ? { ...m, text: editing.originalText } : m,
+          ),
+        );
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
+    const replyId = replyingTo?.id;
+    const quote = replyingTo?.quote ?? null;
     setInputText("");
+    setReplyingTo(null);
     // Optimistic: negative id so fetchMessages's merge keeps it until the
     // server response includes a real matching outgoing message.
     const optimisticId = -Date.now();
@@ -518,7 +826,7 @@ export default function ChatterPage() {
       { id: optimisticId, text, date: Math.floor(Date.now() / 1000), isOutgoing: true },
     ]);
     try {
-      const real = await sendTelegramMessage(modelId, dialog, text);
+      const real = await sendTelegramMessage(modelId, dialog, text, replyId, quote);
       // Replace optimistic with real message so subsequent polls de-dupe by id.
       if (real) {
         setApiMessages((prev) =>
@@ -533,6 +841,74 @@ export default function ChatterPage() {
       setApiMessages((prev) => prev.filter((m) => m.id !== optimisticId));
     } finally {
       setSending(false);
+    }
+  }
+
+  // ── context-menu handlers ─────────────────────────────────────────────────
+
+  function handleReplyToMessage(messageId: number, messageText: string, isChatter: boolean) {
+    setEditing(null);
+    setReplyingTo({ id: messageId, text: messageText, isChatter, quote: null });
+  }
+
+  function handleReplyWithQuote(
+    messageId: number,
+    messageText: string,
+    isChatter: boolean,
+    selection: string,
+  ) {
+    setEditing(null);
+    // Quote text is sent as a native Telegram `quoteText` in InputReplyTo —
+    // the receiving client renders it as a highlighted snippet inside the
+    // reply preview, no `> …` markdown injection needed.
+    setReplyingTo({
+      id: messageId,
+      text: messageText,
+      isChatter,
+      quote: selection.trim() || null,
+    });
+  }
+
+  function handleStartEdit(messageId: number, currentText: string) {
+    setReplyingTo(null);
+    setEditing({ id: messageId, originalText: currentText });
+    setInputText(currentText);
+  }
+
+  function handleCancelEdit() {
+    if (editing) setInputText("");
+    setEditing(null);
+  }
+
+  function handleDeleteMessage(messageId: number) {
+    // Just open the modal — the actual delete happens in
+    // `confirmDeleteMessage` once the user picks "for me" vs "for
+    // everyone". revoke is only available on outgoing messages (own
+    // sends) — Telegram refuses to revoke fan's messages.
+    const msg = apiMessages.find((m) => m.id === messageId);
+    if (!msg) return;
+    setDeletingMessage({
+      id: messageId,
+      text: msg.text || (msg.media ? "[media]" : ""),
+      canRevoke: msg.isOutgoing,
+    });
+  }
+
+  async function confirmDeleteMessage(revoke: boolean) {
+    if (!selectedModelId || !selectedDialog || !deletingMessage) return;
+    const modelId = selectedModelId;
+    const dialog = selectedDialog;
+    const messageId = deletingMessage.id;
+    setDeletingMessage(null);
+    // Optimistic remove
+    const before = apiMessages;
+    setApiMessages((prev) => prev.filter((m) => m.id !== messageId));
+    try {
+      await deleteTelegramMessage(modelId, dialog, messageId, revoke);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? `Delete failed: ${e.message}` : "Delete failed");
+      // Restore on failure
+      setApiMessages(before);
     }
   }
 
@@ -636,6 +1012,92 @@ export default function ChatterPage() {
     router.replace("/login");
   }
 
+  // ── fan profile mutations ─────────────────────────────────────────────────
+
+  async function handleAddNote() {
+    if (!selectedModelId || !selectedDialog || !notes.trim()) return;
+    setNotesSaving(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/fans/${selectedModelId}/notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          peerId: selectedDialog.id,
+          body: notes,
+          authorName: displayName,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { note?: FanNote; error?: string };
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      if (data.note) setFanNotes((prev) => [data.note as FanNote, ...prev]);
+      setNotes(""); // clear draft for the next note
+    } catch (e: unknown) {
+      setError(e instanceof Error ? `Note add failed: ${e.message}` : "Note add failed");
+    } finally {
+      setNotesSaving(false);
+    }
+  }
+
+  async function handleDeleteNote(noteId: string) {
+    if (!selectedModelId) return;
+    const before = fanNotes;
+    setFanNotes((prev) => prev.filter((n) => n.id !== noteId));
+    try {
+      const res = await fetch(
+        `/api/fans/${selectedModelId}/notes?id=${encodeURIComponent(noteId)}`,
+        { method: "DELETE" },
+      );
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+    } catch (e: unknown) {
+      setFanNotes(before); // rollback
+      setError(e instanceof Error ? `Note delete failed: ${e.message}` : "Note delete failed");
+    }
+  }
+
+  async function handleToggleTag(tag: string) {
+    if (!selectedModelId || !selectedDialog) return;
+    // Compute new tag list optimistically; rollback on failure.
+    const current = fan?.tags ?? [];
+    const next = current.includes(tag)
+      ? current.filter((t) => t !== tag)
+      : [...current, tag];
+    // Optimistic update
+    setFan((prev) =>
+      prev
+        ? { ...prev, tags: next }
+        : ({
+            id: "",
+            model_id: selectedModelId,
+            peer_id: selectedDialog.id,
+            telegram_username: selectedDialog.username,
+            telegram_name: selectedDialog.title,
+            notes: "",
+            total_spent: 0,
+            tags: next,
+            last_seen_at: null,
+            created_at: new Date().toISOString(),
+          } as FanRow),
+    );
+    try {
+      const res = await fetch(`/api/fans/${selectedModelId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ peerId: selectedDialog.id, tags: next }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { fan?: FanRow; error?: string };
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      if (data.fan) setFan(data.fan);
+    } catch (e: unknown) {
+      // Rollback
+      setFan((prev) => (prev ? { ...prev, tags: current } : prev));
+      setError(e instanceof Error ? `Tag toggle failed: ${e.message}` : "Tag toggle failed");
+    }
+  }
+
   // ── derived data ──────────────────────────────────────────────────────────
 
   const unreadByModel = useMemo(() => {
@@ -700,6 +1162,16 @@ export default function ChatterPage() {
               height: m.media.height,
               durationSec: m.media.durationSec,
             };
+          } else if (m.media.type === "sticker") {
+            media = {
+              type: "sticker",
+              thumbDataUrl: m.media.thumbDataUrl,
+              fullUrl,
+              width: m.media.width,
+              height: m.media.height,
+              mimeType: m.media.mimeType,
+              isAnimated: m.media.isAnimated,
+            };
           } else {
             media = {
               type: "document",
@@ -711,12 +1183,29 @@ export default function ChatterPage() {
             };
           }
         }
+        // Resolve the reply target's text snippet from the loaded message
+        // list. If the target isn't in our 50-message window (older
+        // message) we still render the reply card with the quoteText (if
+        // present) or a fallback "Message".
+        let replyPreview: ChatMessage["replyPreview"] = null;
+        if (m.replyTo) {
+          const target = apiMessages.find((x) => x.id === m.replyTo!.msgId);
+          const isToChatter = target ? target.isOutgoing : false;
+          const targetText = target?.text?.trim() || (target?.media ? "[media]" : "");
+          replyPreview = {
+            targetMsgId: m.replyTo.msgId,
+            targetText,
+            quoteText: m.replyTo.quoteText,
+            isToChatter,
+          };
+        }
         return {
           id: String(m.id),
           text: m.text || (media ? "" : "—"),
           time: formatTime(m.date),
           isChatter: m.isOutgoing,
           media,
+          replyPreview,
         };
       }),
     [apiMessages, selectedModelId, selectedDialog],
@@ -750,6 +1239,14 @@ export default function ChatterPage() {
     [ppvItems, selectedItems],
   );
 
+  // Fan-derived display values for the chat header.
+  const totalSpentFormatted = useMemo(() => {
+    const n = Number(fan?.total_spent ?? 0);
+    if (!Number.isFinite(n) || n <= 0) return "$0";
+    return `$${n.toFixed(0)}`;
+  }, [fan]);
+  const fanTags = useMemo(() => fan?.tags ?? [], [fan]);
+
   const recipientLabel = selectedDialog
     ? selectedDialog.username
       ? `@${selectedDialog.username}`
@@ -759,6 +1256,11 @@ export default function ChatterPage() {
   const modelOptions = useMemo(
     () => models.map((m) => ({ id: m.id, name: m.name, unread: unreadByModel[m.id] ?? 0 })),
     [models, unreadByModel],
+  );
+
+  const selectedModelExpired = useMemo(
+    () => models.find((m) => m.id === selectedModelId)?.session_status === "expired",
+    [models, selectedModelId],
   );
 
   if (role === null) return null;
@@ -784,6 +1286,17 @@ export default function ChatterPage() {
         selectedModel={selectedModelId ?? ""}
         onModelSelect={handleModelSelect}
       />
+      {selectedModelExpired && (
+        <div className="px-5 py-2 bg-amber-500/10 border-b border-amber-500/30 text-[12px] text-amber-300 flex items-center gap-2">
+          <span>⚠️</span>
+          <span>
+            This model&apos;s Telegram session expired.{" "}
+            {role === "agency"
+              ? "Reconnect it in Dashboard → Models."
+              : "Ask your agency to reconnect it in Dashboard → Models."}
+          </span>
+        </div>
+      )}
       {error && (
         <div className="px-5 py-1.5 bg-red-500/10 border-b border-red-500/30 text-[11px] text-red-400 flex items-center justify-between">
           <span>{error}</span>
@@ -809,14 +1322,33 @@ export default function ChatterPage() {
           onSelectChat={handleDialogSelect}
           selected={selectedChatItem}
           messages={chatMessages}
-          totalSpent="$0"
+          totalSpent={totalSpentFormatted}
           inputText={inputText}
           onInputChange={setInputText}
           onSend={handleSend}
           search={search}
           onSearch={setSearch}
           sending={sending}
+          fanTags={fanTags}
+          onToggleTag={handleToggleTag}
+          onOpenQuickReply={() => setQuickReplyOpen(true)}
+          onOpenFanProfile={() => setFanDrawerOpen(true)}
+          replyingTo={replyingTo}
+          editing={editing}
+          onCancelReply={() => setReplyingTo(null)}
+          onCancelEdit={handleCancelEdit}
+          onReplyToMessage={handleReplyToMessage}
+          onReplyWithQuote={handleReplyWithQuote}
+          onStartEdit={handleStartEdit}
+          onDeleteMessage={handleDeleteMessage}
+          mobileView={mobileView}
+          onMobileBack={() => setMobileView("list")}
         />
+        <div
+          className={`${
+            mobileView === "actions" ? "flex w-full" : "hidden"
+          } md:contents`}
+        >
         <ActionPanel
           activeTab={activeTab}
           onTabChange={setActiveTab}
@@ -845,8 +1377,68 @@ export default function ChatterPage() {
           notes={notes}
           onNotesChange={setNotes}
           hasRecipient={!!selectedDialog}
+          onAddNote={handleAddNote}
+          notesSaving={notesSaving}
+          notesList={fanNotes}
+          onDeleteNote={handleDeleteNote}
+          stats={stats}
         />
+        </div>
       </div>
+
+      {/* Mobile bottom nav — switches the single visible panel. Hidden md+. */}
+      <div className="md:hidden shrink-0 h-[54px] bg-[#161a22] border-t border-[#2a2d35] flex items-stretch">
+        {([
+          { key: "list", label: "Chats", icon: "💬" },
+          { key: "chat", label: "Chat", icon: "✉️" },
+          { key: "actions", label: "Send", icon: "💸" },
+        ] as const).map((t) => {
+          const active = mobileView === t.key;
+          const disabled = t.key === "chat" && !selectedDialog;
+          return (
+            <button
+              key={t.key}
+              onClick={() => !disabled && setMobileView(t.key)}
+              disabled={disabled}
+              className={`flex-1 flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors ${
+                active ? "text-[#6366f1]" : "text-[#6b7280]"
+              } ${disabled ? "opacity-40" : ""}`}
+            >
+              <span className="text-[16px] leading-none">{t.icon}</span>
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <QuickReplyModal
+        modelId={selectedModelId}
+        open={quickReplyOpen}
+        onClose={() => setQuickReplyOpen(false)}
+        canManage={role === "agency"}
+        onPick={(body) => {
+          // Insert at end of current input, preceded by a single space if
+          // user already typed something. Don't auto-send — user may want
+          // to edit before hitting Send.
+          setInputText((prev) => (prev.trim() ? `${prev} ${body}` : body));
+        }}
+      />
+      <FanProfileDrawer
+        open={fanDrawerOpen}
+        onClose={() => setFanDrawerOpen(false)}
+        modelId={selectedModelId}
+        peerId={selectedDialog?.id ?? null}
+        fan={fan}
+        displayName={selectedDialog?.title ?? "User"}
+        username={selectedDialog?.username ?? null}
+      />
+      <DeleteMessageModal
+        open={!!deletingMessage}
+        canRevoke={deletingMessage?.canRevoke ?? false}
+        preview={deletingMessage?.text ?? ""}
+        onClose={() => setDeletingMessage(null)}
+        onConfirm={(revoke) => void confirmDeleteMessage(revoke)}
+      />
     </div>
   );
 }

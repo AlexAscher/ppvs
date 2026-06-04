@@ -108,22 +108,6 @@ function LoginForm() {
             </button>
           </form>
 
-          <div className="relative my-5">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-[var(--border)]" />
-            </div>
-            <div className="relative flex justify-center">
-              <span className="bg-[var(--surface)] px-3 text-[11px] text-[var(--text-3)]">or continue with</span>
-            </div>
-          </div>
-
-          <button className="w-full flex items-center justify-center gap-2.5 bg-[var(--bg)] border border-[var(--border)] hover:border-[#333] text-[var(--text-2)] hover:text-[var(--text)] rounded-[8px] py-[11px] text-[13px] font-medium transition-colors outline-none cursor-pointer">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2z" fill="#229ED9" />
-              <path d="M17.3 7.4l-1.9 9c-.1.6-.5.7-.9.5l-2.6-1.9-1.2 1.2c-.1.1-.3.2-.6.2l.2-2.7 4.9-4.4c.2-.2 0-.3-.3-.1L7.2 14.5 4.7 13.7c-.6-.2-.6-.6.1-.8l11.8-4.6c.5-.2.9.1.7.7l.1.4-.1-.4z" fill="white" />
-            </svg>
-            Telegram
-          </button>
         </div>
 
         <p className="text-center text-[13px] text-[var(--text-3)] mt-5">

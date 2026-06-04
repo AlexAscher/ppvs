@@ -236,6 +236,24 @@ ALTER TABLE ppvs ADD COLUMN IF NOT EXISTS preview_url text;
 ALTER TABLE ppv_sends ADD COLUMN IF NOT EXISTS error text;
 ```
 
+## ALTER: Malum payment gateway
+
+Adds the columns used by the Malum card→crypto integration.
+
+```sql
+ALTER TABLE ppv_sends ADD COLUMN IF NOT EXISTS malum_txn text;
+ALTER TABLE ppv_sends ADD COLUMN IF NOT EXISTS customer_email text;
+ALTER TABLE ppv_sends ADD COLUMN IF NOT EXISTS refunded_at timestamptz;
+CREATE INDEX IF NOT EXISTS idx_ppv_sends_malum_txn ON ppv_sends(malum_txn);
+```
+
+- `malum_txn` — Malum transaction id returned by `POST /api/v2/payment/create`
+  (format: `TRN_xxxxxxxxx`). Used to look up the send when a webhook fires.
+- `customer_email` — Email the fan typed on /pay/{code} before being redirected
+  to Malum's hosted checkout. Saved for receipts / dispute lookup.
+- `refunded_at` — Set when the agency triggers a refund. UI shows refunded
+  rows greyed out in the wallet history.
+
 `ppvs.preview_url` is the public URL of a 720px Gaussian-blurred JPEG generated
 client-side at vault upload time. When chatter clicks "Send PPV" we download
 this (~30–80 KB) instead of the full original (often 2–8 MB), then forward it

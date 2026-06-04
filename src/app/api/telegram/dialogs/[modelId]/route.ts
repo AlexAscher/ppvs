@@ -1,7 +1,19 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { Api } from "telegram";
 import { authorizeModelAccess } from "@/lib/telegram-authorize";
 import { withTelegramClient } from "@/lib/telegram-pool";
+import { createAdminSupabaseClient } from "@/lib/supabase-server";
+
+// Throttle the background fan-capture: dialogs are polled every ~10s while a
+// chatter is viewing, but we only need to persist usernames occasionally.
+// One write-batch per model per minute keeps the DB quiet while still capturing
+// everyone who messaged within a minute of appearing.
+declare global {
+  var __ppvs_fan_capture_ts__: Map<string, number> | undefined;
+}
+const fanCaptureTs: Map<string, number> = globalThis.__ppvs_fan_capture_ts__ ?? new Map();
+globalThis.__ppvs_fan_capture_ts__ = fanCaptureTs;
+const FAN_CAPTURE_THROTTLE_MS = 60_000;
 
 export type DialogItem = {
   id: string;             // peer id (positive for user/bot, "-..." for chat, "-100..." for channel)
@@ -112,6 +124,36 @@ export async function GET(
         return items;
       },
     );
+
+    // Background: persist every fan (user dialog) so the admin panel has a
+    // full record of who messaged each model — even fans nobody opened. Runs
+    // after the response is sent; throttled per model; failures are swallowed.
+    const last = fanCaptureTs.get(modelId) ?? 0;
+    if (Date.now() - last >= FAN_CAPTURE_THROTTLE_MS) {
+      fanCaptureTs.set(modelId, Date.now());
+      after(async () => {
+        try {
+          const userRows = result
+            .filter((d) => d.type === "user")
+            .map((d) => ({
+              model_id: modelId,
+              peer_id: d.id,
+              telegram_username: d.username,
+              telegram_name: d.title,
+            }));
+          if (userRows.length === 0) return;
+          const admin = createAdminSupabaseClient();
+          // Partial upsert: only username/name are touched on conflict, leaving
+          // notes / tags / total_spent / last_seen_at intact.
+          await admin.from("fans").upsert(userRows, { onConflict: "model_id,peer_id" });
+        } catch (e) {
+          console.error(
+            "[telegram/dialogs] fan capture failed:",
+            e instanceof Error ? e.message : e,
+          );
+        }
+      });
+    }
 
     return Response.json({ dialogs: result });
   } catch (err: unknown) {

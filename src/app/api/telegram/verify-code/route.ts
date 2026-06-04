@@ -9,6 +9,8 @@ import {
   downloadPhotoBuffer,
   uploadAvatarToStorage,
 } from "@/lib/telegram-avatar";
+import { evictTelegramClient, clearExpiredFlag } from "@/lib/telegram-pool";
+import { encrypt } from "@/lib/crypto";
 
 function buildClientOptions() {
   const base = { connectionRetries: 0, timeout: 15 };
@@ -30,7 +32,7 @@ function buildClientOptions() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { apiId, apiHash, phone, code, phoneCodeHash, tempSession } =
+    const { apiId, apiHash, phone, code, phoneCodeHash, tempSession, modelId } =
       await request.json();
 
     const session = new StringSession(tempSession ?? "");
@@ -79,23 +81,65 @@ export async function POST(request: NextRequest) {
     if (!user)
       return Response.json({ error: "Not authenticated" }, { status: 401 });
 
-    const { data: inserted, error: dbError } = await supabase
-      .from("models")
-      .insert({
-        agency_user_id: user.id,
-        name,
-        username: me.username ?? null,
-        telegram_id: me.id.toString(),
-        session_string: finalSession,
-        api_id: Number(apiId),
-        api_hash: apiHash,
-        earnings: 0,
-      })
-      .select("id, name, username, earnings, avatar_url")
-      .single();
+    // Reconnect path: a `modelId` means we're refreshing the session of an
+    // existing (expired) model — UPDATE in place instead of inserting a
+    // duplicate, and flip session_status back to active.
+    let inserted: {
+      id: string;
+      name: string;
+      username: string | null;
+      earnings: number;
+      avatar_url: string | null;
+    } | null;
+    let dbError: { message: string } | null;
+    // Encrypt the Telegram credentials at rest. `api_id` is a number → no
+    // encryption needed; session_string + api_hash give full account access.
+    const encSession = encrypt(finalSession);
+    const encApiHash = encrypt(apiHash);
+    if (modelId) {
+      const r = await supabase
+        .from("models")
+        .update({
+          username: me.username ?? null,
+          telegram_id: me.id.toString(),
+          session_string: encSession,
+          api_id: Number(apiId),
+          api_hash: encApiHash,
+          session_status: "active",
+        })
+        .eq("id", modelId)
+        .eq("agency_user_id", user.id)
+        .select("id, name, username, earnings, avatar_url")
+        .single();
+      inserted = r.data;
+      dbError = r.error;
+    } else {
+      const r = await supabase
+        .from("models")
+        .insert({
+          agency_user_id: user.id,
+          name,
+          username: me.username ?? null,
+          telegram_id: me.id.toString(),
+          session_string: encSession,
+          api_id: Number(apiId),
+          api_hash: encApiHash,
+          earnings: 0,
+          session_status: "active",
+        })
+        .select("id, name, username, earnings, avatar_url")
+        .single();
+      inserted = r.data;
+      dbError = r.error;
+    }
 
-    if (dbError)
-      return Response.json({ error: dbError.message }, { status: 500 });
+    if (dbError || !inserted)
+      return Response.json({ error: dbError?.message ?? "DB error" }, { status: 500 });
+
+    // Drop the pool's stale client + expired-flag guard so the next
+    // request reconnects cleanly with the fresh session.
+    evictTelegramClient(inserted.id);
+    clearExpiredFlag(inserted.id);
 
     if (photoBuffer) {
       const admin = createAdminSupabaseClient();

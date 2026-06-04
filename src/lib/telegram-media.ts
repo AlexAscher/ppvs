@@ -16,6 +16,17 @@ export type MessageMedia =
       durationSec: number | null;
     }
   | {
+      type: "sticker";
+      thumbDataUrl: string | null;
+      width: number | null;
+      height: number | null;
+      mimeType: string | null;
+      // True for animated/video stickers (.tgs / webm) — the UI treats
+      // these as static placeholders unless we wire a Lottie / video
+      // renderer, but at least we don't render them as "Document".
+      isAnimated: boolean;
+    }
+  | {
       type: "document";
       thumbDataUrl: string | null;
       fileName: string | null;
@@ -95,6 +106,32 @@ export function extractMessageMedia(msg: Api.Message): MessageMedia | null {
     const mime = doc.mimeType ?? "";
     const thumbDataUrl = dataUrlFromStripped(doc.thumbs ?? undefined);
     const attrs = videoAttrs(doc.attributes);
+
+    // Stickers: detected via DocumentAttributeSticker. WebP / TGS (Lottie)
+    // / WebM-video stickers all carry this attribute. Width/height come
+    // from DocumentAttributeImageSize or DocumentAttributeVideo.
+    let isSticker = false;
+    let stickerW: number | null = null;
+    let stickerH: number | null = null;
+    for (const a of doc.attributes ?? []) {
+      if (a instanceof Api.DocumentAttributeSticker) isSticker = true;
+      if (a instanceof Api.DocumentAttributeImageSize) {
+        stickerW = a.w ?? null;
+        stickerH = a.h ?? null;
+      }
+    }
+    if (isSticker) {
+      const isAnimated =
+        mime === "application/x-tgsticker" || mime.startsWith("video/");
+      return {
+        type: "sticker",
+        thumbDataUrl,
+        width: stickerW ?? attrs.width,
+        height: stickerH ?? attrs.height,
+        mimeType: mime || null,
+        isAnimated,
+      };
+    }
 
     if (mime.startsWith("video/")) {
       return {

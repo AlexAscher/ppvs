@@ -44,14 +44,14 @@ function LogoIcon({ size = 34 }: { size?: number }) {
 function Nav() {
   return (
     <nav style={{ borderBottom: "1px solid #1c1c1c", padding: "16px 0" }}>
-      <div style={{ maxWidth: 860, margin: "0 auto", padding: "0 48px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div className="lp-wrap" style={{ maxWidth: 860, margin: "0 auto", padding: "0 48px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <Link href="/" style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none" }}>
           <LogoIcon size={34} />
           <span style={{ fontSize: 17, fontWeight: 700, letterSpacing: "-0.5px", color: "#fff" }}>
             ppvs<em style={{ color: "#00AFF0", fontStyle: "normal" }}>.io</em>
           </span>
         </Link>
-        <div style={{ display: "flex", gap: 28 }}>
+        <div className="lp-navlinks" style={{ display: "flex", gap: 28 }}>
           {["Features", "How it works", "Pricing", "Agencies"].map((t) => (
             <a key={t} href={`#${t.toLowerCase().replace(/ /g, "-")}`}
               style={{ fontSize: 13, color: "#555", textDecoration: "none" }}>
@@ -71,12 +71,12 @@ function Nav() {
 /* ══════════════════════════ HERO ══════════════════════════ */
 function Hero() {
   return (
-    <div style={{ padding: "88px 0 72px", textAlign: "center" }}>
+    <div className="lp-hero" style={{ padding: "88px 0 72px", textAlign: "center" }}>
       <div style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "#111", border: "1px solid #1e1e1e", color: "#888", fontSize: 12, padding: "6px 14px", borderRadius: 20, marginBottom: 24 }}>
         <div style={{ width: 7, height: 7, background: "#00AFF0", borderRadius: "50%" }} />
         Built for Telegram creators &amp; agencies
       </div>
-      <h1 style={{ fontSize: 52, fontWeight: 800, lineHeight: 1.07, letterSpacing: "-2px", marginBottom: 18 }}>
+      <h1 className="lp-h1" style={{ fontSize: 52, fontWeight: 800, lineHeight: 1.07, letterSpacing: "-2px", marginBottom: 18 }}>
         Sell content.<br />
         <em style={{ color: "#00AFF0", fontStyle: "normal" }}>Get paid instantly.</em>
       </h1>
@@ -538,9 +538,31 @@ export default function Home() {
 
   const wrap: React.CSSProperties = { maxWidth: 860, margin: "0 auto", padding: "0 48px" };
   return (
-    <div style={{ background: "#0a0a0a", fontFamily: "var(--font-geist-sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif)", color: "#fff", width: "100%" }}>
+    <div
+      className="lp-root"
+      style={{ background: "#0a0a0a", fontFamily: "var(--font-geist-sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif)", color: "#fff", width: "100%" }}
+    >
+      {/* Mobile responsiveness for this inline-styled page. `!important`
+          beats the (non-important) inline styles, and the
+          [style*="grid-template-columns"] selector matches any inline grid
+          React renders, collapsing every multi-column section to one column
+          on small screens — no per-element classes needed. */}
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+            .lp-root { overflow-x: hidden; }
+            @media (max-width: 760px) {
+              .lp-wrap { padding-left: 18px !important; padding-right: 18px !important; }
+              .lp-navlinks { display: none !important; }
+              .lp-hero { padding-top: 52px !important; padding-bottom: 44px !important; }
+              .lp-h1 { font-size: clamp(30px, 9vw, 50px) !important; letter-spacing: -1px !important; }
+              .lp-root [style*="grid-template-columns"] { grid-template-columns: 1fr !important; }
+            }
+          `,
+        }}
+      />
       <Nav />
-      <div style={wrap}>
+      <div style={wrap} className="lp-wrap">
         <Hero />
         <Dashboard />
         <div style={{ textAlign: "center", fontSize: 11, color: "#333", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 14 }}>
@@ -555,7 +577,7 @@ export default function Home() {
         <Pricing />
       </div>
       <CTA />
-      <div style={wrap}>
+      <div style={wrap} className="lp-wrap">
         <Footer />
       </div>
     </div>

@@ -34,6 +34,58 @@ function evictIfNeeded() {
   for (let i = 0; i < sorted.length - CACHE_MAX; i++) cache.delete(sorted[i][0]);
 }
 
+/**
+ * Build a Response for media bytes, honouring an HTTP Range request when
+ * present. Browsers send `Range: bytes=…` for `<video>`/`<audio>` so they
+ * can stream + seek; without a 206 reply many browsers refuse to scrub or
+ * re-download the whole file. We serve slices from the already-downloaded
+ * buffer (cached), so seeking is instant after the first load.
+ */
+function respondWithMaybeRange(
+  data: Buffer,
+  mime: string,
+  rangeHeader: string | null,
+): Response {
+  const total = data.length;
+  const baseHeaders: Record<string, string> = {
+    "Content-Type": mime,
+    "Cache-Control": "private, max-age=300",
+    "Accept-Ranges": "bytes",
+  };
+
+  if (rangeHeader) {
+    // Format: "bytes=start-end" (end optional). We support a single range.
+    const m = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
+    if (m) {
+      let start = m[1] ? parseInt(m[1], 10) : 0;
+      let end = m[2] ? parseInt(m[2], 10) : total - 1;
+      if (Number.isNaN(start)) start = 0;
+      if (Number.isNaN(end) || end >= total) end = total - 1;
+      if (start > end || start >= total) {
+        // Unsatisfiable — tell the client the real size.
+        return new Response(null, {
+          status: 416,
+          headers: { ...baseHeaders, "Content-Range": `bytes */${total}` },
+        });
+      }
+      const slice = data.subarray(start, end + 1);
+      return new Response(new Uint8Array(slice), {
+        status: 206,
+        headers: {
+          ...baseHeaders,
+          "Content-Range": `bytes ${start}-${end}/${total}`,
+          "Content-Length": String(slice.length),
+        },
+      });
+    }
+  }
+
+  return new Response(new Uint8Array(data), {
+    status: 200,
+    headers: { ...baseHeaders, "Content-Length": String(total) },
+  });
+}
+
 function mimeFor(msg: Api.Message, isThumb: boolean): string {
   const m = msg.media;
   if (m instanceof Api.MessageMediaPhoto) return "image/jpeg";
@@ -94,15 +146,12 @@ export async function GET(
     const auth = await authorizeModelAccess(modelId);
     if ("errorResponse" in auth) return auth.errorResponse;
 
+    const rangeHeader = req.headers.get("range");
+
     const k = cacheKey(modelId, peerId, messageId, quality);
     const hit = cache.get(k);
     if (hit && Date.now() - hit.ts < CACHE_TTL_MS) {
-      return new Response(new Uint8Array(hit.data), {
-        headers: {
-          "Content-Type": hit.mime,
-          "Cache-Control": "private, max-age=300",
-        },
-      });
+      return respondWithMaybeRange(hit.data, hit.mime, rangeHeader);
     }
 
     // 90s timeout — downloading a large media file from Telegram's CDN
@@ -159,12 +208,7 @@ export async function GET(
     cache.set(k, { data: result.buf, mime: result.mime, ts: Date.now() });
     evictIfNeeded();
 
-    return new Response(new Uint8Array(result.buf), {
-      headers: {
-        "Content-Type": result.mime,
-        "Cache-Control": "private, max-age=300",
-      },
-    });
+    return respondWithMaybeRange(result.buf, result.mime, rangeHeader);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed";
     console.error("[telegram/media GET] error:", message);

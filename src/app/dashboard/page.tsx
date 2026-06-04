@@ -5,19 +5,20 @@ import { useRouter } from "next/navigation";
 import { PPVsTab } from "@/components/ppv/PPVsTab";
 import { ChattersTab } from "@/components/chatters/ChattersTab";
 import { ChatterDashboardLayout } from "@/components/chatters/ChatterDashboardLayout";
+import { SettingsTab } from "@/components/settings/SettingsTab";
 import { createClient } from "@/lib/supabase";
 import {
   MessageSquare,
   TrendingUp, DollarSign,
-  ChevronDown,
-  Plus, Link as LinkIcon, ArrowUpRight, LogOut,
+  Plus, Link as LinkIcon, ArrowUpRight, LogOut, Menu,
 } from "lucide-react";
+import type { DashboardStats } from "@/app/api/dashboard/stats/route";
 
 // ─────────────────────────────────────────────
 // AGENCY DASHBOARD
 // ─────────────────────────────────────────────
 
-type AgencyTab = "dashboard" | "ppvs" | "models" | "chatters" | "wallet";
+type AgencyTab = "dashboard" | "ppvs" | "models" | "chatters" | "wallet" | "settings";
 
 const menuItems = [
   { id: "dashboard" as AgencyTab, label: "Dashboard", emoji: "📊" },
@@ -25,15 +26,41 @@ const menuItems = [
   { id: "models" as AgencyTab, label: "Models", emoji: "👤" },
   { id: "chatters" as AgencyTab, label: "Chatters", emoji: "💬" },
   { id: "wallet" as AgencyTab, label: "Wallet", emoji: "💰" },
+  { id: "settings" as AgencyTab, label: "Settings", emoji: "⚙️" },
 ];
 
-function AgencySidebar({ activeTab, onTabChange }: { activeTab: AgencyTab; onTabChange: (t: AgencyTab) => void }) {
+function AgencySidebar({
+  activeTab,
+  onTabChange,
+  mobileOpen = false,
+  onClose,
+}: {
+  activeTab: AgencyTab;
+  onTabChange: (t: AgencyTab) => void;
+  mobileOpen?: boolean;
+  onClose?: () => void;
+}) {
   const router = useRouter();
   const supabase = createClient();
   const [showLogout, setShowLogout] = useState(false);
   const [userEmail, setUserEmail] = useState("");
   const [userInitials, setUserInitials] = useState("AO");
+  const [isAdmin, setIsAdmin] = useState(false);
   const popupRef = useRef<HTMLDivElement>(null);
+
+  // Show the Admin link only for platform owners (ADMIN_EMAILS). The check is
+  // server-side; we just probe the gated endpoint.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/admin/whoami")
+      .then((r) => {
+        if (!cancelled && r.ok) setIsAdmin(true);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -66,7 +93,20 @@ function AgencySidebar({ activeTab, onTabChange }: { activeTab: AgencyTab; onTab
   }
 
   return (
-    <div className="w-[240px] bg-[#161a22] border-r border-[#2a2d35] flex flex-col shrink-0">
+    <>
+      {/* Mobile backdrop */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/50 md:hidden"
+          onClick={onClose}
+          aria-hidden
+        />
+      )}
+      <div
+        className={`w-[240px] bg-[#161a22] border-r border-[#2a2d35] flex flex-col shrink-0 z-40 fixed inset-y-0 left-0 transition-transform duration-200 md:static md:translate-x-0 ${
+          mobileOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
       <div className="h-[52px] border-b border-[#2a2d35] px-5 flex items-center gap-2">
         <div className="w-8 h-8 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-lg flex items-center justify-center">
           <span className="text-white font-bold text-[14px]">P</span>
@@ -104,6 +144,16 @@ function AgencySidebar({ activeTab, onTabChange }: { activeTab: AgencyTab; onTab
           <MessageSquare className="w-4 h-4" />
           <span className="text-[13px] font-medium">Go to Chatter</span>
         </button>
+
+        {isAdmin && (
+          <button
+            onClick={() => router.push("/admin")}
+            className="w-full px-4 py-2.5 rounded-lg flex items-center gap-3 text-[#ef4444] hover:bg-[#ef4444]/10 transition-all"
+          >
+            <span className="text-[16px] leading-none">🛡️</span>
+            <span className="text-[13px] font-medium">Admin Panel</span>
+          </button>
+        )}
       </div>
 
       {/* Account area + logout popup */}
@@ -132,99 +182,104 @@ function AgencySidebar({ activeTab, onTabChange }: { activeTab: AgencyTab; onTab
           </div>
         </button>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
 
-const dashStats = [
-  { label: "Net Total Today", value: "$1,243", emoji: "💵" },
-  { label: "Net Total This Week", value: "$8,920", emoji: "📈" },
-  { label: "Net Total This Month", value: "$34,567", emoji: "💰" },
-  { label: "Net Total All Time", value: "$124,890", emoji: "🏆" },
-  { label: "Available Balance", value: "$12,340", emoji: "💳" },
-  { label: "PPVs Opened", value: "1,847", emoji: "👁️" },
-  { label: "Avg Order Value", value: "$42.50", emoji: "🛒" },
-  { label: "Paying Fans", value: "432", emoji: "👥" },
-];
+function fmtMoney(n: number): string {
+  if (!Number.isFinite(n)) return "$0";
+  if (n >= 10000) return `$${(n / 1000).toFixed(1)}k`;
+  return `$${n.toLocaleString(undefined, { maximumFractionDigits: n < 100 ? 2 : 0 })}`;
+}
 
-const dashModels = [
-  { id: "all", name: "All Models" },
-  { id: "sofia", name: "Sofia C" },
-  { id: "mia", name: "Mia R" },
-  { id: "anna", name: "Anna K" },
-  { id: "jade", name: "Jade V" },
-];
-
-const chartData = [
-  { date: "Jan 1", value: 2400, label: "$2,400" },
-  { date: "Jan 2", value: 3200, label: "$3,200" },
-  { date: "Jan 3", value: 2800, label: "$2,800" },
-  { date: "Jan 4", value: 3800, label: "$3,800" },
-  { date: "Jan 5", value: 3200, label: "$3,200" },
-  { date: "Jan 6", value: 4200, label: "$4,200" },
-  { date: "Jan 7", value: 4800, label: "$4,800" },
-  { date: "Jan 8", value: 3600, label: "$3,600" },
-  { date: "Jan 9", value: 4400, label: "$4,400" },
-  { date: "Jan 10", value: 4600, label: "$4,600" },
-  { date: "Jan 11", value: 3900, label: "$3,900" },
-  { date: "Jan 12", value: 4300, label: "$4,300" },
-];
-
-const recentActivities = [
-  { id: "1", type: "PPV", fan: "@mark_johnson", amount: "$45", chatter: "Sarah J", time: "2 min ago" },
-  { id: "2", type: "Tip", fan: "@david_lee", amount: "$20", chatter: "Emma K", time: "5 min ago" },
-  { id: "3", type: "Bundle", fan: "@alex_smith", amount: "$120", chatter: "Sarah J", time: "12 min ago" },
-  { id: "4", type: "PPV", fan: "@ryan_taylor", amount: "$35", chatter: "Mia L", time: "18 min ago" },
-  { id: "5", type: "Tip", fan: "@chris_wilson", amount: "$50", chatter: "Sarah J", time: "23 min ago" },
-];
-
-const topFans = [
-  { username: "@mike_brown", spent: "$2,890", avatar: "MB", rank: 1 },
-  { username: "@james_davis", spent: "$2,450", avatar: "JD", rank: 2 },
-  { username: "@alex_smith", spent: "$1,980", avatar: "AS", rank: 3 },
-];
+function initials(name: string): string {
+  return name
+    .replace(/^@/, "")
+    .split(/[\s_]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() ?? "")
+    .join("");
+}
 
 function DashboardTab() {
-  const [timeframe, setTimeframe] = useState("7d");
-  const [selectedModel, setSelectedModel] = useState("all");
-  const [showModelDropdown, setShowModelDropdown] = useState(false);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [loadErr, setLoadErr] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
   const [hoveredPoint, setHoveredPoint] = useState<number | null>(null);
-  const maxValue = Math.max(...chartData.map((d) => d.value));
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/dashboard/stats");
+        const data = await res.json();
+        if (cancelled) return;
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        setLoadErr("");
+        setStats(data as DashboardStats);
+      } catch (e: unknown) {
+        if (!cancelled) setLoadErr(e instanceof Error ? e.message : "Failed to load");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadKey]);
+
+  const cards = stats
+    ? [
+        { label: "Net Today", value: fmtMoney(stats.netToday), emoji: "💵" },
+        { label: "Net This Week", value: fmtMoney(stats.netWeek), emoji: "📈" },
+        { label: "Net This Month", value: fmtMoney(stats.netMonth), emoji: "💰" },
+        { label: "Net All Time", value: fmtMoney(stats.netAllTime), emoji: "🏆" },
+        { label: "Available Balance", value: fmtMoney(stats.availableBalance), emoji: "💳" },
+        { label: "Sales / Unlocks", value: String(stats.sales), emoji: "👁️" },
+        { label: "Avg Order Value", value: fmtMoney(stats.avgOrder), emoji: "🛒" },
+        { label: "Paying Fans", value: String(stats.payingFans), emoji: "👥" },
+      ]
+    : Array.from({ length: 8 }, (_, i) => ({ label: ["Net Today","Net This Week","Net This Month","Net All Time","Available Balance","Sales / Unlocks","Avg Order Value","Paying Fans"][i], value: "…", emoji: "•" }));
+
+  const chartData = (stats?.chart ?? []).map((c) => ({ ...c, label: fmtMoney(c.value) }));
+  const maxValue = Math.max(1, ...chartData.map((d) => d.value));
+  const topChatter = stats?.chatters?.[0] ?? null;
 
   return (
-    <div className="flex-1 bg-[#0d1117] overflow-y-auto p-6">
+    <div className="flex-1 bg-[#0d1117] overflow-y-auto p-4 md:p-6">
       <div className="max-w-[1400px] mx-auto space-y-6">
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-[24px] font-bold text-white mb-1">Dashboard 📊</h1>
             <p className="text-[14px] text-[#9ca3af]">Overview of your agency performance</p>
           </div>
-          <div className="relative">
-            <button
-              onClick={() => setShowModelDropdown(!showModelDropdown)}
-              className="px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] font-medium text-white hover:bg-[#374151] transition-all flex items-center gap-2 min-w-[180px] justify-between"
-            >
-              <span>{dashModels.find((m) => m.id === selectedModel)?.name}</span>
-              <ChevronDown className="w-4 h-4" />
-            </button>
-            {showModelDropdown && (
-              <div className="absolute top-full right-0 mt-2 w-full bg-[#1f2937] border border-[#374151] rounded-lg shadow-xl overflow-hidden z-10">
-                {dashModels.map((model) => (
-                  <button
-                    key={model.id}
-                    onClick={() => { setSelectedModel(model.id); setShowModelDropdown(false); }}
-                    className={`w-full px-4 py-2.5 text-[13px] text-left hover:bg-[#374151] transition-colors ${selectedModel === model.id ? "bg-[#374151] text-[#6366f1]" : "text-white"}`}
-                  >
-                    {model.name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
 
-        <div className="grid grid-cols-4 gap-4">
-          {dashStats.map((stat, i) => (
+        {loadErr && (
+          <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-red-500/10 border border-red-500/30 rounded-lg text-[12px] text-red-400">
+            <span>{loadErr}</span>
+            <button
+              onClick={() => setReloadKey((k) => k + 1)}
+              className="px-3 py-1 rounded-md bg-red-500/20 hover:bg-red-500/30 font-medium shrink-0"
+            >
+              Обновить
+            </button>
+          </div>
+        )}
+        {stats?.partial && (
+          <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-[#f59e0b]/10 border border-[#f59e0b]/30 rounded-lg text-[12px] text-[#f59e0b]">
+            <span>⚠ Часть данных не догрузилась (медленная сеть до Supabase) — цифры могут быть занижены.</span>
+            <button
+              onClick={() => setReloadKey((k) => k + 1)}
+              className="px-3 py-1 rounded-md bg-[#f59e0b]/20 hover:bg-[#f59e0b]/30 font-medium shrink-0"
+            >
+              Обновить
+            </button>
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {cards.map((stat, i) => (
             <div key={i} className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-4 hover:border-[#374151] transition-colors">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[20px]">{stat.emoji}</span>
@@ -236,130 +291,141 @@ function DashboardTab() {
           ))}
         </div>
 
-        <div className="grid grid-cols-3 gap-6">
-          <div className="col-span-2 bg-[#161a22] border border-[#2a2d35] rounded-lg p-5">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="md:col-span-2 bg-[#161a22] border border-[#2a2d35] rounded-lg p-5">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-[16px] font-semibold text-white">Total Net Sales 📈</h2>
-              <div className="flex gap-2">
-                {["1d", "7d", "30d", "all"].map((period) => (
-                  <button
-                    key={period}
-                    onClick={() => setTimeframe(period)}
-                    className={`px-3 py-1.5 rounded-md text-[11px] font-medium transition-all ${timeframe === period ? "bg-[#6366f1] text-white" : "bg-[#1f2937] text-[#9ca3af] hover:text-white"}`}
-                  >
-                    {period === "all" ? "All Time" : period.toUpperCase()}
-                  </button>
-                ))}
-              </div>
+              <h2 className="text-[16px] font-semibold text-white">Net Sales — last 14 days 📈</h2>
             </div>
-            <div className="relative">
-              <div className="absolute left-0 top-0 bottom-6 flex flex-col justify-between text-[10px] text-[#6b7280] pr-2">
-                <span>$5k</span><span>$4k</span><span>$3k</span><span>$2k</span><span>$1k</span><span>$0</span>
+            {chartData.length === 0 ? (
+              <div className="h-[180px] flex items-center justify-center text-[13px] text-[#6b7280]">
+                {stats ? "No sales yet." : "Loading…"}
               </div>
-              <div className="ml-10 mr-2">
-                <div className="relative h-[180px]">
-                  {[0, 1, 2, 3, 4, 5].map((i) => (
-                    <div key={i} className="absolute w-full border-t border-[#2a2d35]" style={{ top: `${i * 20}%` }} />
-                  ))}
-                  <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
-                    <defs>
-                      <linearGradient id="lineGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                        <stop offset="0%" stopColor="#6366f1" stopOpacity="0.3" />
-                        <stop offset="100%" stopColor="#6366f1" stopOpacity="0" />
-                      </linearGradient>
-                    </defs>
-                    <path
-                      d={`M 0,${180 - (chartData[0].value / maxValue) * 180} ${chartData.map((d, i) => `L ${(i / (chartData.length - 1)) * 100}%,${180 - (d.value / maxValue) * 180}`).join(" ")} L 100%,180 L 0,180 Z`}
-                      fill="url(#lineGradient)"
-                    />
-                    <polyline
-                      points={chartData.map((d, i) => `${(i / (chartData.length - 1)) * 100}%,${180 - (d.value / maxValue) * 180}`).join(" ")}
-                      fill="none" stroke="#6366f1" strokeWidth="2"
-                    />
-                  </svg>
-                  {chartData.map((point, i) => (
-                    <div
-                      key={i}
-                      className="absolute"
-                      style={{ left: `${(i / (chartData.length - 1)) * 100}%`, top: `${180 - (point.value / maxValue) * 180}px`, transform: "translate(-50%, -50%)" }}
-                      onMouseEnter={() => setHoveredPoint(i)}
-                      onMouseLeave={() => setHoveredPoint(null)}
-                    >
-                      <div className="w-3 h-3 bg-[#6366f1] rounded-full border-2 border-[#161a22] cursor-pointer hover:scale-150 transition-transform" />
-                      {hoveredPoint === i && (
-                        <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-[#1f2937] border border-[#374151] rounded-lg px-3 py-2 whitespace-nowrap shadow-xl z-10">
-                          <div className="text-[11px] text-[#9ca3af]">{point.date}</div>
-                          <div className="text-[14px] font-bold text-[#6366f1]">{point.label}</div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                <div className="flex justify-between mt-2 text-[10px] text-[#6b7280]">
-                  {chartData.map((point, i) => (
-                    <span key={i} className={i % 2 === 0 ? "" : "opacity-0"}>{point.date}</span>
-                  ))}
+            ) : (
+              <div className="relative">
+                <div className="ml-2 mr-2">
+                  <div className="relative h-[180px]">
+                    {[0, 1, 2, 3, 4, 5].map((i) => (
+                      <div key={i} className="absolute w-full border-t border-[#2a2d35]" style={{ top: `${i * 20}%` }} />
+                    ))}
+                    <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
+                      <defs>
+                        <linearGradient id="lineGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                          <stop offset="0%" stopColor="#6366f1" stopOpacity="0.3" />
+                          <stop offset="100%" stopColor="#6366f1" stopOpacity="0" />
+                        </linearGradient>
+                      </defs>
+                      <path
+                        d={`M 0,${180 - (chartData[0].value / maxValue) * 180} ${chartData.map((d, i) => `L ${(i / Math.max(1, chartData.length - 1)) * 100}%,${180 - (d.value / maxValue) * 180}`).join(" ")} L 100%,180 L 0,180 Z`}
+                        fill="url(#lineGradient)"
+                      />
+                      <polyline
+                        points={chartData.map((d, i) => `${(i / Math.max(1, chartData.length - 1)) * 100}%,${180 - (d.value / maxValue) * 180}`).join(" ")}
+                        fill="none" stroke="#6366f1" strokeWidth="2"
+                      />
+                    </svg>
+                    {chartData.map((point, i) => (
+                      <div
+                        key={i}
+                        className="absolute"
+                        style={{ left: `${(i / Math.max(1, chartData.length - 1)) * 100}%`, top: `${180 - (point.value / maxValue) * 180}px`, transform: "translate(-50%, -50%)" }}
+                        onMouseEnter={() => setHoveredPoint(i)}
+                        onMouseLeave={() => setHoveredPoint(null)}
+                      >
+                        <div className="w-3 h-3 bg-[#6366f1] rounded-full border-2 border-[#161a22] cursor-pointer hover:scale-150 transition-transform" />
+                        {hoveredPoint === i && (
+                          <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-[#1f2937] border border-[#374151] rounded-lg px-3 py-2 whitespace-nowrap shadow-xl z-10">
+                            <div className="text-[11px] text-[#9ca3af]">{point.date}</div>
+                            <div className="text-[14px] font-bold text-[#6366f1]">{point.label}</div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex justify-between mt-2 text-[10px] text-[#6b7280]">
+                    {chartData.map((point, i) => (
+                      <span key={i} className={i % 2 === 0 ? "" : "opacity-0"}>{point.date}</span>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
 
           <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-5">
             <h2 className="text-[16px] font-semibold text-white mb-4">Top Chatter 👑</h2>
-            <div className="text-center space-y-3">
-              <div className="w-20 h-20 mx-auto bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-full flex items-center justify-center text-white font-bold text-[24px]">SJ</div>
-              <div>
-                <div className="text-[18px] font-bold text-white">Sarah J</div>
-                <div className="text-[13px] text-[#9ca3af]">@sarah_chatter</div>
+            {topChatter ? (
+              <div className="text-center space-y-3">
+                <div className="w-20 h-20 mx-auto bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-full flex items-center justify-center text-white font-bold text-[24px]">
+                  {initials(topChatter.name) || "—"}
+                </div>
+                <div>
+                  <div className="text-[18px] font-bold text-white">{topChatter.name}</div>
+                  <div className="text-[13px] text-[#9ca3af]">{topChatter.sales} sales</div>
+                </div>
+                <div className="pt-3 border-t border-[#2a2d35]">
+                  <div className="text-[11px] text-[#9ca3af] uppercase tracking-wider mb-1">Net Sales</div>
+                  <div className="text-[28px] font-bold text-[#6366f1]">{fmtMoney(topChatter.net)}</div>
+                </div>
               </div>
-              <div className="pt-3 border-t border-[#2a2d35]">
-                <div className="text-[11px] text-[#9ca3af] uppercase tracking-wider mb-1">Total Net Sales</div>
-                <div className="text-[28px] font-bold text-[#6366f1]">$48,920</div>
+            ) : (
+              <div className="text-center py-10 text-[13px] text-[#6b7280]">
+                {stats ? "No chatter sales yet." : "Loading…"}
               </div>
-            </div>
+            )}
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-6">
-          <div className="col-span-2 bg-[#161a22] border border-[#2a2d35] rounded-lg p-5 flex flex-col">
-            <h2 className="text-[16px] font-semibold text-white mb-4">Recent Activities 🔔</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Per-model breakdown */}
+          <div className="md:col-span-2 bg-[#161a22] border border-[#2a2d35] rounded-lg p-5 flex flex-col">
+            <h2 className="text-[16px] font-semibold text-white mb-4">Models breakdown 👥</h2>
             <div className="flex-1 overflow-y-auto max-h-[300px] space-y-2 pr-2 custom-scrollbar">
-              {[...recentActivities, ...recentActivities].map((activity, idx) => (
-                <div key={idx} className="flex items-center justify-between p-3 bg-[#1f2937]/30 rounded-lg hover:bg-[#1f2937]/50 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className={`px-2.5 py-1 rounded-md text-[11px] font-semibold ${activity.type === "PPV" ? "bg-[#6366f1]/20 text-[#6366f1]" : activity.type === "Tip" ? "bg-[#10b981]/20 text-[#10b981]" : "bg-[#f59e0b]/20 text-[#f59e0b]"}`}>
-                      {activity.type}
-                    </div>
-                    <div>
-                      <div className="text-[13px] text-white font-medium">{activity.fan}</div>
-                      <div className="text-[11px] text-[#6b7280]">by {activity.chatter}</div>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-[14px] font-bold text-[#6366f1]">{activity.amount}</div>
-                    <div className="text-[10px] text-[#6b7280]">{activity.time}</div>
-                  </div>
+              {(stats?.models ?? []).length === 0 ? (
+                <div className="py-6 text-center text-[13px] text-[#6b7280]">
+                  {stats ? "No sales yet." : "Loading…"}
                 </div>
-              ))}
+              ) : (
+                stats!.models.map((m) => (
+                  <div key={m.id} className="flex items-center justify-between p-3 bg-[#1f2937]/30 rounded-lg hover:bg-[#1f2937]/50 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-full flex items-center justify-center text-white font-semibold text-[12px]">
+                        {initials(m.name) || "M"}
+                      </div>
+                      <div>
+                        <div className="text-[13px] text-white font-medium">{m.name}</div>
+                        <div className="text-[11px] text-[#6b7280]">{m.sales} sales</div>
+                      </div>
+                    </div>
+                    <div className="text-[15px] font-bold text-[#6366f1]">{fmtMoney(m.net)}</div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
 
+          {/* Top fans */}
           <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-5 flex flex-col">
             <h2 className="text-[16px] font-semibold text-white mb-4">Top Fans 🏆</h2>
             <div className="flex-1 overflow-y-auto max-h-[300px] space-y-3 pr-2 custom-scrollbar">
-              {[...topFans, ...topFans].map((fan, idx) => (
-                <div key={idx} className="flex items-center gap-3 p-3 bg-[#1f2937]/30 rounded-lg hover:bg-[#1f2937]/50 transition-colors">
-                  <div className="w-10 h-10 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-full flex items-center justify-center text-white font-semibold text-[13px] relative">
-                    {fan.avatar}
-                    <div className="absolute -top-1 -right-1 w-5 h-5 bg-[#f59e0b] rounded-full flex items-center justify-center text-[10px] font-bold">{fan.rank}</div>
-                  </div>
-                  <div className="flex-1">
-                    <div className="text-[13px] font-medium text-white">{fan.username}</div>
-                    <div className="text-[11px] text-[#6b7280]">Total spent</div>
-                  </div>
-                  <div className="text-[15px] font-bold text-[#6366f1]">{fan.spent}</div>
+              {(stats?.topFans ?? []).length === 0 ? (
+                <div className="py-6 text-center text-[13px] text-[#6b7280]">
+                  {stats ? "No paying fans yet." : "Loading…"}
                 </div>
-              ))}
+              ) : (
+                stats!.topFans.map((fan, idx) => (
+                  <div key={idx} className="flex items-center gap-3 p-3 bg-[#1f2937]/30 rounded-lg hover:bg-[#1f2937]/50 transition-colors">
+                    <div className="w-10 h-10 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-full flex items-center justify-center text-white font-semibold text-[13px] relative">
+                      {initials(fan.name) || "F"}
+                      <div className="absolute -top-1 -right-1 w-5 h-5 bg-[#f59e0b] rounded-full flex items-center justify-center text-[10px] font-bold">{idx + 1}</div>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[13px] font-medium text-white truncate">{fan.name}</div>
+                      <div className="text-[11px] text-[#6b7280]">Total spent</div>
+                    </div>
+                    <div className="text-[15px] font-bold text-[#6366f1]">{fmtMoney(fan.spent)}</div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -368,7 +434,9 @@ function DashboardTab() {
   );
 }
 
-type Model = { id: string; name: string; username: string | null; earnings: number; avatar_url: string | null };
+// Legacy mock kept out — DashboardTab is now fully live.
+
+type Model = { id: string; name: string; username: string | null; earnings: number; avatar_url: string | null; session_status?: string | null };
 
 function ModelsTab() {
   const supabase = createClient();
@@ -386,16 +454,31 @@ function ModelsTab() {
   const [error, setError] = useState("");
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
 
+  // When set, the connect modal is in "reconnect" mode — verify-code will
+  // UPDATE this model's session rather than insert a new row.
+  const [reconnectId, setReconnectId] = useState<string | null>(null);
+
   useEffect(() => {
-    supabase
-      .from("models")
-      .select("id, name, username, earnings, avatar_url")
-      .then(({ data }) => { if (data) setModels(data); });
+    (async () => {
+      // session_status may not exist yet (migration not run) — fall back.
+      const withStatus = await supabase
+        .from("models")
+        .select("id, name, username, earnings, avatar_url, session_status");
+      let rows = (withStatus.data ?? null) as Model[] | null;
+      if (withStatus.error) {
+        const base = await supabase
+          .from("models")
+          .select("id, name, username, earnings, avatar_url");
+        rows = (base.data ?? null) as Model[] | null;
+      }
+      if (rows) setModels(rows);
+    })();
   }, []);
 
-  function openModal() {
+  function openModal(reconnectModelId?: string) {
     setStep(1);
     setApiId(""); setApiHash(""); setPhone(""); setCode(""); setTwoFaPassword(""); setError("");
+    setReconnectId(reconnectModelId ?? null);
     setShowModal(true);
   }
 
@@ -425,7 +508,7 @@ function ModelsTab() {
       const res = await fetch("/api/telegram/verify-code", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiId, apiHash, phone, code, phoneCodeHash, tempSession }),
+        body: JSON.stringify({ apiId, apiHash, phone, code, phoneCodeHash, tempSession, modelId: reconnectId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to verify");
@@ -434,7 +517,11 @@ function ModelsTab() {
         setStep(3);
         return;
       }
-      setModels((prev) => [...prev, data.model]);
+      setModels((prev) =>
+        reconnectId
+          ? prev.map((m) => (m.id === reconnectId ? data.model : m))
+          : [...prev, data.model],
+      );
       setShowModal(false);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Error");
@@ -449,11 +536,15 @@ function ModelsTab() {
       const res = await fetch("/api/telegram/check-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiId, apiHash, password: twoFaPassword, tempSession }),
+        body: JSON.stringify({ apiId, apiHash, password: twoFaPassword, tempSession, modelId: reconnectId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to check password");
-      setModels((prev) => [...prev, data.model]);
+      setModels((prev) =>
+        reconnectId
+          ? prev.map((m) => (m.id === reconnectId ? data.model : m))
+          : [...prev, data.model],
+      );
       setShowModal(false);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Error");
@@ -481,7 +572,7 @@ function ModelsTab() {
   }
 
   return (
-    <div className="flex-1 bg-[#0d1117] overflow-y-auto p-6">
+    <div className="flex-1 bg-[#0d1117] overflow-y-auto p-4 md:p-6">
 
       {showModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -571,7 +662,7 @@ function ModelsTab() {
             <h1 className="text-[24px] font-bold text-white mb-1">Models 👤</h1>
             <p className="text-[14px] text-[#9ca3af]">Connect and manage your models&apos; Telegram accounts</p>
           </div>
-          <button onClick={openModal} className="px-4 py-2.5 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] rounded-lg text-[13px] font-semibold text-white hover:from-[#5558e3] hover:to-[#4338ca] transition-all shadow-lg shadow-[#6366f1]/20 flex items-center gap-2">
+          <button onClick={() => openModal()} className="px-4 py-2.5 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] rounded-lg text-[13px] font-semibold text-white hover:from-[#5558e3] hover:to-[#4338ca] transition-all shadow-lg shadow-[#6366f1]/20 flex items-center gap-2">
             <Plus className="w-4 h-4" />Add Model
           </button>
         </div>
@@ -600,13 +691,14 @@ function ModelsTab() {
               <div className="w-20 h-20 mx-auto mb-4 bg-[#1f2937] rounded-full flex items-center justify-center text-[32px]">👤</div>
               <h3 className="text-[18px] font-semibold text-white mb-2">No models connected yet</h3>
               <p className="text-[14px] text-[#9ca3af] mb-6">Add your first model to start managing their Telegram account</p>
-              <button onClick={openModal} className="px-6 py-3 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] rounded-lg text-[14px] font-semibold text-white hover:from-[#5558e3] hover:to-[#4338ca] transition-all shadow-lg shadow-[#6366f1]/20 flex items-center gap-2 mx-auto">
+              <button onClick={() => openModal()} className="px-6 py-3 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] rounded-lg text-[14px] font-semibold text-white hover:from-[#5558e3] hover:to-[#4338ca] transition-all shadow-lg shadow-[#6366f1]/20 flex items-center gap-2 mx-auto">
                 <Plus className="w-4 h-4" />Connect your first model
               </button>
             </div>
           </div>
         ) : (
-          <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg overflow-hidden">
+          <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg overflow-x-auto">
+            <div className="min-w-[560px]">
             <div className="grid grid-cols-4 gap-4 p-4 border-b border-[#2a2d35] bg-[#1f2937]/30">
               <div className="text-[11px] text-[#9ca3af] uppercase tracking-wider font-semibold">Model</div>
               <div className="text-[11px] text-[#9ca3af] uppercase tracking-wider font-semibold">Username</div>
@@ -635,7 +727,21 @@ function ModelsTab() {
                   {model.username ? `@${model.username}` : "—"}
                 </div>
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="px-2.5 py-1 bg-[#10b981]/20 text-[#10b981] rounded-full text-[11px] font-semibold shrink-0">connected</span>
+                  {model.session_status === "expired" ? (
+                    <>
+                      <span className="px-2.5 py-1 bg-[#ef4444]/15 text-[#ef4444] rounded-full text-[11px] font-semibold shrink-0">
+                        session expired
+                      </span>
+                      <button
+                        onClick={() => openModal(model.id)}
+                        className="px-2.5 py-1 bg-[#6366f1] hover:bg-[#5558e3] text-white rounded-full text-[11px] font-semibold shrink-0"
+                      >
+                        Reconnect
+                      </button>
+                    </>
+                  ) : (
+                    <span className="px-2.5 py-1 bg-[#10b981]/20 text-[#10b981] rounded-full text-[11px] font-semibold shrink-0">connected</span>
+                  )}
                   <button
                     onClick={() => handleRefresh(model.id)}
                     disabled={refreshingId === model.id}
@@ -650,6 +756,7 @@ function ModelsTab() {
                 </div>
               </div>
             ))}
+            </div>
           </div>
         )}
       </div>
@@ -671,28 +778,115 @@ const networkOptions: Record<string, string[]> = {
   eth: ["Ethereum"],
 };
 
+type Payout = {
+  id: string;
+  amount: number;
+  address: string | null;
+  status: string;
+  created_at: string;
+  paid_at: string | null;
+};
+
 function WalletTab() {
+  const supabase = createClient();
   const [selectedCrypto, setSelectedCrypto] = useState("usdt");
   const [selectedNetwork, setSelectedNetwork] = useState("TRC20");
   const [amount, setAmount] = useState("");
   const [address, setAddress] = useState("");
 
+  const [netAllTime, setNetAllTime] = useState<number | null>(null);
+  const [available, setAvailable] = useState<number | null>(null);
+  const [payouts, setPayouts] = useState<Payout[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      // Pre-fill the saved payout address from Settings.
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        if (cancelled) return;
+        const saved = user?.user_metadata?.payout_address as string | undefined;
+        if (saved) setAddress((a) => a || saved);
+      });
+      try {
+        const [statsRes, payoutsRes] = await Promise.all([
+          fetch("/api/dashboard/stats"),
+          fetch("/api/payouts"),
+        ]);
+        if (cancelled) return;
+        if (statsRes.ok) {
+          const s = await statsRes.json();
+          setNetAllTime(Number(s.netAllTime ?? 0));
+          setAvailable(Number(s.availableBalance ?? 0));
+        }
+        if (payoutsRes.ok) {
+          const p = await payoutsRes.json();
+          setPayouts((p.payouts ?? []) as Payout[]);
+          if (typeof p.availableBalance === "number") setAvailable(p.availableBalance);
+        }
+      } catch {
+        /* best-effort */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function handleWithdraw() {
+    const amt = Number(amount);
+    setMsg("");
+    if (!Number.isFinite(amt) || amt < 20) {
+      setMsg("Minimum withdrawal is $20.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/payouts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: amt, address }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setPayouts((prev) => [data.payout as Payout, ...prev]);
+      if (typeof data.availableBalance === "number") setAvailable(data.availableBalance);
+      setAmount("");
+      setMsg("✓ Withdrawal requested — pending review.");
+    } catch (e: unknown) {
+      setMsg(e instanceof Error ? e.message : "Request failed");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const money = (n: number | null) =>
+    n == null ? "…" : `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+  const statusCls = (s: string) =>
+    s === "paid"
+      ? "bg-emerald-500/15 text-emerald-400"
+      : s === "rejected"
+        ? "bg-red-500/15 text-red-400"
+        : "bg-[#f59e0b]/15 text-[#f59e0b]";
+
   return (
-    <div className="flex-1 bg-[#0d1117] overflow-y-auto p-6">
+    <div className="flex-1 bg-[#0d1117] overflow-y-auto p-4 md:p-6">
       <div className="max-w-[1000px] mx-auto space-y-6">
         <div>
           <h1 className="text-[24px] font-bold text-white mb-1">Wallet 💰</h1>
           <p className="text-[14px] text-[#9ca3af]">Manage your earnings and withdrawals</p>
         </div>
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-lg p-6 shadow-lg shadow-[#6366f1]/20">
             <div className="flex items-center gap-2 mb-2">
               <DollarSign className="w-5 h-5 text-white/80" />
               <span className="text-[13px] text-white/80 uppercase tracking-wider font-medium">Total Net Sales</span>
             </div>
-            <div className="text-[36px] font-bold text-white">$124,890</div>
+            <div className="text-[36px] font-bold text-white">{money(netAllTime)}</div>
             <div className="flex items-center gap-2 mt-2 text-[13px] text-white/80">
-              <TrendingUp className="w-4 h-4" /><span>+12.5% from last month</span>
+              <TrendingUp className="w-4 h-4" /><span>All-time delivered revenue</span>
             </div>
           </div>
           <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-6">
@@ -700,8 +894,8 @@ function WalletTab() {
               <DollarSign className="w-5 h-5 text-[#9ca3af]" />
               <span className="text-[13px] text-[#9ca3af] uppercase tracking-wider font-medium">Available Balance</span>
             </div>
-            <div className="text-[36px] font-bold text-white">$12,340</div>
-            <div className="text-[13px] text-[#6b7280] mt-2">Ready for withdrawal</div>
+            <div className="text-[36px] font-bold text-white">{money(available)}</div>
+            <div className="text-[13px] text-[#6b7280] mt-2">Net minus requested payouts</div>
           </div>
         </div>
         <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-6">
@@ -711,7 +905,7 @@ function WalletTab() {
           <div className="space-y-5">
             <div>
               <label className="text-[13px] text-[#9ca3af] font-medium mb-2 block">Select Cryptocurrency</label>
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {cryptoOptions.map((crypto) => (
                   <button
                     key={crypto.id}
@@ -726,7 +920,7 @@ function WalletTab() {
             </div>
             <div>
               <label className="text-[13px] text-[#9ca3af] font-medium mb-2 block">Select Network</label>
-              <div className="flex gap-3">
+              <div className="flex gap-3 flex-wrap">
                 {networkOptions[selectedCrypto].map((network) => (
                   <button
                     key={network}
@@ -747,7 +941,7 @@ function WalletTab() {
                   className="w-full pl-8 pr-4 py-3 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1]"
                 />
               </div>
-              <div className="text-[11px] text-[#6b7280] mt-1">Available: $12,340</div>
+              <div className="text-[11px] text-[#6b7280] mt-1">Available: {money(available)}</div>
             </div>
             <div>
               <label className="text-[13px] text-[#9ca3af] font-medium mb-2 block">Withdrawal Address</label>
@@ -766,10 +960,45 @@ function WalletTab() {
                 </div>
               </div>
             </div>
-            <button className="w-full py-3.5 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white rounded-lg font-semibold text-[14px] hover:from-[#5558e3] hover:to-[#4338ca] transition-all shadow-lg shadow-[#6366f1]/20">
-              Verify &amp; Withdraw
+            {msg && (
+              <div className={`text-[12px] ${msg.startsWith("✓") ? "text-emerald-400" : "text-red-400"}`}>
+                {msg}
+              </div>
+            )}
+            <button
+              onClick={handleWithdraw}
+              disabled={submitting}
+              className="w-full py-3.5 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white rounded-lg font-semibold text-[14px] hover:from-[#5558e3] hover:to-[#4338ca] transition-all shadow-lg shadow-[#6366f1]/20 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {submitting ? "Requesting…" : "Request Withdrawal"}
             </button>
           </div>
+        </div>
+
+        {/* Payout history */}
+        <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-6">
+          <h2 className="text-[16px] font-semibold text-white mb-4">Payout history</h2>
+          {payouts.length === 0 ? (
+            <div className="text-[13px] text-[#6b7280] py-4 text-center">No withdrawals yet.</div>
+          ) : (
+            <div className="space-y-2">
+              {payouts.map((p) => (
+                <div key={p.id} className="flex items-center justify-between p-3 bg-[#1f2937]/30 rounded-lg">
+                  <div className="min-w-0">
+                    <div className="text-[14px] font-semibold text-white">
+                      ${Number(p.amount).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                    </div>
+                    <div className="text-[11px] text-[#6b7280] truncate">
+                      {p.address || "—"} · {new Date(p.created_at).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${statusCls(p.status)}`}>
+                    {p.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -778,14 +1007,44 @@ function WalletTab() {
 
 function AgencyDashboard() {
   const [activeTab, setActiveTab] = useState<AgencyTab>("dashboard");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  function selectTab(t: AgencyTab) {
+    setActiveTab(t);
+    setSidebarOpen(false); // close drawer after picking on mobile
+  }
+
   return (
     <div className="h-screen w-screen flex bg-[#0d1117] text-white overflow-hidden" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif' }}>
-      <AgencySidebar activeTab={activeTab} onTabChange={setActiveTab} />
-      {activeTab === "dashboard" && <DashboardTab />}
-      {activeTab === "ppvs" && <PPVsTab />}
-      {activeTab === "models" && <ModelsTab />}
-      {activeTab === "chatters" && <ChattersTab />}
-      {activeTab === "wallet" && <WalletTab />}
+      <AgencySidebar
+        activeTab={activeTab}
+        onTabChange={selectTab}
+        mobileOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Mobile top bar with hamburger — hidden on md+ */}
+        <div className="md:hidden h-[52px] shrink-0 bg-[#161a22] border-b border-[#2a2d35] flex items-center gap-3 px-4">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Open menu"
+            className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-[#1f2937] text-white"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+          <span className="text-[15px] font-semibold">
+            ppvs<span className="text-[#6366f1]">.io</span>
+          </span>
+        </div>
+        <div className="flex-1 flex min-h-0 overflow-hidden">
+          {activeTab === "dashboard" && <DashboardTab />}
+          {activeTab === "ppvs" && <PPVsTab />}
+          {activeTab === "models" && <ModelsTab />}
+          {activeTab === "chatters" && <ChattersTab />}
+          {activeTab === "wallet" && <WalletTab />}
+          {activeTab === "settings" && <SettingsTab role="agency" />}
+        </div>
+      </div>
     </div>
   );
 }
@@ -798,6 +1057,7 @@ export default function DashboardPage() {
   const supabase = createClient();
   const router = useRouter();
   const [role, setRole] = useState<"agency" | "chatter" | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -810,7 +1070,27 @@ export default function DashboardPage() {
     });
   }, [supabase]);
 
+  // Platform admins (ADMIN_EMAILS) go straight to /admin instead of a blank
+  // dashboard — unless they also run an agency (role "agency"), in which case
+  // they keep their own dashboard and reach /admin via the sidebar link.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/admin/whoami")
+      .then((r) => {
+        if (!cancelled && r.ok) setIsAdmin(true);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isAdmin && role !== null && role !== "agency") router.replace("/admin");
+  }, [isAdmin, role, router]);
+
   if (role === null) return null;
+  if (isAdmin && role !== "agency") return null; // redirecting to /admin
 
   if (role === "agency") return <AgencyDashboard />;
 

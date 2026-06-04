@@ -5,6 +5,7 @@ import {
   subscribeActivityEvents,
   clearActivitySubscription,
 } from "@/lib/telegram-activity";
+import { createAdminSupabaseClient } from "@/lib/supabase-server";
 
 type Entry = {
   client: TelegramClient;
@@ -16,6 +17,7 @@ declare global {
   var __ppvs_tg_pool__: Map<string, Entry> | undefined;
   var __ppvs_tg_connect_locks__: Map<string, Promise<TelegramClient>> | undefined;
   var __ppvs_tg_cleanup__: ReturnType<typeof setInterval> | undefined;
+  var __ppvs_tg_expired_marked__: Set<string> | undefined;
 }
 
 const pool: Map<string, Entry> =
@@ -77,6 +79,48 @@ function runWithTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T>
 
 const DEAD_CONNECTION_RE =
   /AUTH_KEY|CONNECTION_NOT_INITED|disconnect|TIMEOUT|ECONNRESET|Not connected|fetch failed/i;
+
+// Fatal, non-recoverable session errors. These mean the stored
+// session_string is dead — the model must re-authenticate (we can't
+// silently re-login without a fresh login code). We flag the DB so the
+// UI can prompt "Reconnect" and stop hammering a dead session.
+const EXPIRED_SESSION_RE =
+  /AUTH_KEY_UNREGISTERED|AUTH_KEY_INVALID|AUTH_KEY_DUPLICATED|SESSION_REVOKED|SESSION_EXPIRED|USER_DEACTIVATED/i;
+
+// Avoid spamming the DB with the same update on every failing poll.
+const expiredMarked: Set<string> =
+  globalThis.__ppvs_tg_expired_marked__ ?? new Set<string>();
+globalThis.__ppvs_tg_expired_marked__ = expiredMarked;
+
+async function markSessionExpired(modelId: string) {
+  if (expiredMarked.has(modelId)) return;
+  expiredMarked.add(modelId);
+  try {
+    const admin = createAdminSupabaseClient();
+    await admin.from("models").update({ session_status: "expired" }).eq("id", modelId);
+    console.warn(`[telegram-pool] model ${modelId} session expired — flagged for reconnect`);
+  } catch (e) {
+    // Non-fatal — clear the guard so a later attempt can retry the flag.
+    expiredMarked.delete(modelId);
+    console.error(
+      "[telegram-pool] failed to flag expired session:",
+      e instanceof Error ? e.message : e,
+    );
+  }
+}
+
+/** Inspect an error; if it's a fatal session error, flag the model. */
+function noteSessionError(modelId: string, msg: string) {
+  if (EXPIRED_SESSION_RE.test(msg)) void markSessionExpired(modelId);
+}
+
+/**
+ * Clear the in-memory "already flagged expired" guard. Call after a
+ * successful re-auth (verify-code) so a future expiry re-flags.
+ */
+export function clearExpiredFlag(modelId: string) {
+  expiredMarked.delete(modelId);
+}
 
 function evictBroken(modelId: string, entry: Entry) {
   pool.delete(modelId);
@@ -147,7 +191,14 @@ export async function withTelegramClient<T>(
   fn: (client: TelegramClient) => Promise<T>,
   timeoutMs: number = DEFAULT_OPERATION_TIMEOUT_MS,
 ): Promise<T> {
-  const client = await connectOrGetClient(modelId, sessionString, apiId, apiHash);
+  let client: TelegramClient;
+  try {
+    client = await connectOrGetClient(modelId, sessionString, apiId, apiHash);
+  } catch (e) {
+    // Connect itself can fail with a dead-session error.
+    noteSessionError(modelId, e instanceof Error ? e.message : String(e));
+    throw e;
+  }
 
   try {
     const result = await runWithTimeout(fn(client), timeoutMs, "operation");
@@ -156,6 +207,8 @@ export async function withTelegramClient<T>(
     return result;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    // Flag a dead session for reconnect (DB), independent of eviction.
+    noteSessionError(modelId, msg);
     if (DEAD_CONNECTION_RE.test(msg)) {
       const entry = pool.get(modelId);
       if (entry) evictBroken(modelId, entry);

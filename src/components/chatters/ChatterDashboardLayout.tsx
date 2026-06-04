@@ -5,10 +5,14 @@ import { useRouter } from "next/navigation";
 import { MessageSquare, LogOut, DollarSign, Mail, Check, X } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { Invitation, ChatterModel } from "./types";
+import { SettingsTab } from "@/components/settings/SettingsTab";
 
-type ChatterTab = "dashboard";
+type ChatterTab = "dashboard" | "settings";
 
-const menuItems = [{ id: "dashboard" as ChatterTab, label: "Dashboard", emoji: "📊" }];
+const menuItems = [
+  { id: "dashboard" as ChatterTab, label: "Dashboard", emoji: "📊" },
+  { id: "settings" as ChatterTab, label: "Settings", emoji: "⚙️" },
+];
 
 function ChatterSidebar({
   activeTab,
@@ -343,7 +347,7 @@ export function ChatterDashboardLayout() {
   return (
     <div className="h-screen w-screen flex bg-[#0d1117] text-white overflow-hidden" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif' }}>
       <ChatterSidebar activeTab={activeTab} onTabChange={setActiveTab} />
-      <ChatterDashboardTab />
+      {activeTab === "dashboard" ? <ChatterDashboardTab /> : <SettingsTab role="chatter" />}
     </div>
   );
 }

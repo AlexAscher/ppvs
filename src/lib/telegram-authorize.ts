@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { createSupabaseServerClient, createAdminSupabaseClient } from "@/lib/supabase-server";
+import { decryptIfNeeded } from "@/lib/crypto";
 
 export type ModelRow = {
   session_string: string;
@@ -113,16 +114,44 @@ async function getModelRow(modelId: string): Promise<ModelRow | null> {
   const cached = modelCache.get(modelId);
   if (cached && Date.now() - cached.ts < MODEL_TTL_MS) return cached.model;
 
-  const admin = createAdminSupabaseClient();
-  const { data, error } = await admin
-    .from("models")
-    .select("session_string, api_id, api_hash, agency_user_id")
-    .eq("id", modelId)
-    .single();
-  if (error || !data) return null;
-  const row = data as ModelRow;
-  modelCache.set(modelId, { model: row, ts: Date.now() });
-  return row;
+  try {
+    const admin = createAdminSupabaseClient();
+    const { data, error } = await runWithTimeout(
+      Promise.resolve(
+        admin
+          .from("models")
+          .select("session_string, api_id, api_hash, agency_user_id")
+          .eq("id", modelId)
+          .single(),
+      ),
+      AUTH_TIMEOUT_MS,
+      "getModelRow",
+    );
+    if (error || !data) {
+      // On a transient DB hiccup, keep serving a recent cached row rather
+      // than 404-ing the whole request.
+      if (cached && Date.now() - cached.ts < 5 * 60_000) return cached.model;
+      return null;
+    }
+    const raw = data as ModelRow;
+    // Decrypt sensitive fields. Legacy plaintext rows pass through unchanged
+    // (decryptIfNeeded only acts on rows with the "v1:" prefix), so this
+    // works during the rolling migration without a one-off backfill.
+    const sess = decryptIfNeeded(raw.session_string);
+    const hash = decryptIfNeeded(raw.api_hash);
+    if (!sess || !hash) {
+      console.error(`[authorize] could not decrypt model ${modelId} secrets`);
+      if (cached && Date.now() - cached.ts < 5 * 60_000) return cached.model;
+      return null;
+    }
+    const row: ModelRow = { ...raw, session_string: sess, api_hash: hash };
+    modelCache.set(modelId, { model: row, ts: Date.now() });
+    return row;
+  } catch (e) {
+    console.error("[authorize] getModelRow failed:", e instanceof Error ? e.message : e);
+    if (cached && Date.now() - cached.ts < 5 * 60_000) return cached.model;
+    return null;
+  }
 }
 
 async function checkChatterAccess(
@@ -134,15 +163,29 @@ async function checkChatterAccess(
   const cached = accessCache.get(key);
   if (cached && Date.now() - cached.ts < ACCESS_TTL_MS) return true;
 
-  const admin = createAdminSupabaseClient();
-  const { data: link } = await admin
-    .from("agency_chatters")
-    .select("model_id, agency_id")
-    .eq("chatter_id", chatterId)
-    .maybeSingle();
-  const ok = !!link && link.model_id === modelId && link.agency_id === agencyId;
-  if (ok) accessCache.set(key, { ts: Date.now() });
-  return ok;
+  try {
+    const admin = createAdminSupabaseClient();
+    const { data: link } = await runWithTimeout(
+      Promise.resolve(
+        admin
+          .from("agency_chatters")
+          .select("model_id, agency_id")
+          .eq("chatter_id", chatterId)
+          .maybeSingle(),
+      ),
+      AUTH_TIMEOUT_MS,
+      "checkChatterAccess",
+    );
+    const ok = !!link && link.model_id === modelId && link.agency_id === agencyId;
+    if (ok) accessCache.set(key, { ts: Date.now() });
+    return ok;
+  } catch (e) {
+    console.error("[authorize] checkChatterAccess failed:", e instanceof Error ? e.message : e);
+    // Fall back to a recent cached grant so a DB blip doesn't lock the
+    // chatter out mid-session.
+    if (cached && Date.now() - cached.ts < 5 * 60_000) return true;
+    return false;
+  }
 }
 
 export async function authorizeModelAccess(modelId: string): Promise<AuthResult> {

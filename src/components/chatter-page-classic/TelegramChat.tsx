@@ -1,8 +1,9 @@
 "use client";
 
-import { Send, Search, Smile, Play, FileText, X } from "lucide-react";
+import { Send, Search, Smile, Play, FileText, X, Zap, Check, Reply, ChevronLeft } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { EmojiPicker } from "../chatter-page/EmojiPicker";
+import { MessageContextMenu } from "../chatter-page/MessageContextMenu";
 import { twemoji } from "@/lib/twemoji";
 
 /**
@@ -38,6 +39,15 @@ export type MessageMediaInfo =
       durationSec: number | null;
     }
   | {
+      type: "sticker";
+      thumbDataUrl: string | null;
+      fullUrl: string;
+      width: number | null;
+      height: number | null;
+      mimeType: string | null;
+      isAnimated: boolean;
+    }
+  | {
       type: "document";
       thumbDataUrl: string | null;
       fullUrl: string;
@@ -52,6 +62,17 @@ export interface Message {
   time: string;
   isChatter: boolean;
   media?: MessageMediaInfo | null;
+  // Inline reply preview rendered above the message body. `targetText`
+  // is the looked-up snippet of the original; `quoteText` is the
+  // selected snippet (newer protocol). `isToChatter` flips the accent
+  // colour so replies to your own messages look distinct from replies
+  // to the fan.
+  replyPreview?: {
+    targetMsgId: number;
+    targetText: string;
+    quoteText: string | null;
+    isToChatter: boolean;
+  } | null;
 }
 
 export interface ChatListItem {
@@ -77,7 +98,40 @@ interface TelegramChatProps {
   search: string;
   onSearch: (v: string) => void;
   sending: boolean;
+  fanTags: string[];
+  onToggleTag: (tag: string) => void;
+  onOpenQuickReply: () => void;
+  onOpenFanProfile: () => void;
+  replyingTo: ReplyContext | null;
+  editing: EditContext | null;
+  onCancelReply: () => void;
+  onCancelEdit: () => void;
+  onReplyToMessage: (id: number, text: string, isChatter: boolean) => void;
+  onReplyWithQuote: (
+    id: number,
+    text: string,
+    isChatter: boolean,
+    selection: string,
+  ) => void;
+  onStartEdit: (id: number, currentText: string) => void;
+  onDeleteMessage: (id: number) => void;
+  mobileView: "list" | "chat" | "actions";
+  onMobileBack: () => void;
 }
+
+export type ReplyContext = {
+  id: number;
+  text: string;
+  isChatter: boolean;
+  quote: string | null;
+};
+export type EditContext = { id: number; originalText: string };
+
+// Fixed emoji set for per-fan classification. Order is intentional —
+// chatters use these as quick visual flags (red = unresponsive, dollar
+// signs = paying tier, crown = VIP). Adding new tags here requires no
+// schema change since fans.tags is text[].
+const FAN_TAGS = ["🔴", "💵", "💰", "⭐", "👑"] as const;
 
 function formatDuration(s: number | null): string {
   if (!s || s <= 0) return "";
@@ -100,6 +154,57 @@ function MediaBubble({
   // the full original.
   const [hqLoaded, setHqLoaded] = useState(false);
 
+  if (media.type === "sticker") {
+    const size = 128;
+    const isVideoSticker =
+      media.isAnimated && (media.mimeType ?? "").startsWith("video/");
+    // WebM video stickers: autoplay/loop/muted so they animate inline.
+    if (isVideoSticker) {
+      return (
+        <video
+          src={media.fullUrl}
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="object-contain"
+          style={{ width: size, height: size }}
+          poster={media.thumbDataUrl ?? undefined}
+        />
+      );
+    }
+    // TGS (Lottie) animated stickers: no browser-native renderer, show the
+    // static stripped thumb. Static WebP stickers: show the full image.
+    if (media.isAnimated) {
+      return (
+        <div className="relative" style={{ width: size, height: size }}>
+          {media.thumbDataUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={media.thumbDataUrl}
+              alt=""
+              className="w-full h-full object-contain"
+              draggable={false}
+            />
+          ) : (
+            <div className="w-full h-full bg-[#1f2937] rounded-lg flex items-center justify-center text-[10px] text-[#6b7280]">
+              sticker
+            </div>
+          )}
+        </div>
+      );
+    }
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={media.fullUrl}
+        alt=""
+        className="object-contain"
+        style={{ width: size, height: size }}
+        draggable={false}
+      />
+    );
+  }
   if (media.type === "photo" || media.type === "video") {
     const aspect = media.width && media.height ? media.width / media.height : 1;
     const w = 240;
@@ -177,6 +282,52 @@ function MediaBubble({
   );
 }
 
+/**
+ * Reply / quote card rendered above a message body. Shows a coloured
+ * left bar (accent depends on who the reply targets), a small label
+ * with sender, and the snippet. If `quoteText` is present (newer
+ * Telegram protocol) we surface it instead of the full original.
+ */
+function ReplyPreviewCard({
+  preview,
+  isChatter,
+}: {
+  preview: NonNullable<Message["replyPreview"]>;
+  isChatter: boolean;
+}) {
+  const senderLabel = preview.isToChatter ? "You" : "Fan";
+  const accent = isChatter
+    ? "bg-white/80" // inside the gradient bubble — light bar on indigo
+    : "bg-[#6366f1]";
+  const labelColor = isChatter ? "text-white" : "text-[#a5a8ff]";
+  const bg = isChatter ? "bg-black/15" : "bg-[#111827]/60";
+  const body = preview.quoteText ?? preview.targetText;
+  const truncated =
+    body && body.length > 120 ? `${body.slice(0, 120).trim()}…` : body || "Message";
+  return (
+    <div
+      className={`flex items-stretch gap-2 mb-1.5 px-2.5 py-1.5 rounded-md ${bg}`}
+    >
+      <div className={`w-[3px] rounded ${accent}`} />
+      <div className="min-w-0 flex-1">
+        <div
+          className={`text-[10px] font-semibold uppercase tracking-wide ${labelColor} flex items-center gap-1`}
+        >
+          {preview.quoteText ? "Quoted from " : "Replying to "}
+          {senderLabel}
+        </div>
+        <div
+          className={`text-[11px] truncate ${
+            isChatter ? "text-white/90" : "text-[#d1d5db]"
+          }`}
+        >
+          {truncated}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Lightbox({ media, onClose }: { media: MessageMediaInfo; onClose: () => void }) {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -205,7 +356,7 @@ function Lightbox({ media, onClose }: { media: MessageMediaInfo; onClose: () => 
       >
         {media.type === "video" ? (
           <video src={media.fullUrl} controls autoPlay className="max-w-[92vw] max-h-[92vh] rounded-md" />
-        ) : media.type === "photo" ? (
+        ) : media.type === "photo" || media.type === "sticker" ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={media.fullUrl} alt="" className="max-w-[92vw] max-h-[92vh] object-contain rounded-md" />
         ) : (
@@ -237,12 +388,42 @@ export function TelegramChat({
   search,
   onSearch,
   sending,
+  fanTags,
+  onToggleTag,
+  onOpenQuickReply,
+  onOpenFanProfile,
+  replyingTo,
+  editing,
+  onCancelReply,
+  onCancelEdit,
+  onReplyToMessage,
+  onReplyWithQuote,
+  onStartEdit,
+  onDeleteMessage,
+  mobileView,
+  onMobileBack,
 }: TelegramChatProps) {
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const atBottomRef = useRef(true);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [showEmoji, setShowEmoji] = useState(false);
   const [openMedia, setOpenMedia] = useState<MessageMediaInfo | null>(null);
+
+  // Right-click context menu local state. `selection` is captured at the
+  // moment of right-click via window.getSelection() so the menu can
+  // conditionally show "Reply with Quote".
+  const [menu, setMenu] = useState<{
+    x: number;
+    y: number;
+    msg: Message;
+    selection: string;
+  } | null>(null);
+
+  function handleMessageContextMenu(e: React.MouseEvent, msg: Message) {
+    e.preventDefault();
+    const sel = window.getSelection()?.toString() ?? "";
+    setMenu({ x: e.clientX, y: e.clientY, msg, selection: sel });
+  }
 
   useEffect(() => {
     const el = messagesRef.current;
@@ -282,9 +463,18 @@ export function TelegramChat({
   }
 
   return (
-    <div className="flex-1 bg-[#0d1117] flex">
-      {/* Chat List Sidebar — w-[280px] from design */}
-      <div className="w-[280px] bg-[#161a22] border-r border-[#2a2d35] flex flex-col">
+    <div
+      className={`flex-1 bg-[#0d1117] ${
+        mobileView === "actions" ? "hidden md:flex" : "flex"
+      }`}
+    >
+      {/* Chat List Sidebar — w-[280px] from design. Full-width on mobile,
+          hidden unless the list view is active. */}
+      <div
+        className={`${
+          mobileView === "list" ? "flex" : "hidden"
+        } md:flex w-full md:w-[280px] bg-[#161a22] border-r border-[#2a2d35] flex-col`}
+      >
         <div className="p-3 border-b border-[#2a2d35]">
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#6b7280]" />
@@ -293,7 +483,7 @@ export function TelegramChat({
               value={search}
               onChange={(e) => onSearch(e.target.value)}
               placeholder="Search chats..."
-              className="w-full pl-9 pr-3 py-2 bg-[#1f2937] border border-[#374151] rounded-lg text-[12px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1]"
+              className="w-full pl-9 pr-3 py-2 bg-[#1f2937] border border-[#374151] rounded-lg text-[10px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1]"
             />
           </div>
         </div>
@@ -331,15 +521,34 @@ export function TelegramChat({
         </div>
       </div>
 
-      {/* Chat Area */}
-      <div className="flex-1 flex flex-col">
+      {/* Chat Area — full-width on mobile, shown only in chat view */}
+      <div
+        className={`${
+          mobileView === "chat" ? "flex" : "hidden"
+        } md:flex flex-1 flex-col`}
+      >
         {/* Chat Header — h-[56px] from design */}
-        <div className="h-[56px] bg-[#161a22] border-b border-[#2a2d35] px-5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="h-[56px] bg-[#161a22] border-b border-[#2a2d35] px-3 md:px-5 flex items-center justify-between">
+          {/* Mobile back-to-list button */}
+          <button
+            type="button"
+            onClick={onMobileBack}
+            aria-label="Back to chats"
+            className="md:hidden w-9 h-9 mr-1 flex items-center justify-center rounded-lg hover:bg-[#1f2937] text-white flex-shrink-0"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => selected && onOpenFanProfile()}
+            disabled={!selected}
+            className="flex items-center gap-3 hover:opacity-80 transition-opacity disabled:cursor-not-allowed"
+            title={selected ? "Open fan profile" : ""}
+          >
             <div className="w-10 h-10 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-full flex items-center justify-center text-white font-semibold">
               {selected?.avatar ?? ""}
             </div>
-            <div>
+            <div className="text-left">
               <div className="text-[14px] font-semibold text-white">
                 {selected ? `@${selected.username}` : ""}
               </div>
@@ -353,8 +562,30 @@ export function TelegramChat({
                 {selected?.status ?? ""}
               </div>
             </div>
-          </div>
+          </button>
           <div className="flex items-center gap-2">
+            {/* Per-fan emoji tags. Active tag = colored ring; click toggles. */}
+            <div className="flex items-center gap-1">
+              {FAN_TAGS.map((t) => {
+                const active = fanTags.includes(t);
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => selected && onToggleTag(t)}
+                    disabled={!selected}
+                    title={active ? "Remove tag" : "Add tag"}
+                    className={`w-7 h-7 flex items-center justify-center rounded-md text-[15px] leading-none transition-all ${
+                      active
+                        ? "bg-[#6366f1]/20 ring-1 ring-[#6366f1]"
+                        : "bg-[#1f2937]/50 hover:bg-[#1f2937] opacity-50 hover:opacity-100"
+                    } disabled:cursor-not-allowed`}
+                  >
+                    {t}
+                  </button>
+                );
+              })}
+            </div>
             <div className="px-3 py-1.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[11px] text-[#9ca3af]">
               Total spent: <span className="text-[#6366f1] font-bold">{totalSpent}</span>
             </div>
@@ -367,33 +598,52 @@ export function TelegramChat({
             <div
               key={message.id}
               className={`flex ${message.isChatter ? "justify-end" : "justify-start"}`}
+              onContextMenu={(e) => handleMessageContextMenu(e, message)}
             >
               <div
                 className={`max-w-[65%] ${message.isChatter ? "items-end" : "items-start"} flex flex-col gap-1`}
               >
                 {message.media ? (
-                  <div
-                    className={`p-1 rounded-2xl ${
-                      message.isChatter
-                        ? "bg-gradient-to-br from-[#6366f1] to-[#5558e3] rounded-br-sm"
-                        : "bg-[#1f2937] rounded-bl-sm"
-                    }`}
-                  >
+                  message.media.type === "sticker" ? (
+                    // Stickers: render bare, no chat-bubble background, no
+                    // text below — Telegram convention.
                     <MediaBubble
                       media={message.media}
                       isChatter={message.isChatter}
-                      onOpen={() => setOpenMedia(message.media!)}
+                      onOpen={() => message.media && setOpenMedia(message.media)}
                     />
-                    {message.text && message.text !== "—" ? (
-                      <div
-                        className={`text-[13px] leading-relaxed whitespace-pre-wrap break-words px-3 pt-2 pb-1 ${
-                          message.isChatter ? "text-white" : "text-[#e5e7eb]"
-                        }`}
-                      >
-                        {twemoji(message.text, `m-${message.id}`)}
-                      </div>
-                    ) : null}
-                  </div>
+                  ) : (
+                    <div
+                      className={`p-1 rounded-2xl ${
+                        message.isChatter
+                          ? "bg-gradient-to-br from-[#6366f1] to-[#5558e3] rounded-br-sm"
+                          : "bg-[#1f2937] rounded-bl-sm"
+                      }`}
+                    >
+                      {message.replyPreview && (
+                        <div className="px-1 pt-1">
+                          <ReplyPreviewCard
+                            preview={message.replyPreview}
+                            isChatter={message.isChatter}
+                          />
+                        </div>
+                      )}
+                      <MediaBubble
+                        media={message.media}
+                        isChatter={message.isChatter}
+                        onOpen={() => message.media && setOpenMedia(message.media)}
+                      />
+                      {message.text && message.text !== "—" ? (
+                        <div
+                          className={`text-[13px] leading-relaxed whitespace-pre-wrap break-words px-3 pt-2 pb-1 ${
+                            message.isChatter ? "text-white" : "text-[#e5e7eb]"
+                          }`}
+                        >
+                          {twemoji(message.text, `m-${message.id}`)}
+                        </div>
+                      ) : null}
+                    </div>
+                  )
                 ) : (
                   <div
                     className={`px-4 py-2.5 rounded-2xl ${
@@ -402,6 +652,12 @@ export function TelegramChat({
                         : "bg-[#1f2937] text-[#e5e7eb] rounded-bl-sm"
                     }`}
                   >
+                    {message.replyPreview && (
+                      <ReplyPreviewCard
+                        preview={message.replyPreview}
+                        isChatter={message.isChatter}
+                      />
+                    )}
                     <div className="text-[13px] leading-relaxed whitespace-pre-wrap break-words">
                       {twemoji(message.text, `m-${message.id}`)}
                     </div>
@@ -416,6 +672,50 @@ export function TelegramChat({
             </div>
           ))}
         </div>
+
+        {/* Reply / Edit indicator bar — sits directly above the input. */}
+        {(replyingTo || editing) && (
+          <div className="px-5 py-2 bg-[#1f2937]/60 border-t border-[#2a2d35] flex items-start gap-2">
+            <div
+              className={`w-1 self-stretch rounded ${
+                editing ? "bg-amber-400" : "bg-[#6366f1]"
+              }`}
+            />
+            <div className="flex-1 min-w-0">
+              <div className="text-[10px] uppercase tracking-wide font-semibold mb-0.5 flex items-center gap-1">
+                {editing ? (
+                  <>
+                    <Check className="w-3 h-3 text-amber-400" />
+                    <span className="text-amber-400">Editing message</span>
+                  </>
+                ) : (
+                  <>
+                    <Reply className="w-3 h-3 text-[#6366f1]" />
+                    <span className="text-[#6366f1]">
+                      {replyingTo!.quote ? "Replying with quote" : "Replying"} to{" "}
+                      {replyingTo!.isChatter ? "yourself" : "fan"}
+                    </span>
+                  </>
+                )}
+              </div>
+              <div className="text-[11px] text-[#9ca3af] truncate">
+                {editing
+                  ? editing.originalText
+                  : replyingTo!.quote
+                    ? `«${replyingTo!.quote}»`
+                    : replyingTo!.text || "—"}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => (editing ? onCancelEdit() : onCancelReply())}
+              aria-label="Cancel"
+              className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-[#374151] text-[#9ca3af] hover:text-white"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         {/* Input Area — h-[64px] from design */}
         <div className="h-[64px] bg-[#161a22] border-t border-[#2a2d35] px-5 flex items-center gap-3 relative">
@@ -433,6 +733,15 @@ export function TelegramChat({
             placeholder="Type a message..."
             className="flex-1 px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1]"
           />
+          <button
+            type="button"
+            onClick={onOpenQuickReply}
+            className="w-10 h-10 flex items-center justify-center rounded-lg bg-[#1f2937] text-[#9ca3af] hover:text-white hover:bg-[#374151] transition-colors"
+            aria-label="Quick replies"
+            title="Quick replies"
+          >
+            <Zap className="w-5 h-5" />
+          </button>
           <div className="relative">
             <button
               type="button"
@@ -455,15 +764,61 @@ export function TelegramChat({
           <button
             onClick={onSend}
             disabled={sending || !inputText.trim() || !selected}
-            className="px-5 py-2.5 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white rounded-lg font-semibold text-[13px] hover:from-[#5558e3] hover:to-[#4338ca] transition-all shadow-lg shadow-[#6366f1]/20 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            className={`px-5 py-2.5 text-white rounded-lg font-semibold text-[13px] transition-all shadow-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${
+              editing
+                ? "bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 shadow-amber-500/20"
+                : "bg-gradient-to-r from-[#6366f1] to-[#4f46e5] hover:from-[#5558e3] hover:to-[#4338ca] shadow-[#6366f1]/20"
+            }`}
           >
-            <Send className="w-4 h-4" />
-            Send
+            {editing ? (
+              <>
+                <Check className="w-4 h-4" />
+                Save
+              </>
+            ) : (
+              <>
+                <Send className="w-4 h-4" />
+                Send
+              </>
+            )}
           </button>
         </div>
       </div>
 
       {openMedia && <Lightbox media={openMedia} onClose={() => setOpenMedia(null)} />}
+
+      {menu && selected && (
+        <MessageContextMenu
+          open
+          x={menu.x}
+          y={menu.y}
+          canEdit={menu.msg.isChatter && !menu.msg.media && !!menu.msg.text && menu.msg.text !== "—"}
+          canDelete={true}
+          selection={menu.selection}
+          onClose={() => setMenu(null)}
+          onReply={() => {
+            onReplyToMessage(Number(menu.msg.id), menu.msg.text, menu.msg.isChatter);
+            setMenu(null);
+          }}
+          onReplyWithQuote={() => {
+            onReplyWithQuote(
+              Number(menu.msg.id),
+              menu.msg.text,
+              menu.msg.isChatter,
+              menu.selection,
+            );
+            setMenu(null);
+          }}
+          onEdit={() => {
+            onStartEdit(Number(menu.msg.id), menu.msg.text);
+            setMenu(null);
+          }}
+          onDelete={() => {
+            onDeleteMessage(Number(menu.msg.id));
+            setMenu(null);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -1,7 +1,18 @@
 "use client";
 
-import { Check, Folder, ChevronLeft } from "lucide-react";
+import { Check, Folder, ChevronLeft, Trash2, Plus } from "lucide-react";
 import { useState } from "react";
+import type { FanNote } from "@/lib/fan-types";
+
+function formatNoteDate(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 export interface PpvTag {
   id: string;
@@ -27,6 +38,21 @@ export interface PpvGroup {
 
 type Tab = "ppv" | "tips" | "notes" | "stats";
 
+export type StatsView = {
+  todayNet: number;
+  allTimeNet: number;
+  todaySales: number;
+  allTimeSales: number;
+  unlocks: number;
+  todayMessages: number;
+  allTimeMessages: number;
+};
+
+function fmtDollars(n: number): string {
+  if (!Number.isFinite(n)) return "$0";
+  return n >= 1000 ? `$${(n / 1000).toFixed(1)}k` : `$${Math.round(n)}`;
+}
+
 interface ActionPanelProps {
   activeTab: Tab;
   onTabChange: (t: Tab) => void;
@@ -51,6 +77,11 @@ interface ActionPanelProps {
   notes: string;
   onNotesChange: (v: string) => void;
   hasRecipient: boolean;
+  onAddNote: () => void;
+  notesSaving: boolean;
+  notesList: FanNote[];
+  onDeleteNote: (id: string) => void;
+  stats: StatsView | null;
 }
 
 export function ActionPanel({
@@ -77,6 +108,11 @@ export function ActionPanel({
   notes,
   onNotesChange,
   hasRecipient,
+  onAddNote,
+  notesSaving,
+  notesList,
+  onDeleteNote,
+  stats,
 }: ActionPanelProps) {
   // Navigation: null = root (folders + orphan files), or a specific group id.
   // We only nav into one folder at a time — no nested folders in the schema.
@@ -103,14 +139,14 @@ export function ActionPanel({
   }
 
   return (
-    <div className="w-[30%] bg-[#161a22] flex flex-col">
+    <div className="w-full md:w-[30%] bg-[#161a22] flex flex-col">
       {/* Tabs — medium (pre-shrink) */}
       <div className="h-[34px] border-b border-[#2a2d35] flex">
         {(["ppv", "tips", "notes", "stats"] as Tab[]).map((tab) => (
           <button
             key={tab}
             onClick={() => onTabChange(tab)}
-            className={`flex-1 text-[9px] font-semibold uppercase tracking-wider border-b-2 transition-all ${
+            className={`flex-1 text-[8px] font-semibold uppercase tracking-wider border-b-2 transition-all ${
               activeTab === tab
                 ? "text-[#6366f1] border-[#6366f1] bg-[#1a1d24]"
                 : "text-[#6b7280] border-transparent hover:text-[#9ca3af] hover:bg-[#1a1d24]/50"
@@ -186,10 +222,10 @@ export function ActionPanel({
                       className="relative aspect-square rounded-md border-2 border-[#2a2d35] hover:border-[#6366f1]/50 transition-all overflow-hidden bg-gradient-to-br from-[#1f2937] to-[#111827] flex flex-col items-center justify-center group"
                     >
                       <Folder className="w-8 h-8 text-[#6366f1] group-hover:scale-110 transition-transform" />
-                      <div className="text-[9px] text-white font-medium mt-2 truncate max-w-full px-2">
+                      <div className="text-[12px] text-white font-medium mt-2 truncate max-w-full px-2">
                         {group.name}
                       </div>
-                      <div className="text-[8px] text-[#6b7280] mt-0.5">
+                      <div className="text-[11px] text-[#6b7280] mt-0.5">
                         {count} {count === 1 ? "item" : "items"}
                       </div>
                     </button>
@@ -201,7 +237,7 @@ export function ActionPanel({
                 <button
                   key={item.id}
                   onClick={() => onToggleItem(item.id)}
-                  className={`relative aspect-square rounded-md border-2 transition-all overflow-hidden group ${
+                  className={`relative aspect-square rounded-md border-2 transition-all overflow-hidden group bg-gradient-to-br from-[#1f2937] to-[#111827] ${
                     selectedItems.includes(item.id)
                       ? "border-[#6366f1] ring-2 ring-[#6366f1]/20"
                       : "border-[#2a2d35] hover:border-[#374151]"
@@ -213,23 +249,21 @@ export function ActionPanel({
                       src={item.media_url}
                       alt={item.name}
                       className="w-full h-full object-cover"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).style.display = "none";
+                      }}
                     />
-                  ) : (
-                    <div
-                      className="w-full h-full bg-gradient-to-br from-[#1f2937] to-[#111827]"
-                      style={{ filter: "blur(6px)" }}
-                    />
-                  )}
+                  ) : null}
                   {selectedItems.includes(item.id) && (
                     <div className="absolute -top-1 -right-1 w-5 h-5 bg-[#6366f1] rounded-full flex items-center justify-center shadow-lg">
                       <Check className="w-3 h-3 text-white" />
                     </div>
                   )}
                   <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-1.5">
-                    <div className="text-[8px] text-white truncate font-medium">
+                    <div className="text-[11px] text-white truncate font-medium">
                       {item.name}
                     </div>
-                    <div className="text-[9px] font-bold text-[#6366f1]">
+                    <div className="text-[12px] font-bold text-[#6366f1]">
                       ${item.price}
                     </div>
                   </div>
@@ -276,7 +310,7 @@ export function ActionPanel({
                       readOnly
                       className="w-16 px-2.5 py-1 bg-[#1f2937] border border-[#374151] rounded text-[11px] text-right text-white font-semibold focus:outline-none focus:border-[#6366f1]"
                     />
-                    <span className="text-[9px] text-[#6b7280]">
+                    <span className="text-[12px] text-[#6b7280]">
                       {selectedItems.length} items
                     </span>
                   </div>
@@ -306,7 +340,7 @@ export function ActionPanel({
                 <button
                   key={amount}
                   onClick={() => onTipAmountChange(amount.replace("$", ""))}
-                  className="py-2 bg-[#1f2937] border border-[#374151] rounded-md text-[11px] font-semibold text-white hover:bg-[#374151] hover:border-[#4b5563] transition-all"
+                  className="py-2 bg-[#1f2937] border border-[#374151] rounded-md text-[10px] font-semibold text-white hover:bg-[#374151] hover:border-[#4b5563] transition-all"
                 >
                   {amount}
                 </button>
@@ -317,7 +351,7 @@ export function ActionPanel({
                 <button
                   key={amount}
                   onClick={() => onTipAmountChange(amount.replace("$", ""))}
-                  className="py-2 bg-[#1f2937] border border-[#374151] rounded-md text-[11px] font-semibold text-white hover:bg-[#374151] hover:border-[#4b5563] transition-all"
+                  className="py-2 bg-[#1f2937] border border-[#374151] rounded-md text-[10px] font-semibold text-white hover:bg-[#374151] hover:border-[#4b5563] transition-all"
                 >
                   {amount}
                 </button>
@@ -330,19 +364,19 @@ export function ActionPanel({
                 onTipAmountChange(e.target.value.replace(/[^0-9.]/g, ""))
               }
               placeholder="Custom amount..."
-              className="w-full px-3 py-2 bg-[#1f2937] border border-[#374151] rounded-md text-[11px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1]"
+              className="w-full px-3 py-2 bg-[#1f2937] border border-[#374151] rounded-md text-[10px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1]"
             />
             <textarea
               value={tipMessage}
               onChange={(e) => onTipMessageChange(e.target.value)}
               placeholder="Optional message..."
-              className="w-full px-3 py-2 bg-[#1f2937] border border-[#374151] rounded-md text-[11px] text-white placeholder:text-[#6b7280] resize-none focus:outline-none focus:border-[#6366f1]"
+              className="w-full px-3 py-2 bg-[#1f2937] border border-[#374151] rounded-md text-[10px] text-white placeholder:text-[#6b7280] resize-none focus:outline-none focus:border-[#6366f1]"
               rows={2}
             />
             <button
               onClick={onSendTip}
               disabled={!hasRecipient || !tipAmount || sending}
-              className="w-full py-2.5 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white rounded-md font-semibold text-[12px] hover:from-[#5558e3] hover:to-[#4338ca] transition-all shadow-lg shadow-[#6366f1]/20 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full py-2.5 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white rounded-md font-semibold text-[11px] hover:from-[#5558e3] hover:to-[#4338ca] transition-all shadow-lg shadow-[#6366f1]/20 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {sending ? "Sending…" : `Request tip from ${recipientLabel}`}
             </button>
@@ -354,40 +388,94 @@ export function ActionPanel({
             <textarea
               value={notes}
               onChange={(e) => onNotesChange(e.target.value)}
-              placeholder="Notes about this fan..."
-              className="w-full h-[180px] px-3 py-2.5 bg-[#1f2937] border border-[#374151] rounded-md text-[11px] text-white placeholder:text-[#6b7280] resize-none focus:outline-none focus:border-[#6366f1]"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  onAddNote();
+                }
+              }}
+              placeholder={hasRecipient ? "Add a note about this fan…" : "Select a chat first"}
+              disabled={!hasRecipient}
+              className="w-full h-[80px] px-3 py-2.5 bg-[#1f2937] border border-[#374151] rounded-md text-[11px] text-white placeholder:text-[#6b7280] resize-none focus:outline-none focus:border-[#6366f1] disabled:opacity-50"
             />
-            <button className="px-4 py-2 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white rounded-md font-semibold text-[11px] hover:from-[#5558e3] hover:to-[#4338ca] transition-all shadow-lg shadow-[#6366f1]/20">
-              Save Notes
+            <button
+              onClick={onAddNote}
+              disabled={!hasRecipient || notesSaving || !notes.trim()}
+              className="w-full flex items-center justify-center gap-1.5 px-4 py-2 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white rounded-md font-semibold text-[11px] hover:from-[#5558e3] hover:to-[#4338ca] transition-all shadow-lg shadow-[#6366f1]/20 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              {notesSaving ? "Adding…" : "Add note"}
             </button>
+
+            <div className="space-y-2 pt-1">
+              {notesList.length === 0 ? (
+                <div className="text-center py-5 text-[10px] text-[#6b7280]">
+                  {hasRecipient ? "No notes yet." : "Select a chat to see notes."}
+                </div>
+              ) : (
+                notesList.map((n) => (
+                  <div
+                    key={n.id}
+                    className="group p-2.5 bg-[#1f2937]/40 border border-[#2a2d35] rounded-md"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="text-[11px] text-[#e5e7eb] whitespace-pre-wrap break-words min-w-0">
+                        {n.body}
+                      </div>
+                      <button
+                        onClick={() => onDeleteNote(n.id)}
+                        aria-label="Delete note"
+                        className="w-6 h-6 flex items-center justify-center rounded-md text-[#6b7280] hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                    <div className="text-[9px] text-[#6b7280] mt-1">
+                      {n.author_name ? `${n.author_name} · ` : ""}
+                      {formatNoteDate(n.created_at)}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         )}
 
         {activeTab === "stats" && (
           <div className="space-y-1">
-            {[
-              { label: "Today net", value: "$0" },
-              { label: "All time net", value: "$0" },
-              { label: "Messages today", value: "0" },
-              { label: "Messages all time", value: "0" },
-              { label: "Total sales", value: "$0" },
-              { label: "My sales this month", value: "$0" },
-              { label: "Unlocks", value: "0" },
-              { label: "Tips generated", value: "$0" },
-            ].map((stat, i) => (
+            {(stats
+              ? [
+                  { label: "Today net", value: fmtDollars(stats.todayNet) },
+                  { label: "All time net", value: fmtDollars(stats.allTimeNet) },
+                  { label: "Sales today", value: String(stats.todaySales) },
+                  { label: "Sales all time", value: String(stats.allTimeSales) },
+                  { label: "Unlocks", value: String(stats.unlocks) },
+                  { label: "Sends today", value: String(stats.todayMessages) },
+                  { label: "Sends all time", value: String(stats.allTimeMessages) },
+                ]
+              : [
+                  { label: "Today net", value: "…" },
+                  { label: "All time net", value: "…" },
+                  { label: "Sales today", value: "…" },
+                  { label: "Sales all time", value: "…" },
+                  { label: "Unlocks", value: "…" },
+                  { label: "Sends today", value: "…" },
+                  { label: "Sends all time", value: "…" },
+                ]
+            ).map((stat, i) => (
               <div
                 key={i}
                 className="flex items-center justify-between py-2.5 px-2.5 bg-[#1f2937]/30 rounded-md border border-[#2a2d35] hover:bg-[#1f2937]/50 transition-colors"
               >
-                <span className="text-[11px] text-[#9ca3af] font-medium">
+                <span className="text-[14px] text-[#9ca3af] font-medium">
                   {stat.label}
                 </span>
-                <span className="text-[12px] font-bold text-white">
+                <span className="text-[15px] font-bold text-white">
                   {stat.value}
                 </span>
               </div>
             ))}
-            <div className="text-[9px] text-[#6b7280] pt-2 text-center">
+            <div className="text-[12px] text-[#6b7280] pt-2 text-center">
               Commission set by your agency.
             </div>
           </div>

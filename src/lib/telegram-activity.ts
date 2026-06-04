@@ -2,6 +2,7 @@ import { Api } from "telegram";
 import { NewMessage, NewMessageEvent } from "telegram/events";
 import { Raw } from "telegram/events/Raw";
 import type { TelegramClient } from "telegram";
+import { EventEmitter } from "node:events";
 
 /**
  * In-memory presence store for fans we're chatting with.
@@ -26,6 +27,7 @@ type Entry = {
 declare global {
   var __ppvs_activity__: Map<string, Entry> | undefined;
   var __ppvs_activity_subscribed__: Set<string> | undefined;
+  var __ppvs_activity_emitters__: Map<string, EventEmitter> | undefined;
 }
 
 const activity: Map<string, Entry> = globalThis.__ppvs_activity__ ?? new Map();
@@ -33,6 +35,42 @@ globalThis.__ppvs_activity__ = activity;
 
 const subscribed: Set<string> = globalThis.__ppvs_activity_subscribed__ ?? new Set();
 globalThis.__ppvs_activity_subscribed__ = subscribed;
+
+// Per-model EventEmitter — SSE consumers subscribe via `onStreamEvent` to
+// react to typing/new-message updates without polling.
+const emitters: Map<string, EventEmitter> =
+  globalThis.__ppvs_activity_emitters__ ?? new Map();
+globalThis.__ppvs_activity_emitters__ = emitters;
+
+function emitterFor(modelId: string): EventEmitter {
+  let em = emitters.get(modelId);
+  if (!em) {
+    em = new EventEmitter();
+    // Multiple browser tabs / multiple chatters per model — bump the
+    // default 10-listener cap so a busy agency doesn't warn-spam.
+    em.setMaxListeners(50);
+    emitters.set(modelId, em);
+  }
+  return em;
+}
+
+export type StreamEvent =
+  | { kind: "typing"; peerId: string; ts: number }
+  | { kind: "message"; peerId: string; ts: number };
+
+export function onStreamEvent(
+  modelId: string,
+  handler: (ev: StreamEvent) => void,
+): () => void {
+  const em = emitterFor(modelId);
+  em.on("event", handler);
+  return () => em.off("event", handler);
+}
+
+function emitEvent(modelId: string, ev: StreamEvent) {
+  const em = emitters.get(modelId);
+  if (em) em.emit("event", ev);
+}
 
 const TYPING_FRESH_MS = 6_000;    // typing events come every ~5s
 const ONLINE_FRESH_MS = 60_000;   // treat as online if any activity within 60s
@@ -48,6 +86,7 @@ function bump(modelId: string, peerId: string, kind: "typing" | "message") {
   cur.lastSeenTs = now;
   if (kind === "typing") cur.lastTypingTs = now;
   activity.set(k, cur);
+  emitEvent(modelId, { kind, peerId, ts: now });
 }
 
 export function readActivity(

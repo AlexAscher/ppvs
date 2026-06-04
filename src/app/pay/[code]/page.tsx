@@ -39,14 +39,15 @@ export default async function PayPage({ params }: { params: Promise<{ code: stri
     .eq("send_id", send.id)
     .order("ordinal", { ascending: true });
 
-  // For the locked preview we prefer `preview_url` (~50 KB pre-blurred jpeg)
-  // over `media_url` (full original, often multi-MB). The fan's browser
-  // loads it directly from Supabase CDN — no server hop.
+  // The locked page ships ONLY the pre-blurred `preview_url`. We deliberately
+  // never fall back to the original `media_url` — that would leak the
+  // unpaywalled file (the storage bucket is currently public, so a URL is the
+  // full asset). For items without a preview the client renders a lock tile.
   const items = ((itemsRaw ?? []) as unknown as ItemRowRaw[]).map((it) => {
     const ppv = Array.isArray(it.ppvs) ? it.ppvs[0] ?? null : it.ppvs;
     return {
       name: ppv?.name ?? "Item",
-      media_url: ppv?.preview_url ?? ppv?.media_url ?? null,
+      media_url: ppv?.preview_url ?? null,
     };
   });
 

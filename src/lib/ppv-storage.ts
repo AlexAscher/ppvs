@@ -77,6 +77,100 @@ function fittedSize(srcW: number, srcH: number, maxDim: number) {
   return { w: Math.max(1, Math.round(srcW * scale)), h: Math.max(1, Math.round(srcH * scale)) };
 }
 
+/**
+ * Capture a single frame from a video and return a blurred JPEG preview.
+ * Pure browser — loads the file into a <video>, seeks a little past the
+ * start (first frames are often black), draws it to a canvas with a blur
+ * filter, and exports a small JPEG. No FFmpeg / server transcode needed.
+ * Returns null if the browser can't decode the video or capture a frame.
+ */
+async function processVideoPreview(file: File): Promise<Blob | null> {
+  return new Promise<Blob | null>((resolve) => {
+    let settled = false;
+    const url = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = "auto";
+    video.src = url;
+
+    const finish = (blob: Blob | null) => {
+      if (settled) return;
+      settled = true;
+      URL.revokeObjectURL(url);
+      resolve(blob);
+    };
+
+    // Hard cap — some codecs never fire `seeked`; don't hang the upload.
+    const timeout = setTimeout(() => finish(null), 12_000);
+
+    video.addEventListener("loadeddata", () => {
+      // Seek ~10 % in (capped at 1s) to skip black intro frames.
+      const t = Math.min(1, (Number.isFinite(video.duration) ? video.duration : 2) * 0.1);
+      try {
+        video.currentTime = t;
+      } catch {
+        // some browsers need a tick
+        setTimeout(() => {
+          try {
+            video.currentTime = t;
+          } catch {
+            finish(null);
+          }
+        }, 100);
+      }
+    });
+
+    video.addEventListener("seeked", async () => {
+      try {
+        const vw = video.videoWidth;
+        const vh = video.videoHeight;
+        if (!vw || !vh) {
+          clearTimeout(timeout);
+          finish(null);
+          return;
+        }
+        const fit = fittedSize(vw, vh, PREVIEW_MAX_DIM);
+        const canvas =
+          typeof OffscreenCanvas !== "undefined"
+            ? new OffscreenCanvas(fit.w, fit.h)
+            : Object.assign(document.createElement("canvas"), { width: fit.w, height: fit.h });
+        const ctx = (canvas as OffscreenCanvas | HTMLCanvasElement).getContext("2d") as
+          | OffscreenCanvasRenderingContext2D
+          | CanvasRenderingContext2D
+          | null;
+        if (!ctx) {
+          clearTimeout(timeout);
+          finish(null);
+          return;
+        }
+        (ctx as CanvasRenderingContext2D).filter = `blur(${PREVIEW_BLUR_PX}px) brightness(${PREVIEW_BRIGHTNESS})`;
+        ctx.drawImage(video, 0, 0, fit.w, fit.h);
+        const blob =
+          "convertToBlob" in canvas
+            ? await canvas.convertToBlob({ type: "image/jpeg", quality: PREVIEW_QUALITY })
+            : await new Promise<Blob | null>((res) =>
+                (canvas as HTMLCanvasElement).toBlob(
+                  (b) => res(b),
+                  "image/jpeg",
+                  PREVIEW_QUALITY,
+                ),
+              );
+        clearTimeout(timeout);
+        finish(blob);
+      } catch {
+        clearTimeout(timeout);
+        finish(null);
+      }
+    });
+
+    video.addEventListener("error", () => {
+      clearTimeout(timeout);
+      finish(null);
+    });
+  });
+}
+
 async function processImage(
   file: File,
 ): Promise<{ original: Blob; preview: Blob | null }> {
@@ -117,6 +211,7 @@ export async function uploadPpvMedia(
   file: File,
 ): Promise<UploadResult> {
   const isImage = file.type.startsWith("image/");
+  const isVideo = file.type.startsWith("video/");
   const id = crypto.randomUUID();
 
   let originalBlob: Blob = file;
@@ -134,6 +229,15 @@ export async function uploadPpvMedia(
     } catch (e) {
       // Image processing failed entirely — fall through with the raw file.
       console.warn("[uploadPpvMedia] image processing failed, uploading original as-is:", e);
+    }
+  } else if (isVideo) {
+    // Keep the original video verbatim, but capture a blurred poster frame
+    // as the preview so the PPV teaser shows real (blurred) content instead
+    // of a generic lock tile.
+    try {
+      previewBlob = await processVideoPreview(file);
+    } catch (e) {
+      console.warn("[uploadPpvMedia] video preview capture failed:", e);
     }
   }
 

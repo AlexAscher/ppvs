@@ -365,11 +365,18 @@ function PpvCard({ ppv, onClick }: { ppv: PpvItem; onClick: () => void }) {
       onClick={onClick}
       className="group text-left bg-[#161a22] border border-[#2a2d35] rounded-lg overflow-hidden hover:border-[#6366f1]/50 transition-all"
     >
-      <div className="relative aspect-[4/3] bg-[#1f2937]">
-        {ppv.media_url ? (
-          <img src={ppv.media_url} alt={ppv.name} className="absolute inset-0 w-full h-full object-cover" />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center text-[40px]">🔒</div>
+      <div className="relative aspect-[4/3] bg-[#1f2937] flex items-center justify-center">
+        <span className="text-[40px] select-none">🔒</span>
+        {ppv.media_url && (
+          <img
+            src={ppv.media_url}
+            alt={ppv.name}
+            className="absolute inset-0 w-full h-full object-cover"
+            // Missing/deleted media → hide broken image, the 🔒 shows through.
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.display = "none";
+            }}
+          />
         )}
         <div className="absolute top-2 right-2 px-2 py-1 bg-black/70 backdrop-blur-sm rounded-md text-[12px] font-bold text-white">
           ${ppv.price.toFixed(2)}

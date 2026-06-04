@@ -3,8 +3,14 @@ import { after } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase-server";
 import { withTelegramClient } from "@/lib/telegram-pool";
 import { sendOriginalsAlbum } from "@/lib/ppv-delivery";
+import { withTimeout } from "@/lib/with-timeout";
+import { consume, getClientIp, tooManyRequests } from "@/lib/rate-limit";
 
 export const maxDuration = 300;
+
+// Cap each critical-path Supabase call so a flaky uplink can't pin the
+// fan's "unlock" for 70s. On timeout we 503 fast and the client retries.
+const DELIVER_QUERY_TIMEOUT_MS = 15_000;
 
 type DeliverBody = { code: string };
 
@@ -13,8 +19,10 @@ type SendRow = {
   model_id: string;
   peer_id: string;
   peer_access_hash: string | null;
+  peer_username: string | null;
   caption: string | null;
   status: string;
+  total_price: number;
 };
 
 type ModelRow = {
@@ -26,8 +34,8 @@ type ModelRow = {
 type ItemRowRaw = {
   ordinal: number;
   ppvs:
-    | { name: string; media_url: string | null }
-    | { name: string; media_url: string | null }[]
+    | { id: string; name: string; media_url: string | null; tg_file_id: string | null }
+    | { id: string; name: string; media_url: string | null; tg_file_id: string | null }[]
     | null;
 };
 
@@ -60,48 +68,133 @@ function isLikelyVideoUrl(url: string): boolean {
  */
 export async function POST(req: NextRequest) {
   try {
-    const { code } = (await req.json()) as DeliverBody;
-    if (!code) return Response.json({ error: "code required" }, { status: 400 });
+    // Rate-limit per IP — defense-in-depth against brute-forcing pay codes
+    // (12 chars / 33-char alphabet is unfeasible to enumerate, but cap it
+    // anyway). In-memory; for multi-instance prod swap for Upstash.
+    const ip = getClientIp(req);
+    if (!consume(`deliver|${ip}`, 20, 60_000)) return tooManyRequests(60);
+
+    const body = (await req.json().catch(() => null)) as DeliverBody | null;
+    const code = typeof body?.code === "string" ? body.code.trim() : "";
+    // 12-char codes from the new alphabet; accept up to 16 for backward
+    // compat with any older 8-char codes still in flight.
+    if (!code || code.length < 6 || code.length > 16 || !/^[a-z0-9]+$/.test(code)) {
+      return Response.json({ error: "Invalid code" }, { status: 400 });
+    }
 
     const admin = createAdminSupabaseClient();
 
-    const { data: sendRaw, error: sendErr } = await admin
-      .from("ppv_sends")
-      .select("id, model_id, peer_id, peer_access_hash, caption, status")
-      .eq("code", code)
-      .maybeSingle();
-    if (sendErr) return Response.json({ error: `DB: ${sendErr.message}` }, { status: 500 });
-    if (!sendRaw) return Response.json({ error: "Not found" }, { status: 404 });
-    const send = sendRaw as SendRow;
+    let sendRaw: SendRow | null;
+    let itemsRaw: unknown;
+    try {
+      const sendRes = await withTimeout(
+        Promise.resolve(
+          admin
+            .from("ppv_sends")
+            .select(
+              "id, model_id, peer_id, peer_access_hash, peer_username, caption, status, total_price",
+            )
+            .eq("code", code)
+            .maybeSingle(),
+        ),
+        DELIVER_QUERY_TIMEOUT_MS,
+        "deliver: load send",
+      );
+      if (sendRes.error) return Response.json({ error: `DB: ${sendRes.error.message}` }, { status: 500 });
+      sendRaw = sendRes.data as SendRow | null;
+      if (!sendRaw) return Response.json({ error: "Not found" }, { status: 404 });
 
-    const { data: itemsRaw, error: itemsErr } = await admin
-      .from("ppv_send_items")
-      .select("ordinal, ppvs(name, media_url)")
-      .eq("send_id", send.id)
-      .order("ordinal", { ascending: true });
-    if (itemsErr) return Response.json({ error: `DB: ${itemsErr.message}` }, { status: 500 });
+      const itemsRes = await withTimeout(
+        Promise.resolve(
+          admin
+            .from("ppv_send_items")
+            .select("ordinal, ppvs(id, name, media_url, tg_file_id)")
+            .eq("send_id", sendRaw.id)
+            .order("ordinal", { ascending: true }),
+        ),
+        DELIVER_QUERY_TIMEOUT_MS,
+        "deliver: load items",
+      );
+      if (itemsRes.error) return Response.json({ error: `DB: ${itemsRes.error.message}` }, { status: 500 });
+      itemsRaw = itemsRes.data;
+    } catch {
+      // Timed out — tell the client to retry rather than hang 70s.
+      return Response.json({ error: "Delivery is slow right now — try again." }, { status: 503 });
+    }
+    const send = sendRaw;
 
-    const items: DeliverItem[] = ((itemsRaw ?? []) as unknown as ItemRowRaw[])
+    // Two parallel projections from the joined rows: the user-facing
+    // DeliverItem list (returned to the browser for web reveal) and the
+    // Telegram-side OriginalItem list (consumed by sendOriginalsAlbum).
+    type JoinRow = { ppvId: string; name: string; mediaUrl: string; cachedFileId: string | null };
+    const joined: JoinRow[] = ((itemsRaw ?? []) as unknown as ItemRowRaw[])
       .map((it) => {
         const ppv = Array.isArray(it.ppvs) ? it.ppvs[0] ?? null : it.ppvs;
         return {
+          ppvId: ppv?.id ?? "",
           name: ppv?.name ?? "Item",
           mediaUrl: ppv?.media_url ?? "",
-          isVideo: ppv?.media_url ? isLikelyVideoUrl(ppv.media_url) : false,
+          cachedFileId: ppv?.tg_file_id ?? null,
         };
       })
-      .filter((it) => !!it.mediaUrl);
+      .filter((it) => !!it.mediaUrl && !!it.ppvId);
+
+    const items: DeliverItem[] = joined.map((it) => ({
+      name: it.name,
+      mediaUrl: it.mediaUrl,
+      isVideo: isLikelyVideoUrl(it.mediaUrl),
+    }));
 
     const alreadyDelivered = send.status === "delivered";
 
-    // Track 1: flip status so subsequent pollers/refreshes see it as paid,
-    // and ensure the fan keeps seeing originals on reload.
+    // Track 1: flip status so subsequent pollers/refreshes see it as paid.
+    // This is the only DB write the fan's reveal waits on — keep it capped.
     if (!alreadyDelivered) {
       const now = new Date().toISOString();
-      await admin
-        .from("ppv_sends")
-        .update({ status: "paid", paid_at: now })
-        .eq("id", send.id);
+      try {
+        await withTimeout(
+          Promise.resolve(
+            admin.from("ppv_sends").update({ status: "paid", paid_at: now }).eq("id", send.id),
+          ),
+          DELIVER_QUERY_TIMEOUT_MS,
+          "deliver: mark paid",
+        );
+      } catch {
+        // Best-effort — the items are already returned below for the web
+        // reveal; status will be reconciled on the next deliver call.
+        console.error("[ppv/deliver] mark-paid timed out");
+      }
+
+      // fans.total_spent increment moved to the background after() block —
+      // it's not needed for the web reveal and was adding 2 round-trips to
+      // the fan's critical path.
+      after(async () => {
+        try {
+          const { data: existing } = await admin
+            .from("fans")
+            .select("id, total_spent")
+            .eq("model_id", send.model_id)
+            .eq("peer_id", send.peer_id)
+            .maybeSingle();
+          const prev = Number((existing as { total_spent: number } | null)?.total_spent ?? 0);
+          const next = prev + Number(send.total_price ?? 0);
+          await admin.from("fans").upsert(
+            {
+              model_id: send.model_id,
+              peer_id: send.peer_id,
+              telegram_username: send.peer_username,
+              total_spent: next,
+              last_seen_at: now,
+            },
+            { onConflict: "model_id,peer_id" },
+          );
+        } catch (e: unknown) {
+          console.error(
+            "[ppv/deliver] fans.total_spent update failed:",
+            e instanceof Error ? e.message : e,
+          );
+        }
+      });
     }
 
     // Track 2: background Telegram push. Only fire once per send — if we've
@@ -126,33 +219,63 @@ export async function POST(req: NextRequest) {
           session_string: model.session_string,
           api_id: model.api_id,
           api_hash: model.api_hash,
-          mediaUrls: items.map((it) => it.mediaUrl),
+          // The new shape carries the cached file id per item so
+          // sendOriginalsAlbum can skip the download+upload round-trip
+          // on items we've already delivered before to *any* fan.
+          originals: joined.map((j) => ({
+            ppvId: j.ppvId,
+            mediaUrl: j.mediaUrl,
+            cachedFileId: j.cachedFileId,
+          })),
         };
 
         after(async () => {
           try {
-            await withTelegramClient(
+            const deliveryResult = await withTelegramClient(
               ctx.modelId,
               ctx.session_string,
               ctx.api_id,
               ctx.api_hash,
               async (tg) => {
-                await sendOriginalsAlbum(
+                return await sendOriginalsAlbum(
                   tg,
                   ctx.peerId,
                   ctx.accessHash,
-                  ctx.mediaUrls,
+                  ctx.originals,
                   ctx.caption,
+                  async (ppvId, serialized) => {
+                    // Best-effort cache write — we don't fail delivery if
+                    // this row update breaks, since the bytes already
+                    // reached the fan.
+                    try {
+                      await admin
+                        .from("ppvs")
+                        .update({ tg_file_id: serialized })
+                        .eq("id", ppvId);
+                    } catch (e: unknown) {
+                      console.error(
+                        `[ppv/deliver] cache write failed for ppv=${ppvId}:`,
+                        e instanceof Error ? e.message : e,
+                      );
+                    }
+                  },
                 );
               },
               300_000,
             );
+            // Mark delivered. If some items couldn't be pushed to Telegram
+            // (flaky uplink), note it — the fan still has every item on the
+            // /pay web page, so this is a soft warning, not a failure.
+            const partial =
+              deliveryResult.failed > 0
+                ? `Telegram: delivered ${deliveryResult.delivered}/${deliveryResult.total} (rest available on web)`
+                : null;
             await admin
               .from("ppv_sends")
               .update({
                 status: "delivered",
                 delivered_at: new Date().toISOString(),
-                error: null,
+                error: partial,
               })
               .eq("id", ctx.sendId);
           } catch (e: unknown) {

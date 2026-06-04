@@ -8,6 +8,8 @@ import {
   sendBlurredPreviewWithLink,
   type PpvPreviewItem,
 } from "@/lib/ppv-delivery";
+import { ppvMediaPathFromUrl } from "@/lib/ppv-storage";
+import { consume, getClientIp, tooManyRequests } from "@/lib/rate-limit";
 
 // PPV send delivery can take 30–120s on slow networks. Allow the route's
 // after() callback to run that long on serverful platforms (Vercel limits
@@ -33,10 +35,21 @@ type PpvRow = {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json()) as SendBody;
-    if (!body.modelId || !body.peerId || !Array.isArray(body.ppvIds) || body.ppvIds.length === 0) {
-      return Response.json({ error: "modelId, peerId and ppvIds required" }, { status: 400 });
+    // Modest rate-limit per IP so a runaway client can't spam Telegram pushes.
+    const ip = getClientIp(req);
+    if (!consume(`ppv-send|${ip}`, 30, 60_000)) return tooManyRequests(60);
+
+    const raw = (await req.json().catch(() => null)) as Partial<SendBody> | null;
+    const modelId = typeof raw?.modelId === "string" ? raw.modelId : "";
+    const peerId = typeof raw?.peerId === "string" ? raw.peerId : "";
+    const ppvIds = Array.isArray(raw?.ppvIds) ? raw.ppvIds.filter((x): x is string => typeof x === "string") : [];
+    const caption = typeof raw?.caption === "string" ? raw.caption.slice(0, 4096) : undefined;
+    const accessHash = typeof raw?.accessHash === "string" || raw?.accessHash === null ? raw.accessHash ?? null : null;
+    const peerUsername = typeof raw?.peerUsername === "string" || raw?.peerUsername === null ? raw?.peerUsername ?? null : null;
+    if (!modelId || !peerId || ppvIds.length === 0 || ppvIds.length > 50) {
+      return Response.json({ error: "modelId, peerId and ppvIds (1–50) required" }, { status: 400 });
     }
+    const body: SendBody = { modelId, peerId, ppvIds, caption, accessHash, peerUsername };
 
     const auth = await authorizeModelAccess(body.modelId);
     if ("errorResponse" in auth) return auth.errorResponse;
@@ -120,7 +133,11 @@ export async function POST(req: NextRequest) {
 
     const previewItems: PpvPreviewItem[] = ordered
       .filter((p): p is PpvRow & { media_url: string } => !!p.media_url)
-      .map((p) => ({ mediaUrl: p.media_url, previewUrl: p.preview_url }));
+      .map((p) => ({ ppvId: p.id, mediaUrl: p.media_url, previewUrl: p.preview_url }));
+
+    // Map ppvId → media_url so the backfill callback can derive the preview
+    // storage path (same {userId}/{id}_preview.jpg convention as upload).
+    const mediaUrlByPpvId = new Map(previewItems.map((p) => [p.ppvId, p.mediaUrl]));
 
     // Capture context for the background task before we leave the request scope.
     const sendCtx = {
@@ -133,9 +150,30 @@ export async function POST(req: NextRequest) {
       api_id: auth.model.api_id,
       api_hash: auth.model.api_hash,
       previewItems,
+      mediaUrlByPpvId,
       payUrl,
       totalPrice,
     };
+
+    // Upload a freshly-generated blur as the item's preview_url so the next
+    // send skips the heavy original download. Derives the storage path from
+    // the original's path: {userId}/{id}.{ext} → {userId}/{id}_preview.jpg.
+    async function backfillPreview(ppvId: string, jpeg: Buffer): Promise<void> {
+      const mediaUrl = sendCtx.mediaUrlByPpvId.get(ppvId);
+      if (!mediaUrl) return;
+      const origPath = ppvMediaPathFromUrl(mediaUrl);
+      if (!origPath) return;
+      const previewPath = `${origPath.replace(/\.[^./]+$/, "")}_preview.jpg`;
+      const { error: upErr } = await admin.storage
+        .from("ppvs")
+        .upload(previewPath, jpeg, { contentType: "image/jpeg", upsert: true });
+      if (upErr) {
+        console.warn(`[ppv/send] preview backfill upload failed for ppv=${ppvId}:`, upErr.message);
+        return;
+      }
+      const publicUrl = admin.storage.from("ppvs").getPublicUrl(previewPath).data.publicUrl;
+      await admin.from("ppvs").update({ preview_url: publicUrl }).eq("id", ppvId);
+    }
 
     // ─── Background delivery ────────────────────────────────────────────────
     // We respond to the chatter immediately so the UI feels snappy. The
@@ -160,6 +198,7 @@ export async function POST(req: NextRequest) {
               sendCtx.caption,
               sendCtx.payUrl,
               sendCtx.totalPrice,
+              backfillPreview,
             );
           },
           180_000,

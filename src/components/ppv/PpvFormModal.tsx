@@ -147,11 +147,25 @@ export function PpvFormModal({
     setDeleting(true);
     setError("");
     try {
+      // Delete the ROW first and confirm it actually happened (.select()
+      // returns the deleted rows). If RLS silently blocks the delete it
+      // returns 0 rows — previously we'd still delete the storage file,
+      // leaving an orphan row with a broken-image icon. Now we surface it.
+      const { data: deleted, error: dbError } = await supabase
+        .from("ppvs")
+        .delete()
+        .eq("id", existing.id)
+        .select("id");
+      if (dbError) throw new Error(dbError.message);
+      if (!deleted || deleted.length === 0) {
+        throw new Error(
+          "Couldn't delete (permission denied). Add a DELETE policy on the ppvs table.",
+        );
+      }
+      // Row gone — now best-effort remove the storage files.
       if (existing.media_url) {
         await deletePpvMedia(supabase, existing.media_url).catch(() => {});
       }
-      const { error: dbError } = await supabase.from("ppvs").delete().eq("id", existing.id);
-      if (dbError) throw new Error(dbError.message);
       onDelete(existing.id);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Delete failed");

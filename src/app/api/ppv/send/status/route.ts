@@ -1,5 +1,8 @@
 import { NextRequest } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase-server";
+import { withTimeout } from "@/lib/with-timeout";
+
+const STATUS_QUERY_TIMEOUT_MS = 12_000;
 
 /**
  * Cheap polling endpoint for the chatter UI to follow a background
@@ -13,16 +16,27 @@ export async function GET(req: NextRequest) {
     if (!code) return Response.json({ error: "code required" }, { status: 400 });
 
     const admin = createAdminSupabaseClient();
-    const { data, error } = await admin
-      .from("ppv_sends")
-      .select("status, error")
-      .eq("code", code)
-      .maybeSingle();
+    let data: { status: string; error: string | null } | null;
+    let error: { message: string } | null;
+    try {
+      const res = await withTimeout(
+        Promise.resolve(
+          admin.from("ppv_sends").select("status, error").eq("code", code).maybeSingle(),
+        ),
+        STATUS_QUERY_TIMEOUT_MS,
+        "send-status query",
+      );
+      data = res.data as { status: string; error: string | null } | null;
+      error = res.error;
+    } catch {
+      // Timed out — report a transient 'sending' so the client keeps
+      // polling instead of treating it as a hard failure.
+      return Response.json({ status: "sending" });
+    }
     if (error) return Response.json({ error: error.message }, { status: 500 });
     if (!data) return Response.json({ error: "Not found" }, { status: 404 });
 
-    const row = data as { status: string; error: string | null };
-    return Response.json({ status: row.status, error: row.error });
+    return Response.json({ status: data.status, error: data.error });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : "Failed";
     return Response.json({ error: message }, { status: 500 });

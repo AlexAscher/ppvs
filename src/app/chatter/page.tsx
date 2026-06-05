@@ -314,7 +314,7 @@ export default function ChatterPage() {
             .eq("model_id", selectedModelId),
           supabase
             .from("ppvs")
-            .select("id, model_id, group_id, name, price, media_url, created_at")
+            .select("id, model_id, group_id, name, price, media_url, preview_url, created_at")
             .eq("model_id", selectedModelId)
             .order("created_at", { ascending: false }),
           supabase.from("ppv_item_tags").select("ppv_id, tag_id"),

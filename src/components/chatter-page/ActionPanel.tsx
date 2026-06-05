@@ -27,6 +27,9 @@ export interface PpvItem {
   name: string;
   price: number | string;
   media_url?: string | null;
+  /** Pre-blurred JPEG poster — for video PPVs this is the only image we
+   *  have, so tiles fall back to it when the original is a clip. */
+  preview_url?: string | null;
   group_id?: string | null;
   tags: PpvTag[];
 }
@@ -233,7 +236,12 @@ export function ActionPanel({
                 })}
 
               {/* PPV file tiles */}
-              {filteredItems.map((item) => (
+              {filteredItems.map((item) => {
+                // Videos can't render in an <img>, so for any clip we fall
+                // back to the pre-captured blurred poster.
+                const isVid = !!item.media_url && /\.(mp4|mov|webm|m4v|mkv)(\?|$)/i.test(item.media_url);
+                const tileSrc = isVid ? item.preview_url : (item.preview_url || item.media_url);
+                return (
                 <button
                   key={item.id}
                   onClick={() => onToggleItem(item.id)}
@@ -243,10 +251,10 @@ export function ActionPanel({
                       : "border-[#2a2d35] hover:border-[#374151]"
                   }`}
                 >
-                  {item.media_url ? (
+                  {tileSrc ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={item.media_url}
+                      src={tileSrc}
                       alt={item.name}
                       className="w-full h-full object-cover"
                       onError={(e) => {
@@ -254,6 +262,11 @@ export function ActionPanel({
                       }}
                     />
                   ) : null}
+                  {isVid && (
+                    <div className="absolute top-1 left-1 px-1 py-0.5 bg-black/70 rounded text-[8px] font-semibold text-white">
+                      ▶
+                    </div>
+                  )}
                   {selectedItems.includes(item.id) && (
                     <div className="absolute -top-1 -right-1 w-5 h-5 bg-[#6366f1] rounded-full flex items-center justify-center shadow-lg">
                       <Check className="w-3 h-3 text-white" />
@@ -268,7 +281,8 @@ export function ActionPanel({
                     </div>
                   </div>
                 </button>
-              ))}
+                );
+              })}
 
               {/* Empty state — folder is empty, or no orphan files at root */}
               {filteredItems.length === 0 &&

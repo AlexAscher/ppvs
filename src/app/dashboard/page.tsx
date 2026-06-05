@@ -310,13 +310,23 @@ function ChartCanvas({
             </div>
           ))}
         </div>
-        <div className="relative h-4 mt-2 text-[10px] text-[#6b7280]">
+        <div className="relative h-4 mt-2 text-[10px] text-[#6b7280] whitespace-nowrap">
           {chartData.map((point, i) =>
             i % stride === 0 || i === n - 1 ? (
               <span
                 key={i}
-                className="absolute -translate-x-1/2"
-                style={{ left: `${x(i)}%` }}
+                className="absolute"
+                // First label anchors at the left edge, last at the right.
+                // Otherwise the centered label at x=100% gets clipped (and
+                // wraps to two lines, e.g. "Jun ↵ 5"). Middle labels stay
+                // centered so they line up with their dots.
+                style={
+                  i === 0
+                    ? { left: 0 }
+                    : i === n - 1
+                      ? { right: 0 }
+                      : { left: `${x(i)}%`, transform: "translateX(-50%)" }
+                }
               >
                 {point.date}
               </span>

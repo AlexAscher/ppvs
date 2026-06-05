@@ -14,6 +14,12 @@ export type PpvItem = {
   description: string | null;
   price: number;
   media_url: string | null;
+  /** Blurred JPEG poster captured at upload time. For video PPVs this is
+   *  the only image asset we have, so vault/chatter tiles render it
+   *  instead of trying to embed a `<video>` tag for every card. Optional
+   *  so legacy callers that build a PpvItem locally don't have to fake
+   *  the field. */
+  preview_url?: string | null;
   created_at: string;
   tags: PpvTag[];
 };

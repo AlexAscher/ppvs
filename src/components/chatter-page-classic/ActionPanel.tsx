@@ -39,6 +39,8 @@ export interface PpvItem {
   name: string;
   price: number | string;
   media_url?: string | null;
+  /** Pre-blurred JPEG poster — see chatter-page/ActionPanel for rationale. */
+  preview_url?: string | null;
   group_id?: string | null;
   tags: PpvTag[];
 }
@@ -237,7 +239,10 @@ export function ActionPanel({
                   );
                 })}
 
-              {filteredItems.map((item) => (
+              {filteredItems.map((item) => {
+                const isVid = !!item.media_url && /\.(mp4|mov|webm|m4v|mkv)(\?|$)/i.test(item.media_url);
+                const tileSrc = isVid ? item.preview_url : (item.preview_url || item.media_url);
+                return (
                 <button
                   key={item.id}
                   onClick={() => onToggleItem(item.id)}
@@ -247,10 +252,10 @@ export function ActionPanel({
                       : "border-[#2a2d35] hover:border-[#374151]"
                   }`}
                 >
-                  {item.media_url ? (
+                  {tileSrc ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={item.media_url}
+                      src={tileSrc}
                       alt={item.name}
                       className="w-full h-full object-cover"
                       // Deleted/missing media → hide the broken-image icon and
@@ -260,6 +265,11 @@ export function ActionPanel({
                       }}
                     />
                   ) : null}
+                  {isVid && (
+                    <div className="absolute top-1 left-1 px-1 py-0.5 bg-black/70 rounded text-[8px] font-semibold text-white">
+                      ▶
+                    </div>
+                  )}
                   {selectedItems.includes(item.id) && (
                     <div className="absolute -top-1.5 -right-1.5 w-6 h-6 bg-[#6366f1] rounded-full flex items-center justify-center shadow-lg">
                       <Check className="w-3.5 h-3.5 text-white" />
@@ -270,7 +280,8 @@ export function ActionPanel({
                     <div className="text-[12px] font-bold text-[#6366f1]">${item.price}</div>
                   </div>
                 </button>
-              ))}
+                );
+              })}
 
               {filteredItems.length === 0 && (currentFolderId || ppvGroups.length === 0) && (
                 <div className="col-span-3 py-8 text-center text-[11px] text-[#6b7280]">

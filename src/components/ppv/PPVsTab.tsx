@@ -53,7 +53,7 @@ export function PPVsTab() {
       const [tagsRes, groupsRes, ppvsRes, itemTagsRes, groupTagsRes] = await Promise.all([
         supabase.from("ppv_tags").select("id, model_id, name, color, emoji").eq("model_id", modelId).order("created_at"),
         supabase.from("ppv_groups").select("id, model_id, name, created_at").eq("model_id", modelId).order("created_at", { ascending: false }),
-        supabase.from("ppvs").select("id, model_id, group_id, name, description, price, media_url, created_at").eq("model_id", modelId).order("created_at", { ascending: false }),
+        supabase.from("ppvs").select("id, model_id, group_id, name, description, price, media_url, preview_url, created_at").eq("model_id", modelId).order("created_at", { ascending: false }),
         supabase.from("ppv_item_tags").select("ppv_id, tag_id"),
         supabase.from("ppv_group_tags").select("group_id, tag_id"),
       ]);
@@ -360,6 +360,11 @@ export function PPVsTab() {
 }
 
 function PpvCard({ ppv, onClick }: { ppv: PpvItem; onClick: () => void }) {
+  // Video originals can't be shown as <img>, so prefer the pre-captured
+  // blurred poster frame (`preview_url`) for any media. For images both
+  // URLs point at a JPEG of the same content, so it doesn't matter much.
+  const isVideo = !!ppv.media_url && /\.(mp4|mov|webm|m4v|mkv)(\?|$)/i.test(ppv.media_url);
+  const tileSrc = isVideo ? ppv.preview_url : (ppv.preview_url || ppv.media_url);
   return (
     <button
       onClick={onClick}
@@ -367,9 +372,10 @@ function PpvCard({ ppv, onClick }: { ppv: PpvItem; onClick: () => void }) {
     >
       <div className="relative aspect-[4/3] bg-[#1f2937] flex items-center justify-center">
         <span className="text-[40px] select-none">🔒</span>
-        {ppv.media_url && (
+        {tileSrc && (
+          // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={ppv.media_url}
+            src={tileSrc}
             alt={ppv.name}
             className="absolute inset-0 w-full h-full object-cover"
             // Missing/deleted media → hide broken image, the 🔒 shows through.
@@ -377,6 +383,11 @@ function PpvCard({ ppv, onClick }: { ppv: PpvItem; onClick: () => void }) {
               (e.currentTarget as HTMLImageElement).style.display = "none";
             }}
           />
+        )}
+        {isVideo && (
+          <div className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/70 backdrop-blur-sm rounded-md text-[10px] font-semibold text-white flex items-center gap-1">
+            <span className="text-[8px]">▶</span> Video
+          </div>
         )}
         <div className="absolute top-2 right-2 px-2 py-1 bg-black/70 backdrop-blur-sm rounded-md text-[12px] font-bold text-white">
           ${ppv.price.toFixed(2)}

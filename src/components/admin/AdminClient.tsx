@@ -198,13 +198,21 @@ function LineChart({
           </div>
         ))}
       </div>
-      <div className="relative h-4 mt-2 text-[10px] text-[#6b7280]">
+      <div className="relative h-4 mt-2 text-[10px] text-[#6b7280] whitespace-nowrap">
         {data.map((point, i) =>
           i % stride === 0 || i === n - 1 ? (
             <span
               key={i}
-              className="absolute -translate-x-1/2"
-              style={{ left: `${x(i)}%` }}
+              className="absolute"
+              // See agency dashboard ChartCanvas for rationale: edge labels
+              // get pinned to their edge so they don't wrap.
+              style={
+                i === 0
+                  ? { left: 0 }
+                  : i === n - 1
+                    ? { right: 0 }
+                    : { left: `${x(i)}%`, transform: "translateX(-50%)" }
+              }
             >
               {point.date}
             </span>

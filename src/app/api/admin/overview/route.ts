@@ -1,8 +1,18 @@
+import { NextRequest } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase-server";
 import { requireAdmin } from "@/lib/admin-auth";
 import { withTimeout } from "@/lib/with-timeout";
 import { PLATFORM_FEE_PCT } from "@/lib/platform";
-import { PAID, startOfDay, makeChartBuckets, listAgencies, loadSends, loadFans } from "@/lib/admin-data";
+import {
+  PAID,
+  startOfDay,
+  listAgencies,
+  loadSends,
+  loadFans,
+  buildChartBuckets,
+  bucketFor,
+  parseChartPeriod,
+} from "@/lib/admin-data";
 import type {
   AdminOverview,
   AdminTopAgency,
@@ -22,9 +32,11 @@ const Q = 15_000;
 
 type ModelRow = { id: string; name: string; agency_user_id: string };
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const auth = await requireAdmin();
   if ("errorResponse" in auth) return auth.errorResponse;
+
+  const period = parseChartPeriod(new URL(req.url).searchParams.get("period"));
 
   try {
     const admin = createAdminSupabaseClient();
@@ -75,7 +87,18 @@ export async function GET() {
       gmvMonth = 0,
       gmvAllTime = 0,
       sales = 0;
-    const chart = makeChartBuckets(14);
+    // Anchor the "all-time" weekly buckets at the earliest paid sale so
+    // the chart isn't padded with empty weeks for projects that just
+    // started — see /api/dashboard/stats for the matching logic.
+    let earliestPaidTs: number | undefined;
+    if (period === "all") {
+      for (const s of sends) {
+        if (!PAID.has(s.status)) continue;
+        const ts = new Date(s.created_at).getTime();
+        if (earliestPaidTs === undefined || ts < earliestPaidTs) earliestPaidTs = ts;
+      }
+    }
+    const chart = buildChartBuckets(period, earliestPaidTs);
     const agencyAgg = new Map<string, { gmv: number; sales: number }>();
     const modelAgg = new Map<string, { gmv: number; sales: number }>();
 
@@ -89,8 +112,7 @@ export async function GET() {
       if (ts >= weekStart) gmvWeek += price;
       if (ts >= monthStart) gmvMonth += price;
 
-      const dayTs = startOfDay(new Date(ts));
-      const b = chart.find((x) => x.ts === dayTs);
+      const b = bucketFor(chart, ts, period);
       if (b) b.value += price;
 
       const agId = agencyByModel.get(s.model_id);

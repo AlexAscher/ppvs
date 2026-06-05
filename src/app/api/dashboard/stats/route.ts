@@ -1,7 +1,16 @@
+import { NextRequest } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase-server";
 import { withTimeout } from "@/lib/with-timeout";
 import { getCachedAuthUser } from "@/lib/auth-cache";
-import { loadSends, loadFans, PAID, startOfDay } from "@/lib/admin-data";
+import {
+  loadSends,
+  loadFans,
+  PAID,
+  startOfDay,
+  buildChartBuckets,
+  bucketFor,
+  parseChartPeriod,
+} from "@/lib/admin-data";
 
 /**
  * Agency dashboard aggregate. Everything is computed live from existing
@@ -47,12 +56,18 @@ export type DashboardStats = {
   partial?: boolean;
 };
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     // Cached + 8s-timeout auth lookup — a bare getUser() on a flaky uplink
     // could hang 30–70s and false-401 the dashboard.
     const user = await getCachedAuthUser();
     if (!user) return Response.json({ error: "Not authenticated" }, { status: 401 });
+
+    // Chart period — UI buttons feed it as ?period=1d|7d|30d|all. Anything
+    // else falls back to 7d. The stat cards above the chart (Net Today /
+    // Week / Month / All Time) are NOT affected — they always show their
+    // canonical windows so the user can read both at once.
+    const period = parseChartPeriod(new URL(req.url).searchParams.get("period"));
 
     const admin = createAdminSupabaseClient();
 
@@ -120,16 +135,19 @@ export async function GET() {
     let netToday = 0, netWeek = 0, netMonth = 0, netAllTime = 0, sales = 0;
     const modelAgg = new Map<string, { net: number; sales: number }>();
     const chatterAgg = new Map<string, { net: number; sales: number }>();
-    // 14-day chart buckets (oldest → newest)
-    const chartBuckets: { date: string; ts: number; value: number }[] = [];
-    for (let i = 13; i >= 0; i--) {
-      const d = new Date(todayStart - i * 86_400_000);
-      chartBuckets.push({
-        date: d.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
-        ts: d.getTime(),
-        value: 0,
-      });
+
+    // For "all" we anchor the weekly buckets at the earliest paid sale —
+    // pre-scan once so the buckets cover real data (not an empty stretch
+    // before the project started).
+    let earliestPaidTs: number | undefined;
+    if (period === "all") {
+      for (const s of sends) {
+        if (!PAID.has(s.status)) continue;
+        const ts = new Date(s.created_at).getTime();
+        if (earliestPaidTs === undefined || ts < earliestPaidTs) earliestPaidTs = ts;
+      }
     }
+    const chartBuckets = buildChartBuckets(period, earliestPaidTs);
 
     for (const s of sends) {
       if (!PAID.has(s.status)) continue;
@@ -149,9 +167,8 @@ export async function GET() {
         c.net += price; c.sales += 1; chatterAgg.set(s.chatter_id, c);
       }
 
-      // chart: bucket by day if within the 14-day window
-      const dayTs = startOfDay(new Date(ts));
-      const bucket = chartBuckets.find((b) => b.ts === dayTs);
+      // Bucket by selected granularity (hour / day / week).
+      const bucket = bucketFor(chartBuckets, ts, period);
       if (bucket) bucket.value += price;
     }
 

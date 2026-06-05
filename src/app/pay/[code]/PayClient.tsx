@@ -4,14 +4,19 @@ import { useState } from "react";
 
 type Item = { name: string; media_url: string | null };
 
+type DeliveredItem = { name: string; mediaUrl: string; isVideo: boolean };
+
 type Props = {
   code: string;
   items: Item[];
   /** Chatter's price — what the agency expects to receive. */
   basePrice: number;
-  /** Platform's 10% surcharge. Buyer pays it on top. */
+  /** Platform's 10% surcharge. Buyer pays it on top.
+   *  Currently unused (Malum bypassed) but kept on the prop boundary so
+   *  re-enabling the gateway is just an uncomment. */
   fee: number;
-  /** basePrice + fee. This is the number sent to Malum and shown big. */
+  /** basePrice + fee. Used while Malum is active to mirror the checkout
+   *  total exactly. */
   total: number;
   caption: string;
   recipient: string | null;
@@ -23,14 +28,22 @@ function isVideoUrl(url: string): boolean {
   return /\.(mp4|mov|webm|m4v|mkv)$/.test(u);
 }
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// ── Malum payment flow (temporarily disabled) ───────────────────────────
+// Re-enable by:
+//   1. Restoring the email input + breakdown JSX below the // BYPASS markers.
+//   2. Replacing handlePay's deliver call with the commented fetch to
+//      /api/payments/malum/create + window.location redirect.
+// The success page (/pay/[code]/success) and webhook handler
+// (/api/webhooks/malum) are still wired up — no other code changes needed.
+//
+// const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// ────────────────────────────────────────────────────────────────────────
 
 export function PayClient({
   code,
   items,
   basePrice,
-  fee,
-  total,
+  // fee, total — unused while the gateway is bypassed (see banner above).
   caption,
   recipient,
   initiallyDelivered,
@@ -38,50 +51,76 @@ export function PayClient({
   const [state, setState] = useState<"locked" | "loading" | "delivered" | "error">(
     initiallyDelivered ? "delivered" : "locked",
   );
-  const [email, setEmail] = useState("");
+  const [delivered, setDelivered] = useState<DeliveredItem[]>([]);
   const [errMsg, setErrMsg] = useState("");
 
   async function handlePay() {
-    const e = email.trim().toLowerCase();
-    if (!EMAIL_RE.test(e)) {
-      setErrMsg("Enter a valid email");
-      setState("error");
-      return;
-    }
     setState("loading");
     setErrMsg("");
+    // BYPASS — Malum disabled, unlock straight from /api/ppv/deliver.
+    // The deliver endpoint marks the send paid and fires the Telegram
+    // push in the background, same as it would after a real webhook.
     try {
-      const res = await fetch("/api/payments/malum/create", {
+      const res = await fetch("/api/ppv/deliver", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, email: e }),
+        body: JSON.stringify({ code }),
       });
-      const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
-      if (!res.ok || !data.url) {
-        setErrMsg(data.error || `Could not open checkout (HTTP ${res.status})`);
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+        items?: DeliveredItem[];
+      };
+      if (!res.ok || data.error) {
+        setErrMsg(data.error || `HTTP ${res.status}`);
         setState("error");
         return;
       }
-      // Hand the buyer off to Malum's hosted checkout. They land back on
-      // /pay/{code}/success on completion (or /pay/{code} on cancel).
-      window.location.href = data.url;
+      setDelivered(data.items ?? []);
+      setState("delivered");
     } catch (err: unknown) {
       setErrMsg(err instanceof Error ? err.message : "Network error");
       setState("error");
     }
+
+    // ── Malum flow, restore by deleting the bypass above and uncommenting:
+    // const e = email.trim().toLowerCase();
+    // if (!EMAIL_RE.test(e)) {
+    //   setErrMsg("Enter a valid email");
+    //   setState("error");
+    //   return;
+    // }
+    // try {
+    //   const res = await fetch("/api/payments/malum/create", {
+    //     method: "POST",
+    //     headers: { "Content-Type": "application/json" },
+    //     body: JSON.stringify({ code, email: e }),
+    //   });
+    //   const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
+    //   if (!res.ok || !data.url) {
+    //     setErrMsg(data.error || `Could not open checkout (HTTP ${res.status})`);
+    //     setState("error");
+    //     return;
+    //   }
+    //   window.location.href = data.url;
+    // } catch (err: unknown) {
+    //   setErrMsg(err instanceof Error ? err.message : "Network error");
+    //   setState("error");
+    // }
   }
 
   const isLocked = state !== "delivered";
 
-  // Until paid, we render the blurred previews shipped from SSR. The
-  // "delivered" branch is reached only when this page is re-opened after a
-  // webhook flipped status — at that point the user is on /success which
-  // does its own originals fetch, so here we just show a tasteful state.
-  const tilesToRender = items.map((it) => ({
-    name: it.name,
-    media_url: it.media_url,
-    isVideo: it.media_url ? isVideoUrl(it.media_url) : false,
-  }));
+  // Once delivered, prefer the server's list of original URLs (paid path).
+  // Otherwise show the items we got from the SSR render (locked previews).
+  const tilesToRender =
+    state === "delivered" && delivered.length > 0
+      ? delivered.map((d) => ({ name: d.name, media_url: d.mediaUrl, isVideo: d.isVideo }))
+      : items.map((it) => ({
+          name: it.name,
+          media_url: it.media_url,
+          isVideo: it.media_url ? isVideoUrl(it.media_url) : false,
+        }));
 
   return (
     <div className="min-h-screen flex items-center justify-center px-3 sm:px-4 bg-[#0d1117] py-6 sm:py-10">
@@ -120,20 +159,28 @@ export function PayClient({
                 >
                   <span className="text-[28px] opacity-40 select-none">🔒</span>
                   {it.media_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={it.media_url}
-                      alt={it.name}
-                      className="absolute inset-0 w-full h-full object-cover"
-                      style={
-                        isLocked
-                          ? { filter: "blur(22px) brightness(0.55)", transform: "scale(1.15)" }
-                          : undefined
-                      }
-                      onError={(e) => {
-                        (e.currentTarget as HTMLImageElement).style.display = "none";
-                      }}
-                    />
+                    it.isVideo && state === "delivered" ? (
+                      <video
+                        src={it.media_url}
+                        controls
+                        className="absolute inset-0 w-full h-full object-cover bg-black"
+                      />
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={it.media_url}
+                        alt={it.name}
+                        className="absolute inset-0 w-full h-full object-cover"
+                        style={
+                          isLocked
+                            ? { filter: "blur(22px) brightness(0.55)", transform: "scale(1.15)" }
+                            : undefined
+                        }
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).style.display = "none";
+                        }}
+                      />
+                    )
                   ) : null}
                   {isLocked && (
                     <div className="absolute inset-0 flex items-center justify-center">
@@ -144,6 +191,18 @@ export function PayClient({
                         </svg>
                       </div>
                     </div>
+                  )}
+                  {state === "delivered" && it.media_url && !it.isVideo && (
+                    <a
+                      href={it.media_url}
+                      download
+                      target="_blank"
+                      rel="noreferrer"
+                      className="absolute bottom-1 right-1 px-2 py-1 rounded bg-black/65 text-white text-[10px] font-medium hover:bg-black/85"
+                      title="Download"
+                    >
+                      ⬇ Save
+                    </a>
                   )}
                 </div>
               ))}
@@ -169,32 +228,24 @@ export function PayClient({
             {state === "delivered" ? (
               <div className="mt-2">
                 <div className="rounded-[10px] bg-emerald-500/10 border border-emerald-500/20 px-3.5 py-3 text-[13px] text-emerald-300 leading-relaxed">
-                  ✅ Already unlocked.{" "}
-                  <a
-                    href={`/pay/${code}/success`}
-                    className="underline underline-offset-2"
-                  >
-                    View your content →
-                  </a>
+                  ✅ Content unlocked. Tap any tile to view full size; use ⬇ Save to download.
                 </div>
               </div>
             ) : (
               <div>
-                <div className="flex items-baseline gap-1.5 mb-2 mt-2">
+                <div className="flex items-baseline gap-1.5 mb-4 mt-2">
                   <span style={{ fontSize: 32, fontWeight: 800, color: "#6366f1", letterSpacing: "-0.03em" }}>
-                    ${total.toFixed(2)}
+                    ${basePrice.toFixed(2)}
                   </span>
                   <span style={{ fontSize: 13, color: "#8b949e" }}>one-time unlock</span>
                 </div>
 
-                {/* Breakdown — keeps the buyer informed there's a small
-                    service fee on top, so the Malum checkout total isn't
-                    a surprise. The 10% covers gateway + platform commission. */}
+                {/* ── BYPASS: email input + fee breakdown hidden while
+                       the gateway is disabled. See top-of-file note. ──
                 <div className="text-[11px] text-[#8b949e] mb-4 leading-relaxed">
                   Content&nbsp;<span className="text-[#c9d1d9]">${basePrice.toFixed(2)}</span>{" "}
                   · Service fee&nbsp;<span className="text-[#c9d1d9]">${fee.toFixed(2)}</span>
                 </div>
-
                 <label className="block text-[12px] text-[#8b949e] mb-1.5">Email for receipt</label>
                 <input
                   type="email"
@@ -206,6 +257,7 @@ export function PayClient({
                   disabled={state === "loading"}
                   className="w-full mb-3 px-3.5 py-2.5 rounded-[8px] bg-[#0d1117] border border-[#30363d] text-[13px] text-[#e6edf3] outline-none focus:border-[#6366f1] placeholder:text-[#484f58]"
                 />
+                ── */}
 
                 {state === "error" && (
                   <div className="mb-3 bg-red-500/10 border border-red-500/20 rounded-[8px] px-3.5 py-2.5 text-[12px] text-red-400">
@@ -222,11 +274,11 @@ export function PayClient({
                     color: "white",
                   }}
                 >
-                  {state === "loading" ? "Opening checkout..." : `Pay $${total.toFixed(2)} & Unlock`}
+                  {state === "loading" ? "Unlocking..." : `Pay $${basePrice.toFixed(2)} & Unlock`}
                 </button>
 
                 <div style={{ textAlign: "center", marginTop: 12, fontSize: 11, color: "#484f58" }}>
-                  Secure card payment via Malum · You will be redirected.
+                  Payment gateway temporarily disabled — clicking Pay unlocks content for testing.
                 </div>
               </div>
             )}

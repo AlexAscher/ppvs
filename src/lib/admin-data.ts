@@ -112,6 +112,116 @@ export function makeChartBuckets(days: number): { date: string; ts: number; valu
   return buckets;
 }
 
+export type ChartPeriod = "1d" | "7d" | "30d" | "all";
+export type ChartBucket = { date: string; ts: number; value: number };
+
+const HOUR_MS = 3_600_000;
+const DAY_MS = 86_400_000;
+const WEEK_MS = 7 * DAY_MS;
+/** Hard cap on All Time bucket count so a project running for a decade
+ *  doesn't ship a 520-point series to the browser. */
+const MAX_WEEKLY_BUCKETS = 156; // ~3 years
+
+function startOfHour(ts: number): number {
+  const d = new Date(ts);
+  d.setMinutes(0, 0, 0);
+  return d.getTime();
+}
+
+/** Monday 00:00 of the week containing `ts`. ISO week start. */
+function startOfWeek(ts: number): number {
+  const d = new Date(ts);
+  // getDay(): 0=Sun..6=Sat. We want Mon=0..Sun=6.
+  const dow = (d.getDay() + 6) % 7;
+  d.setDate(d.getDate() - dow);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+/**
+ * Build an empty bucket series for a selected period. The granularity is
+ * picked to make the chart legible — hours for 1d, days for 7/30d, weeks
+ * for all-time — and the count is capped so the browser doesn't have to
+ * render thousands of points.
+ *
+ *   1d   → 24 hourly buckets ending at the current hour
+ *   7d   → 7 daily buckets ending today
+ *   30d  → 30 daily buckets ending today
+ *   all  → weekly buckets from week of `earliestTs` to this week
+ */
+export function buildChartBuckets(period: ChartPeriod, earliestTs?: number): ChartBucket[] {
+  const now = Date.now();
+  const buckets: ChartBucket[] = [];
+
+  if (period === "1d") {
+    const endHour = startOfHour(now);
+    for (let i = 23; i >= 0; i--) {
+      const t = endHour - i * HOUR_MS;
+      const d = new Date(t);
+      buckets.push({
+        date: `${String(d.getHours()).padStart(2, "0")}:00`,
+        ts: t,
+        value: 0,
+      });
+    }
+    return buckets;
+  }
+
+  if (period === "7d" || period === "30d") {
+    const days = period === "7d" ? 7 : 30;
+    const todayStart = startOfDay(new Date(now));
+    for (let i = days - 1; i >= 0; i--) {
+      const t = todayStart - i * DAY_MS;
+      const d = new Date(t);
+      buckets.push({
+        date: d.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+        ts: t,
+        value: 0,
+      });
+    }
+    return buckets;
+  }
+
+  // period === "all"
+  // Fall back to "last 4 weeks of zeros" if we have no sales yet, so the
+  // chart still has something to draw on an empty dashboard.
+  const seedTs = earliestTs ?? now - 4 * WEEK_MS;
+  const first = startOfWeek(seedTs);
+  const last = startOfWeek(now);
+  for (let t = first; t <= last; t += WEEK_MS) {
+    const d = new Date(t);
+    buckets.push({
+      date: d.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+      ts: t,
+      value: 0,
+    });
+  }
+  if (buckets.length > MAX_WEEKLY_BUCKETS) {
+    // Drop oldest buckets — the user cares about recent trend, and the
+    // overflowed range can be inspected via shorter periods.
+    return buckets.slice(buckets.length - MAX_WEEKLY_BUCKETS);
+  }
+  return buckets;
+}
+
+/** Pick the bucket that contains `ts`, or undefined if it's outside the
+ *  window. Bucket width is implied by `period`. */
+export function bucketFor(
+  buckets: ChartBucket[],
+  ts: number,
+  period: ChartPeriod,
+): ChartBucket | undefined {
+  const width = period === "1d" ? HOUR_MS : period === "all" ? WEEK_MS : DAY_MS;
+  // Linear scan is fine — N is at most ~156 for "all" and otherwise ≤ 30.
+  return buckets.find((b) => ts >= b.ts && ts < b.ts + width);
+}
+
+/** Validate + normalize the `period` query string. */
+export function parseChartPeriod(raw: string | null | undefined): ChartPeriod {
+  if (raw === "1d" || raw === "30d" || raw === "all") return raw;
+  return "7d";
+}
+
 /**
  * Every agency on the platform = an auth user whose user_metadata.role is
  * "agency". Paged through admin.auth.admin.listUsers (perPage max 1000).

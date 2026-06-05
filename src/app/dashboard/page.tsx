@@ -203,17 +203,145 @@ function initials(name: string): string {
     .join("");
 }
 
+type ChartPeriod = "1d" | "7d" | "30d" | "all";
+
+/**
+ * Net Sales chart. SVG with a fixed `viewBox="0 0 100 50"` so the
+ * `<polyline>` / `<path>` work in unit coordinates (the previous version
+ * mixed `%` into SVG attribute values, which browsers silently dropped —
+ * the line never appeared). `preserveAspectRatio="none"` lets the chart
+ * stretch to whatever pixel size the parent has.
+ *
+ * X-axis labels thin out for dense windows (24 hours, 30 days, all-time
+ * weeks) so they don't collide; for 7-day they all fit.
+ */
+function ChartCanvas({
+  chartData,
+  maxValue,
+  hoveredPoint,
+  setHoveredPoint,
+  empty,
+  period,
+}: {
+  chartData: { date: string; value: number; label: string }[];
+  maxValue: number;
+  hoveredPoint: number | null;
+  setHoveredPoint: (n: number | null) => void;
+  empty: string;
+  period: ChartPeriod;
+}) {
+  if (chartData.length === 0) {
+    return (
+      <div className="h-[180px] flex items-center justify-center text-[13px] text-[#6b7280]">
+        {empty}
+      </div>
+    );
+  }
+  // Coordinate space: 0..100 horizontal, 0..50 vertical (top-down).
+  const VB_W = 100;
+  const VB_H = 50;
+  const n = chartData.length;
+  const x = (i: number) => (n === 1 ? 50 : (i / (n - 1)) * VB_W);
+  const y = (v: number) => VB_H - (v / maxValue) * VB_H;
+
+  const linePoints = chartData.map((d, i) => `${x(i).toFixed(2)},${y(d.value).toFixed(2)}`).join(" ");
+  const areaPath =
+    `M ${x(0).toFixed(2)},${y(chartData[0].value).toFixed(2)} ` +
+    chartData.slice(1).map((d, i) => `L ${x(i + 1).toFixed(2)},${y(d.value).toFixed(2)}`).join(" ") +
+    ` L ${x(n - 1).toFixed(2)},${VB_H} L ${x(0).toFixed(2)},${VB_H} Z`;
+
+  // How many labels to show along the bottom — pick a target count of ~8
+  // and stride through the buckets so labels stay readable.
+  const targetLabels = period === "7d" ? 7 : 8;
+  const stride = Math.max(1, Math.ceil(n / targetLabels));
+
+  return (
+    <div className="relative">
+      <div className="ml-2 mr-2">
+        <div className="relative h-[180px]">
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <div
+              key={i}
+              className="absolute w-full border-t border-[#2a2d35]"
+              style={{ top: `${i * 20}%` }}
+            />
+          ))}
+          <svg
+            className="absolute inset-0 w-full h-full"
+            viewBox={`0 0 ${VB_W} ${VB_H}`}
+            preserveAspectRatio="none"
+          >
+            <defs>
+              <linearGradient id="lineGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stopColor="#6366f1" stopOpacity="0.3" />
+                <stop offset="100%" stopColor="#6366f1" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            <path d={areaPath} fill="url(#lineGradient)" />
+            <polyline
+              points={linePoints}
+              fill="none"
+              stroke="#6366f1"
+              strokeWidth="0.6"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              vectorEffect="non-scaling-stroke"
+            />
+          </svg>
+          {chartData.map((point, i) => (
+            <div
+              key={i}
+              className="absolute"
+              style={{
+                left: `${x(i)}%`,
+                top: `${(y(point.value) / VB_H) * 100}%`,
+                transform: "translate(-50%, -50%)",
+              }}
+              onMouseEnter={() => setHoveredPoint(i)}
+              onMouseLeave={() => setHoveredPoint(null)}
+            >
+              <div className="w-3 h-3 bg-[#6366f1] rounded-full border-2 border-[#161a22] cursor-pointer hover:scale-150 transition-transform" />
+              {hoveredPoint === i && (
+                <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-[#1f2937] border border-[#374151] rounded-lg px-3 py-2 whitespace-nowrap shadow-xl z-10">
+                  <div className="text-[11px] text-[#9ca3af]">{point.date}</div>
+                  <div className="text-[14px] font-bold text-[#6366f1]">{point.label}</div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="relative h-4 mt-2 text-[10px] text-[#6b7280]">
+          {chartData.map((point, i) =>
+            i % stride === 0 || i === n - 1 ? (
+              <span
+                key={i}
+                className="absolute -translate-x-1/2"
+                style={{ left: `${x(i)}%` }}
+              >
+                {point.date}
+              </span>
+            ) : null,
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DashboardTab() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loadErr, setLoadErr] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
   const [hoveredPoint, setHoveredPoint] = useState<number | null>(null);
+  // Chart window — independent of the stat cards above. The cards always
+  // show their canonical windows (Today / Week / Month / All Time).
+  const [period, setPeriod] = useState<ChartPeriod>("7d");
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/dashboard/stats");
+        const res = await fetch(`/api/dashboard/stats?period=${period}`);
         const data = await res.json();
         if (cancelled) return;
         if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
@@ -226,7 +354,7 @@ function DashboardTab() {
     return () => {
       cancelled = true;
     };
-  }, [reloadKey]);
+  }, [reloadKey, period]);
 
   const cards = stats
     ? [
@@ -293,62 +421,33 @@ function DashboardTab() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="md:col-span-2 bg-[#161a22] border border-[#2a2d35] rounded-lg p-5">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-[16px] font-semibold text-white">Net Sales — last 14 days 📈</h2>
+            <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+              <h2 className="text-[16px] font-semibold text-white">Net Sales 📈</h2>
+              <div className="flex bg-[#0d1117] border border-[#2a2d35] rounded-lg p-0.5 text-[12px]">
+                {(["1d", "7d", "30d", "all"] as ChartPeriod[]).map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setPeriod(p)}
+                    className={`px-3 py-1 rounded-md transition-colors ${
+                      period === p
+                        ? "bg-[#6366f1] text-white"
+                        : "text-[#9ca3af] hover:text-white"
+                    }`}
+                  >
+                    {p === "1d" ? "1 Day" : p === "7d" ? "7 Days" : p === "30d" ? "30 Days" : "All Time"}
+                  </button>
+                ))}
+              </div>
             </div>
-            {chartData.length === 0 ? (
-              <div className="h-[180px] flex items-center justify-center text-[13px] text-[#6b7280]">
-                {stats ? "No sales yet." : "Loading…"}
-              </div>
-            ) : (
-              <div className="relative">
-                <div className="ml-2 mr-2">
-                  <div className="relative h-[180px]">
-                    {[0, 1, 2, 3, 4, 5].map((i) => (
-                      <div key={i} className="absolute w-full border-t border-[#2a2d35]" style={{ top: `${i * 20}%` }} />
-                    ))}
-                    <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
-                      <defs>
-                        <linearGradient id="lineGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                          <stop offset="0%" stopColor="#6366f1" stopOpacity="0.3" />
-                          <stop offset="100%" stopColor="#6366f1" stopOpacity="0" />
-                        </linearGradient>
-                      </defs>
-                      <path
-                        d={`M 0,${180 - (chartData[0].value / maxValue) * 180} ${chartData.map((d, i) => `L ${(i / Math.max(1, chartData.length - 1)) * 100}%,${180 - (d.value / maxValue) * 180}`).join(" ")} L 100%,180 L 0,180 Z`}
-                        fill="url(#lineGradient)"
-                      />
-                      <polyline
-                        points={chartData.map((d, i) => `${(i / Math.max(1, chartData.length - 1)) * 100}%,${180 - (d.value / maxValue) * 180}`).join(" ")}
-                        fill="none" stroke="#6366f1" strokeWidth="2"
-                      />
-                    </svg>
-                    {chartData.map((point, i) => (
-                      <div
-                        key={i}
-                        className="absolute"
-                        style={{ left: `${(i / Math.max(1, chartData.length - 1)) * 100}%`, top: `${180 - (point.value / maxValue) * 180}px`, transform: "translate(-50%, -50%)" }}
-                        onMouseEnter={() => setHoveredPoint(i)}
-                        onMouseLeave={() => setHoveredPoint(null)}
-                      >
-                        <div className="w-3 h-3 bg-[#6366f1] rounded-full border-2 border-[#161a22] cursor-pointer hover:scale-150 transition-transform" />
-                        {hoveredPoint === i && (
-                          <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-[#1f2937] border border-[#374151] rounded-lg px-3 py-2 whitespace-nowrap shadow-xl z-10">
-                            <div className="text-[11px] text-[#9ca3af]">{point.date}</div>
-                            <div className="text-[14px] font-bold text-[#6366f1]">{point.label}</div>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex justify-between mt-2 text-[10px] text-[#6b7280]">
-                    {chartData.map((point, i) => (
-                      <span key={i} className={i % 2 === 0 ? "" : "opacity-0"}>{point.date}</span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
+            <ChartCanvas
+              chartData={chartData}
+              maxValue={maxValue}
+              hoveredPoint={hoveredPoint}
+              setHoveredPoint={setHoveredPoint}
+              empty={stats ? "No sales in this window." : "Loading…"}
+              period={period}
+            />
           </div>
 
           <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-5">

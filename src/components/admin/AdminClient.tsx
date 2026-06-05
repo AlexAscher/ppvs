@@ -71,10 +71,25 @@ function StatCard({
   );
 }
 
-function Panel({ title, children, className = "" }: { title: string; children: React.ReactNode; className?: string }) {
+function Panel({
+  title,
+  children,
+  className = "",
+  right,
+}: {
+  title: string;
+  children: React.ReactNode;
+  className?: string;
+  /** Optional control rendered on the right of the title row (e.g. a
+   *  period switcher). Omitting it keeps the legacy layout untouched. */
+  right?: React.ReactNode;
+}) {
   return (
     <div className={`bg-[#161a22] border border-[#2a2d35] rounded-lg p-5 ${className}`}>
-      <h2 className="text-[16px] font-semibold text-white mb-4">{title}</h2>
+      <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+        <h2 className="text-[16px] font-semibold text-white">{title}</h2>
+        {right}
+      </div>
       {children}
     </div>
   );
@@ -93,39 +108,72 @@ function Avatar({ name, n }: { name: string; n?: number }) {
   );
 }
 
-function LineChart({ data }: { data: { date: string; value: number }[] }) {
+type AdminChartPeriod = "1d" | "7d" | "30d" | "all";
+
+/**
+ * GMV chart. See the matching `ChartCanvas` in the agency dashboard for
+ * the rationale on `viewBox` + `vectorEffect="non-scaling-stroke"`.
+ */
+function LineChart({
+  data,
+  period,
+}: {
+  data: { date: string; value: number }[];
+  period: AdminChartPeriod;
+}) {
   const [hover, setHover] = useState<number | null>(null);
   if (!data || data.length === 0) {
     return (
-      <div className="h-[180px] flex items-center justify-center text-[13px] text-[#6b7280]">No sales yet.</div>
+      <div className="h-[180px] flex items-center justify-center text-[13px] text-[#6b7280]">
+        No sales in this window.
+      </div>
     );
   }
   const max = Math.max(1, ...data.map((d) => d.value));
-  const span = Math.max(1, data.length - 1);
+  const VB_W = 100;
+  const VB_H = 50;
+  const n = data.length;
+  const x = (i: number) => (n === 1 ? 50 : (i / (n - 1)) * VB_W);
+  const y = (v: number) => VB_H - (v / max) * VB_H;
+
+  const linePoints = data.map((d, i) => `${x(i).toFixed(2)},${y(d.value).toFixed(2)}`).join(" ");
+  const areaPath =
+    `M ${x(0).toFixed(2)},${y(data[0].value).toFixed(2)} ` +
+    data.slice(1).map((d, i) => `L ${x(i + 1).toFixed(2)},${y(d.value).toFixed(2)}`).join(" ") +
+    ` L ${x(n - 1).toFixed(2)},${VB_H} L ${x(0).toFixed(2)},${VB_H} Z`;
+  const targetLabels = period === "7d" ? 7 : 8;
+  const stride = Math.max(1, Math.ceil(n / targetLabels));
+
   return (
     <div className="ml-2 mr-2">
       <div className="relative h-[180px]">
         {[0, 1, 2, 3, 4, 5].map((i) => (
-          <div key={i} className="absolute w-full border-t border-[#2a2d35]" style={{ top: `${i * 20}%` }} />
+          <div
+            key={i}
+            className="absolute w-full border-t border-[#2a2d35]"
+            style={{ top: `${i * 20}%` }}
+          />
         ))}
-        <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
+        <svg
+          className="absolute inset-0 w-full h-full"
+          viewBox={`0 0 ${VB_W} ${VB_H}`}
+          preserveAspectRatio="none"
+        >
           <defs>
             <linearGradient id="adminLineGrad" x1="0%" y1="0%" x2="0%" y2="100%">
               <stop offset="0%" stopColor="#6366f1" stopOpacity="0.3" />
               <stop offset="100%" stopColor="#6366f1" stopOpacity="0" />
             </linearGradient>
           </defs>
-          <path
-            d={`M 0,${180 - (data[0].value / max) * 180} ${data
-              .map((d, i) => `L ${(i / span) * 100}%,${180 - (d.value / max) * 180}`)
-              .join(" ")} L 100%,180 L 0,180 Z`}
-            fill="url(#adminLineGrad)"
-          />
+          <path d={areaPath} fill="url(#adminLineGrad)" />
           <polyline
-            points={data.map((d, i) => `${(i / span) * 100}%,${180 - (d.value / max) * 180}`).join(" ")}
+            points={linePoints}
             fill="none"
             stroke="#6366f1"
-            strokeWidth="2"
+            strokeWidth="0.6"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
           />
         </svg>
         {data.map((point, i) => (
@@ -133,8 +181,8 @@ function LineChart({ data }: { data: { date: string; value: number }[] }) {
             key={i}
             className="absolute"
             style={{
-              left: `${(i / span) * 100}%`,
-              top: `${180 - (point.value / max) * 180}px`,
+              left: `${x(i)}%`,
+              top: `${(y(point.value) / VB_H) * 100}%`,
               transform: "translate(-50%, -50%)",
             }}
             onMouseEnter={() => setHover(i)}
@@ -150,13 +198,44 @@ function LineChart({ data }: { data: { date: string; value: number }[] }) {
           </div>
         ))}
       </div>
-      <div className="flex justify-between mt-2 text-[10px] text-[#6b7280]">
-        {data.map((point, i) => (
-          <span key={i} className={i % 2 === 0 ? "" : "opacity-0"}>
-            {point.date}
-          </span>
-        ))}
+      <div className="relative h-4 mt-2 text-[10px] text-[#6b7280]">
+        {data.map((point, i) =>
+          i % stride === 0 || i === n - 1 ? (
+            <span
+              key={i}
+              className="absolute -translate-x-1/2"
+              style={{ left: `${x(i)}%` }}
+            >
+              {point.date}
+            </span>
+          ) : null,
+        )}
       </div>
+    </div>
+  );
+}
+
+function PeriodSwitcher({
+  value,
+  onChange,
+}: {
+  value: AdminChartPeriod;
+  onChange: (p: AdminChartPeriod) => void;
+}) {
+  return (
+    <div className="flex bg-[#0d1117] border border-[#2a2d35] rounded-lg p-0.5 text-[12px]">
+      {(["1d", "7d", "30d", "all"] as AdminChartPeriod[]).map((p) => (
+        <button
+          key={p}
+          type="button"
+          onClick={() => onChange(p)}
+          className={`px-3 py-1 rounded-md transition-colors ${
+            value === p ? "bg-[#6366f1] text-white" : "text-[#9ca3af] hover:text-white"
+          }`}
+        >
+          {p === "1d" ? "1 Day" : p === "7d" ? "7 Days" : p === "30d" ? "30 Days" : "All Time"}
+        </button>
+      ))}
     </div>
   );
 }
@@ -206,12 +285,14 @@ function OverviewView({ onOpenAgency }: { onOpenAgency: (id: string) => void }) 
   const [data, setData] = useState<AdminOverview | null>(null);
   const [err, setErr] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
+  // Chart-only window — the headline cards above are unaffected.
+  const [period, setPeriod] = useState<AdminChartPeriod>("7d");
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/admin/overview");
+        const res = await fetch(`/api/admin/overview?period=${period}`);
         const j = await res.json();
         if (cancelled) return;
         if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
@@ -224,7 +305,7 @@ function OverviewView({ onOpenAgency }: { onOpenAgency: (id: string) => void }) 
     return () => {
       cancelled = true;
     };
-  }, [reloadKey]);
+  }, [reloadKey, period]);
 
   const feePct = data ? Math.round(data.feePct * 100) : 10;
   const cards: { label: string; value: string; emoji: string; highlight?: boolean }[] = data
@@ -261,8 +342,11 @@ function OverviewView({ onOpenAgency }: { onOpenAgency: (id: string) => void }) 
           ))}
         </div>
 
-        <Panel title="GMV — last 14 days 📈">
-          <LineChart data={data?.chart ?? []} />
+        <Panel
+          title="GMV 📈"
+          right={<PeriodSwitcher value={period} onChange={setPeriod} />}
+        >
+          <LineChart data={data?.chart ?? []} period={period} />
         </Panel>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

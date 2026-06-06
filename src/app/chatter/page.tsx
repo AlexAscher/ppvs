@@ -177,6 +177,10 @@ export default function ChatterPage() {
   // successful PPV send/deliver. Initial null = "loading…".
   const [stats, setStats] = useState<StatsPayload | null>(null);
 
+  // Fan emoji tags for the entire chat list — loaded in batch after dialogs
+  // arrive. Keyed by peerId so TelegramChat can render them without N fetches.
+  const [fanTagsByPeer, setFanTagsByPeer] = useState<Record<string, string[]>>({});
+
   // Mobile single-panel view switch (under md). Desktop shows all three
   // panels side by side regardless. "list" = dialog list, "chat" = open
   // conversation, "actions" = Send PPV / Tips / Notes / Stats panel.
@@ -215,6 +219,10 @@ export default function ChatterPage() {
   // While a POST (send / PPV / tip) is in-flight, pause all polling so the
   // POST doesn't get queued behind a freshly-fired GET in the server pool.
   const sendInFlightRef = useRef(false);
+  // Stable ref to the currently open dialog — used inside fetchDialogs (which
+  // lives in a useCallback with no selectedDialog dep) to auto-zero unread
+  // counts when new messages arrive in the active conversation.
+  const selectedDialogRef = useRef<Dialog | null>(null);
 
   // ── auth + models ─────────────────────────────────────────────────────────
 
@@ -294,6 +302,12 @@ export default function ChatterPage() {
     };
   }, [supabase, router]);
 
+  // Keep selectedDialogRef in sync so fetchDialogs (stable useCallback) can
+  // read the latest selected dialog without including it as a dep.
+  useEffect(() => {
+    selectedDialogRef.current = selectedDialog;
+  }, [selectedDialog]);
+
   // ── PPV data per model ────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -340,12 +354,14 @@ export default function ChatterPage() {
         name: string;
         price: number | string;
         media_url: string | null;
+        preview_url?: string | null;
         group_id: string | null;
       }>).map((row) => ({
         id: row.id,
         name: row.name,
         price: row.price,
         media_url: row.media_url,
+        preview_url: row.preview_url ?? null,
         group_id: row.group_id,
         tags: linksByItem.get(row.id) ?? [],
       }));
@@ -364,6 +380,38 @@ export default function ChatterPage() {
     };
   }, [supabase, selectedModelId]);
 
+  // ── fan tags batch fetch ──────────────────────────────────────────────────
+  // Load emoji tags for all dialogs when the model changes so the chat list
+  // shows 🔴💵⭐ next to fan usernames without N individual requests.
+  // The simple key-guard prevents re-fetching on every 10s dialogs poll.
+  const fanTagsFetchKey = useRef("");
+  useEffect(() => {
+    if (!selectedModelId) {
+      // Defer setState per React 19 strict-effects convention.
+      const tid = setTimeout(() => {
+        setFanTagsByPeer({});
+        fanTagsFetchKey.current = "";
+      }, 0);
+      return () => clearTimeout(tid);
+    }
+    const dialogs = (dialogsByModel[selectedModelId] ?? []);
+    if (dialogs.length === 0) return;
+    // Key = modelId + count so we re-fetch when the model changes OR when
+    // entirely new dialogs arrive (e.g. first time connecting a new account).
+    const key = `${selectedModelId}:${dialogs.length}`;
+    if (fanTagsFetchKey.current === key) return;
+    fanTagsFetchKey.current = key;
+
+    const peerIds = dialogs.map((d) => d.id).filter(Boolean).slice(0, 300).join(",");
+    const model = selectedModelId;
+    void fetch(`/api/fans/${model}/batch?peerIds=${peerIds}`)
+      .then((r) => r.json())
+      .then((data: { tags?: Record<string, string[]> }) => {
+        if (data.tags) setFanTagsByPeer(data.tags);
+      })
+      .catch(() => { /* best-effort */ });
+  }, [selectedModelId, dialogsByModel]);
+
   // ── dialogs polling ───────────────────────────────────────────────────────
 
   const fetchDialogs = useCallback(async (modelId: string, autoSelectFirst: boolean) => {
@@ -377,7 +425,25 @@ export default function ChatterPage() {
       const res = await fetch(`/api/telegram/dialogs/${modelId}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
-      const list: Dialog[] = data.dialogs ?? [];
+      let list: Dialog[] = data.dialogs ?? [];
+
+      // Auto-zero unread for the currently open dialog so the badge doesn't
+      // reappear after a poll when the chatter is actively reading messages.
+      const sel = selectedDialogRef.current;
+      if (sel) {
+        const liveIdx = list.findIndex((d) => d.id === sel.id);
+        if (liveIdx !== -1 && (list[liveIdx].unreadCount ?? 0) > 0) {
+          list = list.map((d) =>
+            d.id === sel.id ? { ...d, unreadCount: 0 } : d,
+          );
+          void fetch(`/api/telegram/mark-read/${modelId}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ peerId: sel.id, accessHash: sel.accessHash }),
+          }).catch(() => {});
+        }
+      }
+
       setDialogsByModel((prev) => ({ ...prev, [modelId]: list }));
       if (autoSelectFirst && list.length > 0 && autoSelectedRef.current !== modelId) {
         autoSelectedRef.current = modelId;
@@ -990,16 +1056,38 @@ export default function ChatterPage() {
 
   async function handleSendTip() {
     if (!selectedDialog || !selectedModelId || !tipAmount) return;
-    const amount = String(tipAmount).replace(/[^0-9.]/g, "");
-    if (!amount) return;
-    const body = [tipMessage.trim(), `💰 Tip request: $${amount}`].filter(Boolean).join("\n");
+    const amount = Number(String(tipAmount).replace(/[^0-9.]/g, ""));
+    if (!amount || amount <= 0) return;
     setSending(true);
     setError("");
+    setNotice("");
     try {
-      await sendTelegramMessage(selectedModelId, selectedDialog, body);
+      const res = await fetch("/api/tips/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          modelId: selectedModelId,
+          peerId: selectedDialog.id,
+          accessHash: selectedDialog.accessHash,
+          peerUsername: selectedDialog.username,
+          amount,
+          message: tipMessage.trim() || null,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+        tipUrl?: string;
+      };
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
       setTipAmount("");
       setTipMessage("");
       void fetchDialogs(selectedModelId, false);
+      setNotice(`✅ Tip request sent ($${amount.toFixed(2)})`);
+      setTimeout(
+        () => setNotice((n) => (n.startsWith("✅ Tip") ? "" : n)),
+        4_000,
+      );
     } catch (e: unknown) {
       setError(e instanceof Error ? `Tip send failed: ${e.message}` : "Tip send failed");
     } finally {
@@ -1090,7 +1178,14 @@ export default function ChatterPage() {
       });
       const data = (await res.json().catch(() => ({}))) as { fan?: FanRow; error?: string };
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      if (data.fan) setFan(data.fan);
+      if (data.fan) {
+        setFan(data.fan);
+        // Mirror updated tags into the chat list so the badge refreshes instantly.
+        const peerId = selectedDialog?.id;
+        if (peerId) {
+          setFanTagsByPeer((prev) => ({ ...prev, [peerId]: data.fan!.tags ?? [] }));
+        }
+      }
     } catch (e: unknown) {
       // Rollback
       setFan((prev) => (prev ? { ...prev, tags: current } : prev));
@@ -1129,8 +1224,9 @@ export default function ChatterPage() {
       unread: d.unreadCount ?? 0,
       avatar: initialsFromTitle(d.title),
       status: d.status,
+      tags: fanTagsByPeer[d.id] ?? [],
     }));
-  }, [currentDialogs, search]);
+  }, [currentDialogs, search, fanTagsByPeer]);
 
   const chatMessages = useMemo(
     (): ChatMessage[] =>
@@ -1206,6 +1302,7 @@ export default function ChatterPage() {
           isChatter: m.isOutgoing,
           media,
           replyPreview,
+          groupedId: m.groupedId ?? null,
         };
       }),
     [apiMessages, selectedModelId, selectedDialog],

@@ -360,29 +360,37 @@ export function PPVsTab() {
 }
 
 function PpvCard({ ppv, onClick }: { ppv: PpvItem; onClick: () => void }) {
-  // Video originals can't be shown as <img>, so prefer the pre-captured
-  // blurred poster frame (`preview_url`) for any media. For images both
-  // URLs point at a JPEG of the same content, so it doesn't matter much.
+  // Vault shows the real unblurred content — this is the agency's own view,
+  // not the fan-facing pay page. For images: original media_url. For videos:
+  // render an actual <video> element (autoplay/muted for thumbnail feel).
   const isVideo = !!ppv.media_url && /\.(mp4|mov|webm|m4v|mkv)(\?|$)/i.test(ppv.media_url);
-  const tileSrc = isVideo ? ppv.preview_url : (ppv.preview_url || ppv.media_url);
   return (
     <button
       onClick={onClick}
       className="group text-left bg-[#161a22] border border-[#2a2d35] rounded-lg overflow-hidden hover:border-[#6366f1]/50 transition-all"
     >
-      <div className="relative aspect-[4/3] bg-[#1f2937] flex items-center justify-center">
-        <span className="text-[40px] select-none">🔒</span>
-        {tileSrc && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={tileSrc}
-            alt={ppv.name}
-            className="absolute inset-0 w-full h-full object-cover"
-            // Missing/deleted media → hide broken image, the 🔒 shows through.
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).style.display = "none";
-            }}
-          />
+      <div className="relative aspect-[4/3] bg-[#1f2937] flex items-center justify-center overflow-hidden">
+        {ppv.media_url && (
+          isVideo ? (
+            <video
+              src={ppv.media_url}
+              muted
+              loop
+              playsInline
+              autoPlay
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={ppv.media_url}
+              alt={ppv.name}
+              className="absolute inset-0 w-full h-full object-cover"
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).style.display = "none";
+              }}
+            />
+          )
         )}
         {isVideo && (
           <div className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/70 backdrop-blur-sm rounded-md text-[10px] font-semibold text-white flex items-center gap-1">

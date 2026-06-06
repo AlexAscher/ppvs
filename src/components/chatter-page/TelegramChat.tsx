@@ -2,7 +2,7 @@
 
 import { Send, Search, Smile, Play, FileText, X, Zap, Check, Reply, ChevronLeft } from "lucide-react";
 import { MessageContextMenu } from "./MessageContextMenu";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { EmojiPicker } from "./EmojiPicker";
 import { twemoji } from "@/lib/twemoji";
 
@@ -52,6 +52,8 @@ export interface Message {
     quoteText: string | null;
     isToChatter: boolean;
   } | null;
+  /** Telegram grouped_id — messages in the same album share one id. */
+  groupedId?: string | null;
 }
 
 export interface ChatListItem {
@@ -62,6 +64,8 @@ export interface ChatListItem {
   unread: number;
   avatar: string;
   status?: string | null;
+  /** Fan emoji tags (🔴💵💰⭐👑) to show next to the username. */
+  tags?: string[];
 }
 
 interface TelegramChatProps {
@@ -387,6 +391,37 @@ export function TelegramChat({
   const [showEmoji, setShowEmoji] = useState(false);
   const [openMedia, setOpenMedia] = useState<MessageMediaInfo | null>(null);
 
+  // Group consecutive messages with the same non-null groupedId into album
+  // chunks so they render as a thumbnail grid instead of stacked singles.
+  type SingleChunk = { kind: "single"; msg: Message };
+  type AlbumChunk = { kind: "album"; msgs: Message[]; groupedId: string };
+  type RenderChunk = SingleChunk | AlbumChunk;
+
+  const chunks = useMemo((): RenderChunk[] => {
+    const result: RenderChunk[] = [];
+    let i = 0;
+    while (i < messages.length) {
+      const m = messages[i];
+      const gid = m.groupedId ?? null;
+      if (gid) {
+        const group: Message[] = [m];
+        let j = i + 1;
+        while (j < messages.length && messages[j].groupedId === gid) {
+          group.push(messages[j]);
+          j++;
+        }
+        if (group.length > 1) {
+          result.push({ kind: "album", msgs: group, groupedId: gid });
+          i = j;
+          continue;
+        }
+      }
+      result.push({ kind: "single", msg: m });
+      i++;
+    }
+    return result;
+  }, [messages]);
+
   // Right-click context menu local state.
   const [menu, setMenu] = useState<{
     x: number;
@@ -484,9 +519,12 @@ export function TelegramChat({
                   <span className="text-[13px] font-medium text-white truncate">
                     @{chat.username}
                   </span>
-                  <span className="text-[10px] text-[#6b7280] ml-2">
-                    {chat.time}
-                  </span>
+                  <div className="flex items-center gap-0.5 flex-shrink-0 ml-1">
+                    {(chat.tags ?? []).map((t, i) => (
+                      <span key={i} className="text-[11px] leading-none">{t}</span>
+                    ))}
+                    <span className="text-[10px] text-[#6b7280] ml-1">{chat.time}</span>
+                  </div>
                 </div>
                 <div className="flex items-center justify-between">
                   <p className="text-[11px] text-[#9ca3af] truncate">
@@ -582,7 +620,97 @@ export function TelegramChat({
           onScroll={handleScroll}
           className="flex-1 overflow-y-auto p-5 space-y-3"
         >
-          {messages.map((message) => (
+          {chunks.map((chunk) => {
+            if (chunk.kind === "album") {
+              const first = chunk.msgs[0];
+              const caption = chunk.msgs.find(
+                (m) => m.text && m.text !== "—",
+              );
+              const cols = chunk.msgs.length === 1 ? 1 : 2;
+              return (
+                <div
+                  key={chunk.groupedId}
+                  className={`flex ${first.isChatter ? "justify-end" : "justify-start"}`}
+                >
+                  <div
+                    className={`max-w-[65%] flex flex-col gap-1 ${first.isChatter ? "items-end" : "items-start"}`}
+                  >
+                    <div
+                      className={`p-1 rounded-2xl ${
+                        first.isChatter
+                          ? "bg-gradient-to-br from-[#6366f1] to-[#5558e3] rounded-br-sm"
+                          : "bg-[#1f2937] rounded-bl-sm"
+                      }`}
+                    >
+                      <div
+                        className="grid gap-0.5 overflow-hidden rounded-xl"
+                        style={{ gridTemplateColumns: `repeat(${cols}, 100px)` }}
+                      >
+                        {chunk.msgs.slice(0, 4).map((m, idx) => (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => m.media && setOpenMedia(m.media)}
+                            className="relative overflow-hidden bg-[#374151]"
+                            style={{ width: 100, height: 100 }}
+                          >
+                            {m.media &&
+                            (m.media.type === "photo" || m.media.type === "video") ? (
+                              <>
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={m.media.thumbDataUrl ?? ""}
+                                  alt=""
+                                  className="w-full h-full object-cover"
+                                  style={{
+                                    filter: "blur(5px)",
+                                    transform: "scale(1.1)",
+                                  }}
+                                />
+                                {m.media.type === "video" && (
+                                  <div className="absolute inset-0 flex items-center justify-center">
+                                    <div className="w-7 h-7 rounded-full bg-black/55 flex items-center justify-center">
+                                      <Play className="w-3.5 h-3.5 text-white" fill="white" />
+                                    </div>
+                                  </div>
+                                )}
+                              </>
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-[22px]">
+                                🔒
+                              </div>
+                            )}
+                            {idx === 3 && chunk.msgs.length > 4 && (
+                              <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white font-bold text-[16px]">
+                                +{chunk.msgs.length - 4}
+                              </div>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                      {caption && (
+                        <div
+                          className={`text-[13px] leading-relaxed whitespace-pre-wrap break-words px-3 pt-2 pb-1 ${
+                            first.isChatter ? "text-white" : "text-[#e5e7eb]"
+                          }`}
+                        >
+                          {twemoji(caption.text, `album-${chunk.groupedId}`)}
+                        </div>
+                      )}
+                    </div>
+                    <div
+                      className={`text-[10px] text-[#6b7280] px-1 ${first.isChatter ? "text-right" : "text-left"}`}
+                    >
+                      {chunk.msgs[chunk.msgs.length - 1].time}
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
+            // Single message
+            const message = chunk.msg;
+            return (
             <div
               key={message.id}
               className={`flex ${message.isChatter ? "justify-end" : "justify-start"}`}
@@ -656,7 +784,8 @@ export function TelegramChat({
                 </div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Reply / Edit indicator bar */}

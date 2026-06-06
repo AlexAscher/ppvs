@@ -12,14 +12,3 @@ body:has(.chatter-root) {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif !important;
 }
 
-/* Restore the design's button/input baseline — globals.css sets explicit
-   font-size/weight via `button { ... }` and `input { ... }` which collides
-   with Tailwind utility classes inside the chatter UI. */
-.chatter-root button,
-.chatter-root input,
-.chatter-root textarea,
-.chatter-root label {
-  font: inherit;
-  font-family: inherit;
-  line-height: inherit;
-}

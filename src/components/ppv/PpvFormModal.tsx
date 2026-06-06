@@ -218,11 +218,6 @@ export function PpvFormModal({
             <TagSelector allTags={allTags} selectedIds={selectedTags} onToggle={toggleTag} />
           </div>
 
-          <div className="text-[11px] text-[#6b7280] leading-relaxed bg-[#1f2937]/40 border border-[#2a2d35] rounded-lg p-2.5">
-            💡 Chatters set the price for each individual send. Leave it as $0
-            on their side to gift this PPV unblurred for free.
-          </div>
-
           {error && <p className="text-[12px] text-red-400">{error}</p>}
 
           <div className="flex gap-3 pt-2">

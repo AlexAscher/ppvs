@@ -222,7 +222,10 @@ export async function POST(req: NextRequest) {
           sendCtx.api_hash,
           async (tg) => {
             if (sendCtx.isFreeSend) {
-              // Originals straight to fan — caption stays on first chunk only.
+              // Originals straight to fan as a single album (forceAlbum=true)
+              // so multi-file free sends arrive as one grouped message
+              // instead of N individual messages. Cached file_ids are
+              // bypassed for this path — small cost, much better UX.
               await sendOriginalsAlbum(
                 tg,
                 sendCtx.peerId,
@@ -239,6 +242,7 @@ export async function POST(req: NextRequest) {
                     );
                   }
                 },
+                true, // forceAlbum
               );
             } else {
               await sendBlurredPreviewWithLink(

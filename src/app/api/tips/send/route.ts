@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { Api } from "telegram";
 import { authorizeModelAccess } from "@/lib/telegram-authorize";
 import { withTelegramClient } from "@/lib/telegram-pool";
 import { createAdminSupabaseClient } from "@/lib/supabase-server";
@@ -85,14 +86,21 @@ export async function POST(req: NextRequest) {
       `${req.nextUrl.protocol}//${req.nextUrl.host}`;
     const tipUrl = `${baseUrl}/tip/${code}`;
 
-    // Build the Telegram message text.
-    const tipText = [
-      message ? message : null,
-      `💰 Tip request: $${Number(amount).toFixed(2)}`,
-      `Tap to pay: ${tipUrl}`,
-    ]
-      .filter(Boolean)
-      .join("\n");
+    // Build the message with a TextUrl entity so "💸 Tip for $X.XX ↗"
+    // shows up as a clickable hyperlink rather than a raw URL. Layout:
+    //   <optional chatter message>
+    //
+    //   💸 Tip for $X.XX ↗
+    const priceFmt = Number(amount).toFixed(2);
+    const tipLabel = `💸 Tip for $${priceFmt} ↗`;
+    const messageBlock = message ? `${message}\n\n` : "";
+    const tipText = `${messageBlock}${tipLabel}`;
+
+    const tipEntity = new Api.MessageEntityTextUrl({
+      offset: messageBlock.length,
+      length: tipLabel.length,
+      url: tipUrl,
+    });
 
     // Best-effort Telegram send. Failure doesn't fail the whole request —
     // the chatter can copy the link from the UI if Telegram bounces.
@@ -106,7 +114,14 @@ export async function POST(req: NextRequest) {
           // sendMessage handles numeric strings as peer IDs; it resolves
           // the entity from the session's entity cache (populated when
           // the model previously messaged this fan for PPV sends).
-          await tg.sendMessage(peerId, { message: tipText });
+          //
+          // linkPreview:false suppresses TG's auto-generated link card so
+          // the fan sees a clean tip request — not a big page preview.
+          await tg.sendMessage(peerId, {
+            message: tipText,
+            formattingEntities: [tipEntity],
+            linkPreview: false,
+          });
         },
         30_000,
       );

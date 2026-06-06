@@ -430,6 +430,7 @@ export async function sendBlurredPreviewWithLink(
       await tg.sendMessage(peer, {
         message: messageCaption,
         formattingEntities,
+        linkPreview: false,
       });
     });
     return;
@@ -484,6 +485,7 @@ export async function sendBlurredPreviewWithLink(
         await tg.sendMessage(peer, {
           message: messageCaption,
           formattingEntities,
+          linkPreview: false,
         });
       });
       captionDelivered = true;
@@ -541,6 +543,13 @@ export async function sendOriginalsAlbum(
   items: OriginalItem[],
   caption: string,
   onCache?: (ppvId: string, serialized: string) => Promise<void>,
+  /**
+   * Force every item through the upload (album) path instead of using
+   * cached file_ids for individual sends. Used by free-PPV sends where
+   * the chatter expects a single album message regardless of cache state.
+   * Default false keeps the after-payment delivery fast (cache-first).
+   */
+  forceAlbum: boolean = false,
 ): Promise<DeliveryResult> {
   const peer = buildPeer(peerId, accessHash);
   const filtered = items.filter((it) => !!it.mediaUrl);
@@ -553,9 +562,14 @@ export async function sendOriginalsAlbum(
   // Pass 1: send cached items individually using stored file references.
   // Anything that fails the FILE_REFERENCE check rotates to the upload
   // path below. `pendingUpload` collects everything that still needs the
-  // bytes path.
+  // bytes path. Skipped entirely when forceAlbum is true so all items go
+  // out as one album.
   const pendingUpload: OriginalItem[] = [];
   for (const it of filtered) {
+    if (forceAlbum) {
+      pendingUpload.push(it);
+      continue;
+    }
     const cached = deserializeCachedFile(it.cachedFileId);
     if (!cached) {
       pendingUpload.push(it);

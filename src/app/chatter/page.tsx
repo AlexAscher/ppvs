@@ -159,6 +159,8 @@ export default function ChatterPage() {
   const [activeFilter, setActiveFilter] = useState("All");
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [caption, setCaption] = useState("");
+  // Raw price input from the chatter — empty/0 means free send (no pay link).
+  const [priceInput, setPriceInput] = useState("");
   const [tipAmount, setTipAmount] = useState("");
   const [tipMessage, setTipMessage] = useState("");
   const [notes, setNotes] = useState("");
@@ -983,6 +985,13 @@ export default function ChatterPage() {
     // Preserve the chatter's selection order — the server uses `ppvIds`
     // ordering to lay out the album and the /pay grid.
     const ordered = selectedItems.filter((id) => ppvItems.some((p) => p.id === id));
+    // Resolve the chatter's price input. Empty / 0 / NaN means a free gift
+    // (server skips the blurred preview, just pushes originals to TG).
+    const parsedPrice = Number(priceInput);
+    const priceForSend =
+      Number.isFinite(parsedPrice) && parsedPrice > 0
+        ? Math.round(parsedPrice * 100) / 100
+        : 0;
     setSending(true);
     setError("");
     setNotice("");
@@ -997,6 +1006,7 @@ export default function ChatterPage() {
           peerUsername: selectedDialog.username,
           caption,
           ppvIds: ordered,
+          totalPrice: priceForSend,
         }),
       });
       let data: { ok?: boolean; error?: string; code?: string; payUrl?: string } = {};
@@ -1009,7 +1019,8 @@ export default function ChatterPage() {
       // outcome by polling the status endpoint.
       setSelectedItems([]);
       setCaption("");
-      setNotice("Sending PPV to fan…");
+      setPriceInput("");
+      setNotice(priceForSend > 0 ? "Sending PPV to fan…" : "Sending free content to fan…");
       const sentCode = data.code;
       const modelIdForRefresh = selectedModelId;
       if (sentCode) {
@@ -1331,10 +1342,7 @@ export default function ChatterPage() {
     };
   }, [selectedDialog, currentDialogs, activity]);
 
-  const totalPrice = useMemo(
-    () => ppvItems.filter((i) => selectedItems.includes(i.id)).reduce((s, i) => s + Number(i.price ?? 0), 0),
-    [ppvItems, selectedItems],
-  );
+  // Chatter sets the price manually now — no derived total from item prices.
 
   // Fan-derived display values for the chat header.
   const totalSpentFormatted = useMemo(() => {
@@ -1462,7 +1470,8 @@ export default function ChatterPage() {
           }
           caption={caption}
           onCaptionChange={setCaption}
-          totalPrice={totalPrice}
+          priceInput={priceInput}
+          onPriceInputChange={setPriceInput}
           recipientLabel={recipientLabel}
           sending={sending}
           onSendPpv={handleSendPpv}

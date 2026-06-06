@@ -393,19 +393,44 @@ export async function sendBlurredPreviewWithLink(
     return buildLockedPlaceholder(i, isVideo);
   });
 
-  const lines = [
-    caption.trim(),
-    `🔒 Locked content — ${items.length} item${items.length === 1 ? "" : "s"}`,
-    `💰 $${totalPrice}`,
-    `Tap to unlock: ${payUrl}`,
-  ].filter(Boolean);
-  const messageCaption = lines.join("\n");
+  // Build the caption with a TextUrl entity for the "🔓 Unlock for $X ↗"
+  // line so it shows up as a clickable hyperlink in TG rather than a raw URL.
+  // Layout (one newline after caption, blank line before unlock):
+  //   <chatter caption>
+  //
+  //   🔒 Locked content — N items
+  //   🔓 Unlock for $X.XX ↗      ← clickable
+  const cleanCaption = caption.trim();
+  const lockedLine = `🔒 Locked content — ${items.length} item${items.length === 1 ? "" : "s"}`;
+  const priceFmt = totalPrice.toFixed(2);
+  const unlockLabel = `🔓 Unlock for $${priceFmt} ↗`;
+
+  // Compose the plain text. Empty caption → drop the leading two newlines.
+  const captionBlock = cleanCaption ? `${cleanCaption}\n\n` : "";
+  const messageCaption = `${captionBlock}${lockedLine}\n${unlockLabel}`;
+
+  // Compute the byte offset of the unlock label in UTF-16 code units (TG
+  // entity offsets are in UTF-16). Used by both album-caption and text-only
+  // fallback. We keep the entity construction in a small helper so both paths
+  // produce identical output.
+  function buildUnlockEntity(): Api.MessageEntityTextUrl {
+    const offset = captionBlock.length + lockedLine.length + 1; // +1 = "\n"
+    return new Api.MessageEntityTextUrl({
+      offset,
+      length: unlockLabel.length,
+      url: payUrl,
+    });
+  }
+  const formattingEntities: Api.MessageEntityTextUrl[] = [buildUnlockEntity()];
 
   // Placeholder generation never fails, so files is non-empty whenever
   // items is. Guard anyway.
   if (files.length === 0) {
     await withRetry("send text-only pay link", async () => {
-      await tg.sendMessage(peer, { message: messageCaption });
+      await tg.sendMessage(peer, {
+        message: messageCaption,
+        formattingEntities,
+      });
     });
     return;
   }
@@ -425,10 +450,20 @@ export async function sendBlurredPreviewWithLink(
 
     try {
       await withRetry(`upload preview chunk ${Math.floor(i / TG_ALBUM_LIMIT) + 1}`, async () => {
+        // formattingEntities applies only when we actually carry the caption.
+        const entities = includeCaption ? formattingEntities : undefined;
         if (chunk.length === 1) {
-          await tg.sendFile(peer, { file: chunk[0], caption: chunkCaption });
+          await tg.sendFile(peer, {
+            file: chunk[0],
+            caption: chunkCaption,
+            formattingEntities: entities,
+          });
         } else {
-          await tg.sendFile(peer, { file: chunk, caption: chunkCaption });
+          await tg.sendFile(peer, {
+            file: chunk,
+            caption: chunkCaption,
+            formattingEntities: entities,
+          });
         }
       });
       anyDelivered = true;
@@ -446,7 +481,10 @@ export async function sendBlurredPreviewWithLink(
   if (!captionDelivered) {
     try {
       await withRetry("send text-only pay link", async () => {
-        await tg.sendMessage(peer, { message: messageCaption });
+        await tg.sendMessage(peer, {
+          message: messageCaption,
+          formattingEntities,
+        });
       });
       captionDelivered = true;
       anyDelivered = true;

@@ -6,7 +6,9 @@ import { createAdminSupabaseClient } from "@/lib/supabase-server";
 import {
   generatePpvCode,
   sendBlurredPreviewWithLink,
+  sendOriginalsAlbum,
   type PpvPreviewItem,
+  type OriginalItem,
 } from "@/lib/ppv-delivery";
 import { ppvMediaPathFromUrl } from "@/lib/ppv-storage";
 import { consume, getClientIp, tooManyRequests } from "@/lib/rate-limit";
@@ -23,6 +25,8 @@ type SendBody = {
   peerUsername?: string | null;
   caption?: string;
   ppvIds: string[];
+  /** Chatter-supplied price. 0 → free send (originals straight to TG). */
+  totalPrice?: number;
 };
 
 type PpvRow = {
@@ -31,6 +35,7 @@ type PpvRow = {
   price: number | string;
   media_url: string | null;
   preview_url: string | null;
+  tg_file_id: string | null;
 };
 
 export async function POST(req: NextRequest) {
@@ -46,10 +51,14 @@ export async function POST(req: NextRequest) {
     const caption = typeof raw?.caption === "string" ? raw.caption.slice(0, 4096) : undefined;
     const accessHash = typeof raw?.accessHash === "string" || raw?.accessHash === null ? raw.accessHash ?? null : null;
     const peerUsername = typeof raw?.peerUsername === "string" || raw?.peerUsername === null ? raw?.peerUsername ?? null : null;
+    // Chatter-set price. Anything non-finite or negative is clamped to 0 (free).
+    const rawPrice = typeof raw?.totalPrice === "number" ? raw.totalPrice : 0;
+    const chatterPrice =
+      Number.isFinite(rawPrice) && rawPrice > 0 ? Math.round(rawPrice * 100) / 100 : 0;
     if (!modelId || !peerId || ppvIds.length === 0 || ppvIds.length > 50) {
       return Response.json({ error: "modelId, peerId and ppvIds (1–50) required" }, { status: 400 });
     }
-    const body: SendBody = { modelId, peerId, ppvIds, caption, accessHash, peerUsername };
+    const body: SendBody = { modelId, peerId, ppvIds, caption, accessHash, peerUsername, totalPrice: chatterPrice };
 
     const auth = await authorizeModelAccess(body.modelId);
     if ("errorResponse" in auth) return auth.errorResponse;
@@ -57,10 +66,11 @@ export async function POST(req: NextRequest) {
     const admin = createAdminSupabaseClient();
 
     // Load the selected PPV items, restricted to the chosen model so a
-    // chatter can't smuggle items from another model into a send.
+    // chatter can't smuggle items from another model into a send. tg_file_id
+    // lets the free-send path reuse the lazy file_id cache for instant delivery.
     const { data: ppvRows, error: ppvErr } = await admin
       .from("ppvs")
-      .select("id, name, price, media_url, preview_url")
+      .select("id, name, price, media_url, preview_url, tg_file_id")
       .in("id", body.ppvIds)
       .eq("model_id", body.modelId);
     if (ppvErr) {
@@ -75,7 +85,9 @@ export async function POST(req: NextRequest) {
     const byId = new Map(items.map((p) => [p.id, p]));
     const ordered = body.ppvIds.map((id) => byId.get(id)).filter((x): x is PpvRow => !!x);
 
-    const totalPrice = ordered.reduce((s, p) => s + Number(p.price ?? 0), 0);
+    // Chatter sets the price (UI input). 0 = free gift.
+    const totalPrice = chatterPrice;
+    const isFreeSend = totalPrice <= 0;
 
     // Generate a unique code. UNIQUE constraint will reject collisions; retry
     // a few times. With 8 chars from a 33-char alphabet, collisions are
@@ -139,6 +151,16 @@ export async function POST(req: NextRequest) {
     // storage path (same {userId}/{id}_preview.jpg convention as upload).
     const mediaUrlByPpvId = new Map(previewItems.map((p) => [p.ppvId, p.mediaUrl]));
 
+    // For the free-send path: build OriginalItem[] (same shape /api/ppv/deliver
+    // uses) so we can reuse sendOriginalsAlbum directly.
+    const originalItems: OriginalItem[] = ordered
+      .filter((p): p is PpvRow & { media_url: string } => !!p.media_url)
+      .map((p) => ({
+        ppvId: p.id,
+        mediaUrl: p.media_url,
+        cachedFileId: p.tg_file_id,
+      }));
+
     // Capture context for the background task before we leave the request scope.
     const sendCtx = {
       sendId,
@@ -150,9 +172,11 @@ export async function POST(req: NextRequest) {
       api_id: auth.model.api_id,
       api_hash: auth.model.api_hash,
       previewItems,
+      originalItems,
       mediaUrlByPpvId,
       payUrl,
       totalPrice,
+      isFreeSend,
     };
 
     // Upload a freshly-generated blur as the item's preview_url so the next
@@ -177,12 +201,19 @@ export async function POST(req: NextRequest) {
 
     // ─── Background delivery ────────────────────────────────────────────────
     // We respond to the chatter immediately so the UI feels snappy. The
-    // actual gramJS upload (download previews from Supabase + push to
-    // Telegram MTProto in 10-file albums) runs after the response is sent.
-    // Status transitions: pending → sending → sent (or failed).
+    // actual gramJS upload runs after the response is sent.
+    //
+    // Paid send: download previews + push blurred album + pay-link caption.
+    //   Status: pending → sending → sent (or failed).
+    //
+    // Free send: skip the preview path entirely, push originals directly to
+    // TG with the chatter's caption. No pay link. Mark delivered up-front so
+    // the row reflects the final state.
+    //   Status: pending → delivered (or failed).
     after(async () => {
       try {
-        await admin.from("ppv_sends").update({ status: "sending" }).eq("id", sendCtx.sendId);
+        const nextStatus = sendCtx.isFreeSend ? "delivered" : "sending";
+        await admin.from("ppv_sends").update({ status: nextStatus }).eq("id", sendCtx.sendId);
 
         await withTelegramClient(
           sendCtx.modelId,
@@ -190,21 +221,49 @@ export async function POST(req: NextRequest) {
           sendCtx.api_id,
           sendCtx.api_hash,
           async (tg) => {
-            await sendBlurredPreviewWithLink(
-              tg,
-              sendCtx.peerId,
-              sendCtx.accessHash,
-              sendCtx.previewItems,
-              sendCtx.caption,
-              sendCtx.payUrl,
-              sendCtx.totalPrice,
-              backfillPreview,
-            );
+            if (sendCtx.isFreeSend) {
+              // Originals straight to fan — caption stays on first chunk only.
+              await sendOriginalsAlbum(
+                tg,
+                sendCtx.peerId,
+                sendCtx.accessHash,
+                sendCtx.originalItems,
+                sendCtx.caption,
+                async (ppvId, serialized) => {
+                  try {
+                    await admin.from("ppvs").update({ tg_file_id: serialized }).eq("id", ppvId);
+                  } catch (e: unknown) {
+                    console.error(
+                      `[ppv/send free] cache write failed for ppv=${ppvId}:`,
+                      e instanceof Error ? e.message : e,
+                    );
+                  }
+                },
+              );
+            } else {
+              await sendBlurredPreviewWithLink(
+                tg,
+                sendCtx.peerId,
+                sendCtx.accessHash,
+                sendCtx.previewItems,
+                sendCtx.caption,
+                sendCtx.payUrl,
+                sendCtx.totalPrice,
+                backfillPreview,
+              );
+            }
           },
           180_000,
         );
 
-        await admin.from("ppv_sends").update({ status: "sent", error: null }).eq("id", sendCtx.sendId);
+        if (sendCtx.isFreeSend) {
+          await admin
+            .from("ppv_sends")
+            .update({ status: "delivered", delivered_at: new Date().toISOString(), error: null })
+            .eq("id", sendCtx.sendId);
+        } else {
+          await admin.from("ppv_sends").update({ status: "sent", error: null }).eq("id", sendCtx.sendId);
+        }
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : "Failed";
         console.error("[ppv/send background] error:", message);
@@ -215,7 +274,7 @@ export async function POST(req: NextRequest) {
       }
     });
 
-    return Response.json({ ok: true, code, payUrl, status: "pending" });
+    return Response.json({ ok: true, code, payUrl, status: "pending", isFree: isFreeSend });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed";
     console.error("[ppv/send POST] error:", message);

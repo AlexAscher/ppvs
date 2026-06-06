@@ -68,7 +68,9 @@ interface ActionPanelProps {
   onToggleItem: (id: string) => void;
   caption: string;
   onCaptionChange: (v: string) => void;
-  totalPrice: number;
+  /** Raw user input, kept as a string so $X.XX cents work. Empty == 0 (free). */
+  priceInput: string;
+  onPriceInputChange: (v: string) => void;
   recipientLabel: string;
   sending: boolean;
   onSendPpv: () => void;
@@ -99,7 +101,8 @@ export function ActionPanel({
   onToggleItem,
   caption,
   onCaptionChange,
-  totalPrice,
+  priceInput,
+  onPriceInputChange,
   recipientLabel,
   sending,
   onSendPpv,
@@ -123,6 +126,11 @@ export function ActionPanel({
   const currentFolder = currentFolderId
     ? ppvGroups.find((g) => g.id === currentFolderId) ?? null
     : null;
+
+  // Free send when input is empty or parses to 0. Treated as a true free
+  // gift on the backend: originals go straight to TG without a pay link.
+  const parsedPrice = Number(priceInput);
+  const isFree = !priceInput.trim() || !Number.isFinite(parsedPrice) || parsedPrice <= 0;
 
   // Scope items to the current view: at root → only orphans (group_id null);
   // inside a folder → only items belonging to that folder.
@@ -235,12 +243,9 @@ export function ActionPanel({
                   );
                 })}
 
-              {/* PPV file tiles */}
+              {/* PPV file tiles — chatter sees the unblurred original here. */}
               {filteredItems.map((item) => {
-                // Videos can't render in an <img>, so for any clip we fall
-                // back to the pre-captured blurred poster.
                 const isVid = !!item.media_url && /\.(mp4|mov|webm|m4v|mkv)(\?|$)/i.test(item.media_url);
-                const tileSrc = isVid ? item.preview_url : (item.preview_url || item.media_url);
                 return (
                 <button
                   key={item.id}
@@ -251,17 +256,28 @@ export function ActionPanel({
                       : "border-[#2a2d35] hover:border-[#374151]"
                   }`}
                 >
-                  {tileSrc ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={tileSrc}
-                      alt={item.name}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        (e.currentTarget as HTMLImageElement).style.display = "none";
-                      }}
-                    />
-                  ) : null}
+                  {item.media_url && (
+                    isVid ? (
+                      <video
+                        src={item.media_url}
+                        muted
+                        loop
+                        playsInline
+                        autoPlay
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={item.media_url}
+                        alt={item.name}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).style.display = "none";
+                        }}
+                      />
+                    )
+                  )}
                   {isVid && (
                     <div className="absolute top-1 left-1 px-1 py-0.5 bg-black/70 rounded text-[8px] font-semibold text-white">
                       ▶
@@ -275,9 +291,6 @@ export function ActionPanel({
                   <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-1.5">
                     <div className="text-[11px] text-white truncate font-medium">
                       {item.name}
-                    </div>
-                    <div className="text-[12px] font-bold text-[#6366f1]">
-                      ${item.price}
                     </div>
                   </div>
                 </button>
@@ -315,15 +328,26 @@ export function ActionPanel({
 
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] text-[#9ca3af] font-medium">
-                    Total Price
+                    Price
                   </span>
                   <div className="flex items-center gap-1.5">
-                    <input
-                      type="text"
-                      value={`$${totalPrice}`}
-                      readOnly
-                      className="w-16 px-2.5 py-1 bg-[#1f2937] border border-[#374151] rounded text-[11px] text-right text-white font-semibold focus:outline-none focus:border-[#6366f1]"
-                    />
+                    <div className="relative">
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-[#6b7280] pointer-events-none">$</span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={priceInput}
+                        onChange={(e) => {
+                          // Allow digits + one dot, max 2 cents digits.
+                          const clean = e.target.value
+                            .replace(/[^0-9.]/g, "")
+                            .replace(/^(\d*\.\d{0,2}).*$/, "$1");
+                          onPriceInputChange(clean);
+                        }}
+                        placeholder="0"
+                        className="w-20 pl-5 pr-2 py-1 bg-[#1f2937] border border-[#374151] rounded text-[11px] text-right text-white font-semibold focus:outline-none focus:border-[#6366f1]"
+                      />
+                    </div>
                     <span className="text-[12px] text-[#6b7280]">
                       {selectedItems.length} items
                     </span>
@@ -333,14 +357,23 @@ export function ActionPanel({
                 <button
                   onClick={onSendPpv}
                   disabled={!hasRecipient || sending}
-                  className="w-full py-2.5 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white rounded-md font-semibold text-[12px] hover:from-[#5558e3] hover:to-[#4338ca] transition-all shadow-lg shadow-[#6366f1]/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className={`w-full py-2.5 text-white rounded-md font-semibold text-[12px] transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed ${
+                    isFree
+                      ? "bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 shadow-emerald-500/20"
+                      : "bg-gradient-to-r from-[#6366f1] to-[#4f46e5] hover:from-[#5558e3] hover:to-[#4338ca] shadow-[#6366f1]/20"
+                  }`}
                 >
-                  {sending ? "Sending…" : `Send PPV to ${recipientLabel}`}
+                  {sending
+                    ? "Sending…"
+                    : isFree
+                      ? `🎁 Send free to ${recipientLabel}`
+                      : `Send PPV to ${recipientLabel}`}
                 </button>
 
                 <div className="text-[9px] text-[#6b7280] text-center leading-relaxed">
-                  Sends blurred preview + pay link directly into fan&apos;s
-                  Telegram DM. Fan pays → content unlocks automatically.
+                  {isFree
+                    ? "Free send: originals go straight to fan's Telegram, no pay link."
+                    : "Sends blurred preview + pay link to fan's Telegram. Unlocks on payment."}
                 </div>
               </div>
             )}

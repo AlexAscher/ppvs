@@ -35,7 +35,10 @@ export function PpvFormModal({
   const [file, setFile] = useState<File | null>(null);
   const [name, setName] = useState(existing?.name ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
-  const [price, setPrice] = useState(existing ? String(existing.price) : "");
+  // Price is no longer set by the agency — chatters pick a price (or 0 for
+  // free) when sending. We default to 0 in the DB so legacy code that still
+  // reads ppvs.price gets a deterministic value. Existing rows keep their old
+  // values until re-edited.
   const [selectedTags, setSelectedTags] = useState<string[]>(existing?.tags.map((t) => t.id) ?? []);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -49,8 +52,9 @@ export function PpvFormModal({
 
   async function handleSave() {
     if (!name.trim()) { setError("Name is required"); return; }
-    const priceNum = Number(price);
-    if (!Number.isFinite(priceNum) || priceNum < 0) { setError("Invalid price"); return; }
+    // Price is set by the chatter at send-time, not at vault-create time.
+    // DB column stays NOT NULL on most setups, so default to 0.
+    const priceNum = 0;
 
     setSaving(true);
     setError("");
@@ -210,22 +214,13 @@ export function PpvFormModal({
           </div>
 
           <div>
-            <label className="text-[12px] text-[#9ca3af] font-medium mb-1.5 block">Price (USD)</label>
-            <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#6b7280] text-[14px]">$</span>
-              <input
-                type="number" step="0.01" min="0"
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-                placeholder="0.00"
-                className="w-full pl-8 pr-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#4b5563] focus:border-[#6366f1] focus:outline-none transition-colors"
-              />
-            </div>
-          </div>
-
-          <div>
             <label className="text-[12px] text-[#9ca3af] font-medium mb-1.5 block">Tags</label>
             <TagSelector allTags={allTags} selectedIds={selectedTags} onToggle={toggleTag} />
+          </div>
+
+          <div className="text-[11px] text-[#6b7280] leading-relaxed bg-[#1f2937]/40 border border-[#2a2d35] rounded-lg p-2.5">
+            💡 Chatters set the price for each individual send. Leave it as $0
+            on their side to gift this PPV unblurred for free.
           </div>
 
           {error && <p className="text-[12px] text-red-400">{error}</p>}

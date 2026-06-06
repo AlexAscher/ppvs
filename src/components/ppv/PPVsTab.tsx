@@ -397,9 +397,6 @@ function PpvCard({ ppv, onClick }: { ppv: PpvItem; onClick: () => void }) {
             <span className="text-[8px]">▶</span> Video
           </div>
         )}
-        <div className="absolute top-2 right-2 px-2 py-1 bg-black/70 backdrop-blur-sm rounded-md text-[12px] font-bold text-white">
-          ${ppv.price.toFixed(2)}
-        </div>
       </div>
       <div className="p-3">
         <div className="text-[13px] font-semibold text-white truncate">{ppv.name}</div>

@@ -3,27 +3,24 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
-import { Topbar as TopbarAgency } from "@/components/chatter-page/Topbar";
-import { ModelSelectorBar as ModelSelectorBarAgency } from "@/components/chatter-page/ModelSelectorBar";
+// Both roles (agency + chatter) render the single indigo design from
+// Create_prompt_design — the chatter-page-classic/* components are the
+// pixel-match of that design. The older medium-sized chatter-page/* design
+// components are retired; only its non-visual modals are still used.
+import { Topbar } from "@/components/chatter-page-classic/Topbar";
+import { ModelSelectorBar } from "@/components/chatter-page-classic/ModelSelectorBar";
 import {
-  TelegramChat as TelegramChatAgency,
+  TelegramChat,
   type ChatListItem,
   type Message as ChatMessage,
   type MessageMediaInfo,
-} from "@/components/chatter-page/TelegramChat";
+} from "@/components/chatter-page-classic/TelegramChat";
 import {
-  ActionPanel as ActionPanelAgency,
+  ActionPanel,
   type PpvItem,
   type PpvTag,
   type PpvGroup,
-} from "@/components/chatter-page/ActionPanel";
-// Pixel-match Create_prompt_design components — rendered for role === "chatter".
-// Same prop interface as agency variants, so we can swap them by role with a
-// single `const X = role === "chatter" ? ClassicX : AgencyX`.
-import { Topbar as TopbarClassic } from "@/components/chatter-page-classic/Topbar";
-import { ModelSelectorBar as ModelSelectorBarClassic } from "@/components/chatter-page-classic/ModelSelectorBar";
-import { TelegramChat as TelegramChatClassic } from "@/components/chatter-page-classic/TelegramChat";
-import { ActionPanel as ActionPanelClassic } from "@/components/chatter-page-classic/ActionPanel";
+} from "@/components/chatter-page-classic/ActionPanel";
 import type { FanRow, FanNote } from "@/lib/fan-types";
 import { QuickReplyModal } from "@/components/chatter-page/QuickReplyModal";
 import { FanProfileDrawer } from "@/components/chatter-page/FanProfileDrawer";
@@ -1344,9 +1341,12 @@ export default function ChatterPage() {
 
   // Chatter sets the price manually now — no derived total from item prices.
 
-  // Fan-derived display values for the chat header. Total-spent plate
-  // was removed from the header (lives in the fan-profile drawer now), so
-  // we only need the tags for the inline emoji chip row.
+  // Fan-derived display values for the chat header.
+  const totalSpentFormatted = useMemo(() => {
+    const n = Number(fan?.total_spent ?? 0);
+    if (!Number.isFinite(n) || n <= 0) return "$0";
+    return `$${n.toFixed(0)}`;
+  }, [fan]);
   const fanTags = useMemo(() => fan?.tags ?? [], [fan]);
 
   const recipientLabel = selectedDialog
@@ -1367,15 +1367,9 @@ export default function ChatterPage() {
 
   if (role === null) return null;
 
-  // Role-gated UI variants. Chatters see the pixel-match of
-  // Create_prompt_design (chatter-page-classic/*). Agencies see the
-  // pre-shrink medium variant (chatter-page/*). Both share interfaces and
-  // data wiring — only sizes/classNames differ.
-  const isChatter = role === "chatter";
-  const Topbar = isChatter ? TopbarClassic : TopbarAgency;
-  const ModelSelectorBar = isChatter ? ModelSelectorBarClassic : ModelSelectorBarAgency;
-  const TelegramChat = isChatter ? TelegramChatClassic : TelegramChatAgency;
-  const ActionPanel = isChatter ? ActionPanelClassic : ActionPanelAgency;
+  // Both agency and chatter render the same indigo design
+  // (Create_prompt_design → chatter-page-classic/*). No more per-role size
+  // split — the components are imported directly at module scope above.
 
   return (
     <div
@@ -1424,6 +1418,7 @@ export default function ChatterPage() {
           onSelectChat={handleDialogSelect}
           selected={selectedChatItem}
           messages={chatMessages}
+          totalSpent={totalSpentFormatted}
           inputText={inputText}
           onInputChange={setInputText}
           onSend={handleSend}

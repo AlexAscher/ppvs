@@ -95,6 +95,8 @@ interface TelegramChatProps {
   onSelectChat: (id: string) => void;
   selected: ChatListItem | null;
   messages: Message[];
+  /** Fan's lifetime spend, pre-formatted ("$245"). Shown in the header. */
+  totalSpent: string;
   inputText: string;
   onInputChange: (v: string) => void;
   onSend: () => void;
@@ -384,6 +386,7 @@ export function TelegramChat({
   onSelectChat,
   selected,
   messages,
+  totalSpent,
   inputText,
   onInputChange,
   onSend,
@@ -624,8 +627,9 @@ export function TelegramChat({
                 );
               })}
             </div>
-            {/* "Total spent" plate removed — fan total is shown in the
-                Fan Profile drawer instead so the header stays tidy. */}
+            <div className="px-3 py-1.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[11px] text-[#9ca3af]">
+              Total spent: <span className="text-[#6366f1] font-bold">{totalSpent}</span>
+            </div>
           </div>
         </div>
 

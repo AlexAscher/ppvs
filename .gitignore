@@ -43,3 +43,6 @@ next-env.d.ts
 # local-only dev helpers
 /.tools/
 /tmp-*
+
+# design reference (kept locally only — never deploy)
+/Create_prompt_design/

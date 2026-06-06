@@ -168,9 +168,9 @@ export function ActionPanel({
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-3">
+      <div className={`flex-1 ${activeTab === "ppv" ? "flex flex-col min-h-0" : "overflow-y-auto"} p-3`}>
         {activeTab === "ppv" && (
-          <div className="space-y-3">
+          <div className="flex flex-col flex-1 min-h-0 space-y-3">
             {/* Breadcrumb / back button — only inside a folder */}
             {currentFolder && (
               <div className="flex items-center gap-2">
@@ -220,7 +220,9 @@ export function ActionPanel({
               })}
             </div>
 
-            {/* Grid: folders first (only at root), then files */}
+            {/* Grid: folders first (only at root), then files. Scrolls
+                independently so the Send section below stays pinned. */}
+            <div className="flex-1 min-h-0 overflow-y-auto pr-1 -mr-1 custom-scrollbar">
             <div className="grid grid-cols-3 gap-2">
               {/* Folder tiles — only when at root and there are groups */}
               {!currentFolderId &&
@@ -309,10 +311,12 @@ export function ActionPanel({
                   </div>
                 )}
             </div>
+            </div>
 
-            {/* Send section */}
+            {/* Send section — sticky at the bottom of the panel so it
+                stays visible no matter how far you scroll through PPVs. */}
             {selectedItems.length > 0 && (
-              <div className="space-y-2.5 pt-3 border-t border-[#2a2d35]">
+              <div className="shrink-0 space-y-2.5 pt-3 border-t border-[#2a2d35] bg-[#161a22]">
                 <div>
                   <label className="text-[10px] text-[#9ca3af] font-medium mb-1.5 block">
                     Message Caption

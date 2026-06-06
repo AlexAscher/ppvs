@@ -173,9 +173,9 @@ export function ActionPanel({
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className={`flex-1 ${activeTab === "ppv" ? "flex flex-col min-h-0" : "overflow-y-auto"} p-4`}>
         {activeTab === "ppv" && (
-          <div className="space-y-4">
+          <div className="flex flex-col flex-1 min-h-0 space-y-4">
             {/* Folder breadcrumb (only inside a folder) */}
             {currentFolder && (
               <div className="flex items-center gap-2">
@@ -225,7 +225,9 @@ export function ActionPanel({
               })}
             </div>
 
-            {/* Grid — gap-2.5 rounded-lg from design, folders first at root */}
+            {/* Grid — gap-2.5 rounded-lg from design, folders first at root.
+                Scrolls independently so the Send section stays pinned. */}
+            <div className="flex-1 min-h-0 overflow-y-auto pr-1 -mr-1 custom-scrollbar">
             <div className="grid grid-cols-3 gap-2.5">
               {!currentFolderId &&
                 ppvGroups.map((group) => {
@@ -308,10 +310,12 @@ export function ActionPanel({
                 </div>
               )}
             </div>
+            </div>
 
-            {/* Send section — py-3 text-[13px] from design */}
+            {/* Send section — sticky at bottom: caption / price / send
+                stay visible no matter how far the chatter scrolls. */}
             {selectedItems.length > 0 && (
-              <div className="space-y-3 pt-4 border-t border-[#2a2d35]">
+              <div className="shrink-0 space-y-3 pt-4 border-t border-[#2a2d35] bg-[#161a22]">
                 <div>
                   <label className="text-[11px] text-[#9ca3af] font-medium mb-2 block">
                     Message Caption

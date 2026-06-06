@@ -1344,12 +1344,9 @@ export default function ChatterPage() {
 
   // Chatter sets the price manually now — no derived total from item prices.
 
-  // Fan-derived display values for the chat header.
-  const totalSpentFormatted = useMemo(() => {
-    const n = Number(fan?.total_spent ?? 0);
-    if (!Number.isFinite(n) || n <= 0) return "$0";
-    return `$${n.toFixed(0)}`;
-  }, [fan]);
+  // Fan-derived display values for the chat header. Total-spent plate
+  // was removed from the header (lives in the fan-profile drawer now), so
+  // we only need the tags for the inline emoji chip row.
   const fanTags = useMemo(() => fan?.tags ?? [], [fan]);
 
   const recipientLabel = selectedDialog
@@ -1427,7 +1424,6 @@ export default function ChatterPage() {
           onSelectChat={handleDialogSelect}
           selected={selectedChatItem}
           messages={chatMessages}
-          totalSpent={totalSpentFormatted}
           inputText={inputText}
           onInputChange={setInputText}
           onSend={handleSend}

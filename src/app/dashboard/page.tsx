@@ -203,6 +203,19 @@ function initials(name: string): string {
     .join("");
 }
 
+/** "5m ago", "2h ago", "3d ago", or the date for anything older than 30 days. */
+function formatRelative(ts: number): string {
+  const diff = Date.now() - ts;
+  if (diff < 60_000) return "just now";
+  const m = Math.floor(diff / 60_000);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 30) return `${d}d ago`;
+  return new Date(ts).toLocaleDateString();
+}
+
 type ChartPeriod = "1d" | "7d" | "30d" | "all";
 
 /**
@@ -485,30 +498,69 @@ function DashboardTab() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Per-model breakdown */}
-          <div className="md:col-span-2 bg-[#161a22] border border-[#2a2d35] rounded-lg p-5 flex flex-col">
-            <h2 className="text-[16px] font-semibold text-white mb-4">Models breakdown 👥</h2>
-            <div className="flex-1 overflow-y-auto max-h-[300px] space-y-2 pr-2 custom-scrollbar">
-              {(stats?.models ?? []).length === 0 ? (
-                <div className="py-6 text-center text-[13px] text-[#6b7280]">
-                  {stats ? "No sales yet." : "Loading…"}
-                </div>
-              ) : (
-                stats!.models.map((m) => (
-                  <div key={m.id} className="flex items-center justify-between p-3 bg-[#1f2937]/30 rounded-lg hover:bg-[#1f2937]/50 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-full flex items-center justify-center text-white font-semibold text-[12px]">
-                        {initials(m.name) || "M"}
+          {/* Left column: Models breakdown stacked over Recent Sales */}
+          <div className="md:col-span-2 space-y-6">
+            <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-5 flex flex-col">
+              <h2 className="text-[16px] font-semibold text-white mb-4">Models breakdown 👥</h2>
+              <div className="flex-1 overflow-y-auto max-h-[300px] space-y-2 pr-2 custom-scrollbar">
+                {(stats?.models ?? []).length === 0 ? (
+                  <div className="py-6 text-center text-[13px] text-[#6b7280]">
+                    {stats ? "No sales yet." : "Loading…"}
+                  </div>
+                ) : (
+                  stats!.models.map((m) => (
+                    <div key={m.id} className="flex items-center justify-between p-3 bg-[#1f2937]/30 rounded-lg hover:bg-[#1f2937]/50 transition-colors">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-full flex items-center justify-center text-white font-semibold text-[12px]">
+                          {initials(m.name) || "M"}
+                        </div>
+                        <div>
+                          <div className="text-[13px] text-white font-medium">{m.name}</div>
+                          <div className="text-[11px] text-[#6b7280]">{m.sales} sales</div>
+                        </div>
                       </div>
-                      <div>
-                        <div className="text-[13px] text-white font-medium">{m.name}</div>
-                        <div className="text-[11px] text-[#6b7280]">{m.sales} sales</div>
+                      <div className="text-[15px] font-bold text-[#6366f1]">{fmtMoney(m.net)}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Recent Sales — last 10 paid/delivered. Lives in the left
+                column so the right column (Top Fans) stays full-height. */}
+            <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-5 flex flex-col">
+              <h2 className="text-[16px] font-semibold text-white mb-4">Recent sales 💸</h2>
+              <div className="flex-1 overflow-y-auto max-h-[360px] space-y-1.5 pr-2 custom-scrollbar">
+                {(stats?.recentSales ?? []).length === 0 ? (
+                  <div className="py-6 text-center text-[13px] text-[#6b7280]">
+                    {stats ? "No sales yet." : "Loading…"}
+                  </div>
+                ) : (
+                  stats!.recentSales.map((s, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between gap-3 p-2.5 bg-[#1f2937]/30 rounded-lg hover:bg-[#1f2937]/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-7 h-7 bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border border-emerald-500/30 rounded-full flex items-center justify-center text-[12px]">
+                          💸
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-[13px] text-white font-medium truncate">
+                            {s.fanName}
+                          </div>
+                          <div className="text-[11px] text-[#6b7280] truncate">
+                            {s.modelName} · {formatRelative(s.ts)}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-[14px] font-bold text-emerald-400 shrink-0">
+                        {fmtMoney(s.amount)}
                       </div>
                     </div>
-                    <div className="text-[15px] font-bold text-[#6366f1]">{fmtMoney(m.net)}</div>
-                  </div>
-                ))
-              )}
+                  ))
+                )}
+              </div>
             </div>
           </div>
 
@@ -580,7 +632,38 @@ function ModelsTab() {
           .select("id, name, username, earnings, avatar_url");
         rows = (base.data ?? null) as Model[] | null;
       }
-      if (rows) setModels(rows);
+      if (!rows) return;
+
+      // models.earnings is a stale column — compute the real total live
+      // from paid/delivered ppv_sends + paid tips per model. This way
+      // every refresh shows current revenue without a backend trigger.
+      const modelIds = rows.map((r) => r.id);
+      const [sendsRes, tipsRes] = await Promise.all([
+        supabase
+          .from("ppv_sends")
+          .select("model_id, total_price, status")
+          .in("model_id", modelIds)
+          .in("status", ["paid", "delivered"]),
+        supabase
+          .from("tips")
+          .select("model_id, amount, status")
+          .in("model_id", modelIds)
+          .eq("status", "paid"),
+      ]);
+      const earningsByModel = new Map<string, number>();
+      for (const s of (sendsRes.data ?? []) as { model_id: string; total_price: number | string }[]) {
+        earningsByModel.set(
+          s.model_id,
+          (earningsByModel.get(s.model_id) ?? 0) + Number(s.total_price ?? 0),
+        );
+      }
+      for (const t of (tipsRes.data ?? []) as { model_id: string; amount: number | string }[]) {
+        earningsByModel.set(
+          t.model_id,
+          (earningsByModel.get(t.model_id) ?? 0) + Number(t.amount ?? 0),
+        );
+      }
+      setModels(rows.map((r) => ({ ...r, earnings: earningsByModel.get(r.id) ?? 0 })));
     })();
   }, []);
 

@@ -167,8 +167,8 @@ export function ChattersTab() {
             </div>
           </div>
         ) : (
-          <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg overflow-hidden">
-            <div className="grid grid-cols-[1fr_240px_120px] gap-4 px-4 py-3 border-b border-[#2a2d35] bg-[#1f2937]/30">
+          <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg overflow-visible">
+            <div className="grid grid-cols-[1fr_240px_120px] gap-4 px-4 py-3 border-b border-[#2a2d35] bg-[#1f2937]/30 rounded-t-lg">
               <div className="text-[11px] text-[#9ca3af] uppercase tracking-wider font-semibold">Chatter</div>
               <div className="text-[11px] text-[#9ca3af] uppercase tracking-wider font-semibold">Model</div>
               <div className="text-[11px] text-[#9ca3af] uppercase tracking-wider font-semibold">Status</div>

@@ -74,7 +74,6 @@ interface TelegramChatProps {
   onSelectChat: (id: string) => void;
   selected: ChatListItem | null;
   messages: Message[];
-  totalSpent: string;
   inputText: string;
   onInputChange: (v: string) => void;
   onSend: () => void;
@@ -363,7 +362,6 @@ export function TelegramChat({
   onSelectChat,
   selected,
   messages,
-  totalSpent,
   inputText,
   onInputChange,
   onSend,
@@ -607,10 +605,8 @@ export function TelegramChat({
                 );
               })}
             </div>
-            <div className="px-3 py-1.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[11px] text-[#9ca3af]">
-              Total spent:{" "}
-              <span className="text-[#6366f1] font-bold">{totalSpent}</span>
-            </div>
+            {/* "Total spent" plate removed — fan total is shown in the
+                Fan Profile drawer instead so the header stays tidy. */}
           </div>
         </div>
 
@@ -633,10 +629,10 @@ export function TelegramChat({
                   className={`flex ${first.isChatter ? "justify-end" : "justify-start"}`}
                 >
                   <div
-                    className={`max-w-[65%] flex flex-col gap-1 ${first.isChatter ? "items-end" : "items-start"}`}
+                    className={`flex flex-col gap-1 ${first.isChatter ? "items-end" : "items-start"}`}
                   >
                     <div
-                      className={`p-1 rounded-2xl ${
+                      className={`p-1 rounded-2xl inline-block ${
                         first.isChatter
                           ? "bg-gradient-to-br from-[#6366f1] to-[#5558e3] rounded-br-sm"
                           : "bg-[#1f2937] rounded-bl-sm"

@@ -234,7 +234,12 @@ body {
   padding: 0;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  /* Apple Color Emoji is preferred for the iOS/Telegram look. On macOS/iOS
+   * the OS ships it; on Windows the fallback is Segoe UI Emoji; on
+   * Android/Linux it's Noto Color Emoji. Text glyphs fall through to the
+   * regular Geist Sans / system-ui chain. */
+  font-family: var(--font-geist-sans), system-ui, "Apple Color Emoji",
+    "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
   font-feature-settings: "ss01", "cv11";
 }
 

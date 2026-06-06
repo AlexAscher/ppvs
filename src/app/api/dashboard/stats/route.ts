@@ -38,6 +38,13 @@ const Q_TIMEOUT = 45_000;
 export type ModelStat = { id: string; name: string; net: number; sales: number };
 export type ChatterStat = { id: string; name: string; net: number; sales: number };
 export type FanStat = { name: string; spent: number };
+export type RecentSale = {
+  fanName: string;
+  amount: number;
+  modelName: string;
+  /** ms-epoch — client formats relative ("2h ago"). */
+  ts: number;
+};
 export type DashboardStats = {
   netToday: number;
   netWeek: number;
@@ -53,6 +60,7 @@ export type DashboardStats = {
   models: ModelStat[];
   chatters: ChatterStat[];
   topFans: FanStat[];
+  recentSales: RecentSale[];
   partial?: boolean;
 };
 
@@ -94,6 +102,7 @@ export async function GET(req: NextRequest) {
       netToday: 0, netWeek: 0, netMonth: 0, netAllTime: 0,
       sales: 0, avgOrder: 0, payingFans: 0, activeChatters: 0,
       availableBalance: 0, pendingPayouts: 0, chart: [], models: [], chatters: [], topFans: [],
+      recentSales: [],
       partial,
     };
     if (modelIds.length === 0) return Response.json(empty);
@@ -219,6 +228,57 @@ export async function GET(req: NextRequest) {
       }),
     );
 
+    // Recent Sales — the 10 most recently paid/delivered sends. Fetched
+    // fresh from the DB rather than re-walking `sends` so we can sort by
+    // created_at without holding the whole paginated list sorted in memory.
+    let recentSales: RecentSale[] = [];
+    try {
+      const rs = await withTimeout(
+        Promise.resolve(
+          admin
+            .from("ppv_sends")
+            .select("model_id, peer_id, peer_username, total_price, created_at, status")
+            .in("model_id", modelIds)
+            .in("status", ["paid", "delivered"])
+            .order("created_at", { ascending: false })
+            .limit(10),
+        ),
+        Q_TIMEOUT,
+        "dashboard: recent sales",
+      );
+      type RecentRow = {
+        model_id: string;
+        peer_id: string;
+        peer_username: string | null;
+        total_price: number | string;
+        created_at: string;
+      };
+      // Resolve fan names from the fans table we already loaded (avoids
+      // an extra round-trip per row).
+      const fanByKey = new Map<string, { telegram_username: string | null; telegram_name: string | null }>();
+      for (const f of fans) {
+        fanByKey.set(`${f.model_id}:${f.peer_id}`, {
+          telegram_username: f.telegram_username,
+          telegram_name: f.telegram_name,
+        });
+      }
+      recentSales = ((rs.data ?? []) as RecentRow[]).map((r) => {
+        const fan = fanByKey.get(`${r.model_id}:${r.peer_id}`);
+        const username = r.peer_username ?? fan?.telegram_username ?? null;
+        const name = username
+          ? `@${username}`
+          : fan?.telegram_name || "Fan";
+        return {
+          fanName: name,
+          amount: Number(r.total_price ?? 0),
+          modelName: nameByModel.get(r.model_id) ?? "Model",
+          ts: new Date(r.created_at).getTime(),
+        };
+      });
+    } catch {
+      // Best-effort — empty list is fine if this single query times out.
+    }
+
     const payload: DashboardStats = {
       netToday, netWeek, netMonth, netAllTime,
       sales, avgOrder, payingFans, activeChatters,
@@ -227,6 +287,7 @@ export async function GET(req: NextRequest) {
       models: modelStats,
       chatters,
       topFans,
+      recentSales,
       partial,
     };
     return Response.json(payload);

@@ -162,7 +162,7 @@ export function ActionPanel({
           <button
             key={tab}
             onClick={() => onTabChange(tab)}
-            className={`flex-1 text-[8px] font-semibold uppercase tracking-wider border-b-2 transition-all ${
+            className={`flex-1 text-[10px] font-semibold uppercase tracking-wider border-b-2 transition-all ${
               activeTab === tab
                 ? "text-[#6366f1] border-[#6366f1] bg-[#1a1d24]"
                 : "text-[#6b7280] border-transparent hover:text-[#9ca3af] hover:bg-[#1a1d24]/50"

@@ -1,6 +1,7 @@
 import { TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions";
 import { buildTelegramClientOptions } from "@/lib/telegram-client";
+import { subscribeAutoReplyEvents } from "@/lib/auto-reply";
 import {
   subscribeActivityEvents,
   clearActivitySubscription,
@@ -160,6 +161,9 @@ async function connectOrGetClient(
     // by /api/telegram/activity to derive a fresh "online" badge even
     // when Telegram privacy hides the real user status.
     subscribeActivityEvents(modelId, client);
+    // Auto-reply hook: fires once per new fan when they send their first
+    // message, if the model has it enabled in Settings.
+    subscribeAutoReplyEvents(modelId, client);
     return client;
   })();
 

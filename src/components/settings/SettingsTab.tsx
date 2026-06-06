@@ -2,22 +2,23 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase";
+import { AutoRepliesSection } from "./AutoRepliesSection";
 
 /**
  * Settings — shared by agency dashboard and chatter dashboard. All writes
- * go through Supabase Auth (no extra tables):
+ * go through Supabase Auth (no extra tables) except auto-replies which
+ * live on the models table:
  *   - Profile display name → user_metadata.full_name
  *   - Password            → auth.updateUser({ password })
- *   - Payout address      → user_metadata.payout_address (agency only)
+ *   - Auto replies        → /api/auto-reply/[modelId] (agency only)
  *
- * `role` gates the agency-only Payout section.
+ * `role` gates the agency-only Auto Replies section.
  */
 export function SettingsTab({ role }: { role: "agency" | "chatter" }) {
   const supabase = createClient();
 
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
-  const [payoutAddress, setPayoutAddress] = useState("");
 
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileMsg, setProfileMsg] = useState("");
@@ -26,9 +27,6 @@ export function SettingsTab({ role }: { role: "agency" | "chatter" }) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [savingPassword, setSavingPassword] = useState(false);
   const [passwordMsg, setPasswordMsg] = useState("");
-
-  const [savingPayout, setSavingPayout] = useState(false);
-  const [payoutMsg, setPayoutMsg] = useState("");
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -39,7 +37,6 @@ export function SettingsTab({ role }: { role: "agency" | "chatter" }) {
           (user.user_metadata?.display_name as string) ||
           "",
       );
-      setPayoutAddress((user.user_metadata?.payout_address as string) || "");
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -84,22 +81,6 @@ export function SettingsTab({ role }: { role: "agency" | "chatter" }) {
     }
   }
 
-  async function savePayout() {
-    setSavingPayout(true);
-    setPayoutMsg("");
-    try {
-      const { error } = await supabase.auth.updateUser({
-        data: { payout_address: payoutAddress.trim() },
-      });
-      if (error) throw error;
-      setPayoutMsg("Saved ✓");
-    } catch (e: unknown) {
-      setPayoutMsg(e instanceof Error ? `Error: ${e.message}` : "Error");
-    } finally {
-      setSavingPayout(false);
-    }
-  }
-
   const card = "bg-[#161a22] border border-[#2a2d35] rounded-xl p-5 md:p-6";
   const label = "block text-[12px] text-[#9ca3af] mb-1.5 font-medium";
   const input =
@@ -114,7 +95,7 @@ export function SettingsTab({ role }: { role: "agency" | "chatter" }) {
       <div className="max-w-[640px] mx-auto space-y-5">
         <div>
           <h1 className="text-[22px] md:text-[24px] font-bold text-white mb-1">Settings ⚙️</h1>
-          <p className="text-[13px] text-[#9ca3af]">Manage your profile, password{role === "agency" ? " and payouts" : ""}.</p>
+          <p className="text-[13px] text-[#9ca3af]">Manage your profile, password{role === "agency" ? " and auto-replies" : ""}.</p>
         </div>
 
         {/* Profile */}
@@ -178,32 +159,8 @@ export function SettingsTab({ role }: { role: "agency" | "chatter" }) {
           </div>
         </div>
 
-        {/* Payout — agency only */}
-        {role === "agency" && (
-          <div className={card}>
-            <h2 className="text-[15px] font-semibold text-white mb-1">Payout</h2>
-            <p className="text-[12px] text-[#6b7280] mb-4">
-              Crypto address where your earnings are sent. USDT (TRC20) recommended.
-            </p>
-            <div className="space-y-3">
-              <div>
-                <label className={label}>Payout address</label>
-                <input
-                  className={input}
-                  value={payoutAddress}
-                  onChange={(e) => setPayoutAddress(e.target.value)}
-                  placeholder="TRC20 / ERC20 wallet address"
-                />
-              </div>
-              <div className="flex items-center gap-3">
-                <button className={btn} onClick={savePayout} disabled={savingPayout}>
-                  {savingPayout ? "Saving…" : "Save payout address"}
-                </button>
-                {payoutMsg && <span className={msgCls(payoutMsg)}>{payoutMsg}</span>}
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Auto Replies — agency only */}
+        {role === "agency" && <AutoRepliesSection />}
       </div>
     </div>
   );

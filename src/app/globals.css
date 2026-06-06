@@ -165,14 +165,21 @@
   html {
     font-size: var(--font-size);
   }
-  /* Removed the blanket h1/h2/h3/h4/label/button/input font-size +
-   * font-weight + line-height block that lived here. Those rules came
-   * from the shadcn default theme and were forcing every element to
-   * font-size: var(--text-base) (≈ 16 px), which then beat any Tailwind
-   * arbitrary text-[Xpx] utility on a class — every text-[10px] /
-   * text-[11px] / text-[12px] on a <button>, <h*>, <input>, etc. in this
-   * codebase was silently rendering as 16 px. Strip the block so Tailwind
-   * font-size utilities take effect again. */
+  /* font: inherit must live in @layer base so Tailwind @layer utilities
+   * can override font-size with text-[Xpx] arbitrary values.
+   * Unlayered CSS beats any @layer regardless of order. */
+  input,
+  button,
+  textarea {
+    font: inherit;
+  }
+  button {
+    cursor: pointer;
+  }
+  input:focus,
+  textarea:focus {
+    outline: none;
+  }
 }
 
 * {
@@ -229,20 +236,6 @@ body::before {
   z-index: -1;
 }
 
-input,
-button,
-textarea {
-  font: inherit;
-}
-
-button {
-  cursor: pointer;
-}
-
-input:focus,
-textarea:focus {
-  outline: none;
-}
 
 /* Agency dashboard thin scrollbar */
 .custom-scrollbar::-webkit-scrollbar {

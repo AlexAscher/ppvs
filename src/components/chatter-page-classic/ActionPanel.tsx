@@ -156,15 +156,13 @@ export function ActionPanel({
 
   return (
     <div className="w-full md:w-[30%] bg-[#161a22] flex flex-col">
-      {/* Tabs — h-[48px] text-[12px], scaled up from the design's text-[10px]
-          so the labels are legible at the 30%-of-viewport panel width we
-          actually render at on the user's setup. */}
-      <div className="h-[48px] border-b border-[#2a2d35] flex">
+      {/* Tabs — h-[44px] text-[10px] exactly per Create_prompt_design. */}
+      <div className="h-[44px] border-b border-[#2a2d35] flex">
         {(["ppv", "tips", "notes", "stats"] as Tab[]).map((tab) => (
           <button
             key={tab}
             onClick={() => onTabChange(tab)}
-            className={`flex-1 text-[12px] font-semibold uppercase tracking-wider border-b-2 transition-all ${
+            className={`flex-1 text-[10px] font-semibold uppercase tracking-wider border-b-2 transition-all ${
               activeTab === tab
                 ? "text-[#6366f1] border-[#6366f1] bg-[#1a1d24]"
                 : "text-[#6b7280] border-transparent hover:text-[#9ca3af] hover:bg-[#1a1d24]/50"
@@ -200,7 +198,7 @@ export function ActionPanel({
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => onFilterChange("All")}
-                className={`px-3.5 py-2 rounded-md text-[12px] font-medium border transition-all ${
+                className={`px-3 py-1.5 rounded-md text-[10px] font-medium border transition-all ${
                   activeFilter === "All"
                     ? "bg-[#6366f1] text-white border-[#6366f1] shadow-sm"
                     : "bg-transparent text-[#9ca3af] border-[#374151] hover:border-[#4b5563] hover:text-[#d1d5db]"
@@ -215,7 +213,7 @@ export function ActionPanel({
                   <button
                     key={tag.id}
                     onClick={() => onFilterChange(isActive ? "All" : tag.id)}
-                    className={`px-3.5 py-2 rounded-md text-[12px] font-medium border transition-all ${
+                    className={`px-3 py-1.5 rounded-md text-[10px] font-medium border transition-all ${
                       isActive
                         ? "bg-[#6366f1] text-white border-[#6366f1] shadow-sm"
                         : "bg-transparent text-[#9ca3af] border-[#374151] hover:border-[#4b5563] hover:text-[#d1d5db]"
@@ -295,8 +293,8 @@ export function ActionPanel({
                       <Check className="w-3.5 h-3.5 text-white" />
                     </div>
                   )}
-                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent p-2.5">
-                    <div className="text-[12px] text-white truncate font-semibold">{item.name}</div>
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2">
+                    <div className="text-[11px] text-white truncate font-medium">{item.name}</div>
                   </div>
                 </button>
                 );

@@ -294,7 +294,7 @@ export function ActionPanel({
                     </div>
                   )}
                   <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2">
-                    <div className="text-[11px] text-white truncate font-medium">{item.name}</div>
+                    <div className="text-[9px] text-white truncate font-medium">{item.name}</div>
                   </div>
                 </button>
                 );

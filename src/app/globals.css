@@ -165,42 +165,14 @@
   html {
     font-size: var(--font-size);
   }
-
-  h1 {
-    font-size: var(--text-2xl);
-    font-weight: var(--font-weight-medium);
-    line-height: 1.5;
-  }
-  h2 {
-    font-size: var(--text-xl);
-    font-weight: var(--font-weight-medium);
-    line-height: 1.5;
-  }
-  h3 {
-    font-size: var(--text-lg);
-    font-weight: var(--font-weight-medium);
-    line-height: 1.5;
-  }
-  h4 {
-    font-size: var(--text-base);
-    font-weight: var(--font-weight-medium);
-    line-height: 1.5;
-  }
-  label {
-    font-size: var(--text-base);
-    font-weight: var(--font-weight-medium);
-    line-height: 1.5;
-  }
-  button {
-    font-size: var(--text-base);
-    font-weight: var(--font-weight-medium);
-    line-height: 1.5;
-  }
-  input {
-    font-size: var(--text-base);
-    font-weight: var(--font-weight-normal);
-    line-height: 1.5;
-  }
+  /* Removed the blanket h1/h2/h3/h4/label/button/input font-size +
+   * font-weight + line-height block that lived here. Those rules came
+   * from the shadcn default theme and were forcing every element to
+   * font-size: var(--text-base) (≈ 16 px), which then beat any Tailwind
+   * arbitrary text-[Xpx] utility on a class — every text-[10px] /
+   * text-[11px] / text-[12px] on a <button>, <h*>, <input>, etc. in this
+   * codebase was silently rendering as 16 px. Strip the block so Tailwind
+   * font-size utilities take effect again. */
 }
 
 * {

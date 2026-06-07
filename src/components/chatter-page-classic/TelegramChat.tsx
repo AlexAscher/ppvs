@@ -100,6 +100,10 @@ interface TelegramChatProps {
   groups?: { id: string; name: string; color: string; emoji: string | null }[];
   activeGroupId?: string | null;
   onSelectGroup?: (id: string | null) => void;
+  /** Create a new group (category) from the filter row. */
+  onCreateGroup?: (name: string) => void | Promise<void>;
+  /** Delete a group via right-click on its chip. */
+  onDeleteGroup?: (id: string) => void | Promise<void>;
   messages: Message[];
   /** Fan's lifetime spend, pre-formatted ("$245"). Shown in the header. */
   totalSpent: string;
@@ -438,6 +442,8 @@ export function TelegramChat({
   groups,
   activeGroupId,
   onSelectGroup,
+  onCreateGroup,
+  onDeleteGroup,
   messages,
   totalSpent,
   inputText,
@@ -466,6 +472,22 @@ export function TelegramChat({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [showEmoji, setShowEmoji] = useState(false);
   const [openMedia, setOpenMedia] = useState<MessageMediaInfo | null>(null);
+
+  // Group-filter management: inline "add category" input + right-click
+  // delete context menu (anchored to the chip).
+  const [addingCategory, setAddingCategory] = useState(false);
+  const [newCategory, setNewCategory] = useState("");
+  const [groupMenu, setGroupMenu] = useState<{ id: string; name: string; x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (!groupMenu) return;
+    const close = () => setGroupMenu(null);
+    window.addEventListener("click", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [groupMenu]);
 
   // Album grouping: consecutive messages with the same groupedId render as
   // a thumbnail grid instead of stacked individual bubbles.
@@ -576,8 +598,9 @@ export function TelegramChat({
             />
           </div>
 
-          {/* Group filter chips — only when the agency has groups. */}
-          {groups && groups.length > 0 && (
+          {/* Group filter chips: All + categories + Add. Right-click a
+              category to delete it (All is permanent). */}
+          {(onSelectGroup || (groups && groups.length > 0)) && (
             <div className="flex items-center gap-1.5 mt-2 overflow-x-auto pb-1 -mb-1">
               <button
                 type="button"
@@ -590,13 +613,18 @@ export function TelegramChat({
               >
                 All
               </button>
-              {groups.map((g) => {
+              {(groups ?? []).map((g) => {
                 const on = activeGroupId === g.id;
                 return (
                   <button
                     key={g.id}
                     type="button"
                     onClick={() => onSelectGroup?.(on ? null : g.id)}
+                    onContextMenu={(e) => {
+                      if (!onDeleteGroup) return;
+                      e.preventDefault();
+                      setGroupMenu({ id: g.id, name: g.name, x: e.clientX, y: e.clientY });
+                    }}
                     className="px-2.5 py-1 rounded-full text-[10px] font-medium whitespace-nowrap border transition-all"
                     style={{
                       background: on ? `${g.color}30` : "#1f2937",
@@ -608,6 +636,36 @@ export function TelegramChat({
                   </button>
                 );
               })}
+
+              {/* Add category */}
+              {onCreateGroup && !addingCategory && (
+                <button
+                  type="button"
+                  onClick={() => { setAddingCategory(true); setNewCategory(""); }}
+                  className="px-2.5 py-1 rounded-full text-[10px] font-medium whitespace-nowrap border border-dashed border-[#374151] text-[#9ca3af] hover:text-white hover:border-[#6366f1] transition-all"
+                >
+                  + Add
+                </button>
+              )}
+              {onCreateGroup && addingCategory && (
+                <input
+                  autoFocus
+                  value={newCategory}
+                  onChange={(e) => setNewCategory(e.target.value)}
+                  onKeyDown={async (e) => {
+                    if (e.key === "Enter" && newCategory.trim()) {
+                      await onCreateGroup(newCategory.trim());
+                      setNewCategory("");
+                      setAddingCategory(false);
+                    } else if (e.key === "Escape") {
+                      setAddingCategory(false);
+                    }
+                  }}
+                  onBlur={() => setAddingCategory(false)}
+                  placeholder="name…"
+                  className="px-2.5 py-1 w-24 rounded-full text-[10px] bg-[#1f2937] border border-[#6366f1] text-white placeholder:text-[#6b7280] focus:outline-none"
+                />
+              )}
             </div>
           )}
         </div>
@@ -1030,6 +1088,28 @@ export function TelegramChat({
             setMenu(null);
           }}
         />
+      )}
+
+      {/* Group chip right-click → delete category */}
+      {groupMenu && onDeleteGroup && (
+        <div
+          className="fixed z-[100] bg-[#1f2937] border border-[#374151] rounded-lg shadow-2xl py-1 min-w-[160px]"
+          style={{ left: groupMenu.x, top: groupMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            onClick={async () => {
+              const id = groupMenu.id;
+              setGroupMenu(null);
+              if (activeGroupId === id) onSelectGroup?.(null);
+              await onDeleteGroup(id);
+            }}
+            className="w-full px-3 py-2 text-left text-[12px] text-red-400 hover:bg-[#374151] transition-colors"
+          >
+            Delete “{groupMenu.name}”
+          </button>
+        </div>
       )}
     </div>
   );

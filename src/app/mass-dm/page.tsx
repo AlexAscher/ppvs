@@ -82,6 +82,9 @@ export default function MassDmPage() {
   const [recentFailed, setRecentFailed] = useState<RecentFailed[]>([]);
   const [history, setHistory] = useState<Campaign[]>([]);
   const [err, setErr] = useState<string>("");
+  // Locks the Send button from the moment it's clicked until create+start
+  // resolves — prevents double-firing a campaign on rapid clicks.
+  const [starting, setStarting] = useState(false);
 
   // ── Boot: load user, models, groups, history. ───────────────────────
   useEffect(() => {
@@ -187,6 +190,7 @@ export default function MassDmPage() {
   const finalCount = recipients.filter((r) => !excluded.has(r.peerId)).length;
 
   async function startCampaign() {
+    if (starting) return;
     setErr("");
     if (!modelId) return;
     if (!message.trim()) {
@@ -197,36 +201,41 @@ export default function MassDmPage() {
       setErr("No recipients selected");
       return;
     }
-    const p = PRESETS[preset];
-    const r = await fetch("/api/mass-dm/create", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        modelId,
-        message,
-        filters,
-        jitterMinMs: p.min,
-        jitterMaxMs: p.max,
-        dailyLimit: dailyLimit ?? null,
-        excludePeerIds: [...excluded],
-      }),
-    });
-    const j = (await r.json()) as { campaignId?: string; total?: number; error?: string };
-    if (!r.ok || !j.campaignId) {
-      setErr(j.error ?? "Failed to create");
-      return;
-    }
-    await fetch(`/api/mass-dm/${j.campaignId}/start`, { method: "POST" });
-    const sR = await fetch(`/api/mass-dm/${j.campaignId}`);
-    if (sR.ok) {
-      const sJ = (await sR.json()) as {
-        campaign: Campaign;
-        recentSent: RecentSent[];
-        recentFailed: RecentFailed[];
-      };
-      setActiveCampaign(sJ.campaign);
-      setRecentSent(sJ.recentSent ?? []);
-      setRecentFailed(sJ.recentFailed ?? []);
+    setStarting(true);
+    try {
+      const p = PRESETS[preset];
+      const r = await fetch("/api/mass-dm/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          modelId,
+          message,
+          filters,
+          jitterMinMs: p.min,
+          jitterMaxMs: p.max,
+          dailyLimit: dailyLimit ?? null,
+          excludePeerIds: [...excluded],
+        }),
+      });
+      const j = (await r.json()) as { campaignId?: string; total?: number; error?: string };
+      if (!r.ok || !j.campaignId) {
+        setErr(j.error ?? "Failed to create");
+        return;
+      }
+      await fetch(`/api/mass-dm/${j.campaignId}/start`, { method: "POST" });
+      const sR = await fetch(`/api/mass-dm/${j.campaignId}`);
+      if (sR.ok) {
+        const sJ = (await sR.json()) as {
+          campaign: Campaign;
+          recentSent: RecentSent[];
+          recentFailed: RecentFailed[];
+        };
+        setActiveCampaign(sJ.campaign);
+        setRecentSent(sJ.recentSent ?? []);
+        setRecentFailed(sJ.recentFailed ?? []);
+      }
+    } finally {
+      setStarting(false);
     }
   }
 
@@ -524,9 +533,11 @@ export default function MassDmPage() {
             <button
               className={btnPrimary}
               onClick={startCampaign}
-              disabled={isComposeDisabled || !modelId || !message.trim() || finalCount === 0}
+              disabled={
+                starting || isComposeDisabled || !modelId || !message.trim() || finalCount === 0
+              }
             >
-              Send to {finalCount} fans
+              {starting ? "Starting…" : `Send to ${finalCount} fans`}
             </button>
             {err && <span className="text-[11px] text-red-400">{err}</span>}
           </div>

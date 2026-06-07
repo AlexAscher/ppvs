@@ -1486,6 +1486,26 @@ export default function ChatterPage() {
           groups={fanGroups}
           activeGroupId={activeGroupId}
           onSelectGroup={setActiveGroupId}
+          onCreateGroup={async (name) => {
+            const r = await fetch("/api/groups", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ name }),
+            });
+            if (r.ok) {
+              const j = (await r.json()) as {
+                group: { id: string; name: string; color: string; emoji: string | null };
+              };
+              setFanGroups((cur) => [...cur, j.group]);
+            }
+          }}
+          onDeleteGroup={async (id) => {
+            const r = await fetch(`/api/groups/${id}`, { method: "DELETE" });
+            if (r.ok) {
+              setFanGroups((cur) => cur.filter((g) => g.id !== id));
+              if (activeGroupId === id) setActiveGroupId(null);
+            }
+          }}
           messages={chatMessages}
           totalSpent={totalSpentFormatted}
           inputText={inputText}

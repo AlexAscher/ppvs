@@ -81,10 +81,16 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: "Could not generate unique code" }, { status: 500 });
     }
 
+    // Tip link prefers the brand-neutral Telegram bot Mini App deep
+    // link (`t.me/<bot>/<app>?startapp=<code>`) so the fan never sees a
+    // domain preview in chat. Falls back to /tip/<code> if no bot is
+    // configured.
     const baseUrl =
       process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ||
       `${req.nextUrl.protocol}//${req.nextUrl.host}`;
-    const tipUrl = `${baseUrl}/tip/${code}`;
+    const { buildMiniAppLink } = await import("@/lib/telegram-webapp");
+    const tipUrl =
+      buildMiniAppLink({ startParam: code }) ?? `${baseUrl}/tip/${code}`;
 
     // Build the message with a TextUrl entity so "💸 Tip for $X.XX ↗"
     // shows up as a clickable hyperlink rather than a raw URL. Layout:

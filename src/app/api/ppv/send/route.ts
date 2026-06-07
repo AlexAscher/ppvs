@@ -137,11 +137,16 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: `DB items: ${linkErr.message}` }, { status: 500 });
     }
 
-    // Build the public pay URL. Falls back to the request origin in dev.
+    // Build the public pay URL. Prefer the brand-neutral Telegram bot
+    // Mini App deep link (`t.me/<bot>/<app>?startapp=<code>`) so fans
+    // never see the platform domain in chat. Falls back to the legacy
+    // /pay/<code> web URL if NEXT_PUBLIC_PAY_BOT_USERNAME is unset.
     const baseUrl =
       process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ||
       `${req.nextUrl.protocol}//${req.nextUrl.host}`;
-    const payUrl = `${baseUrl}/pay/${code}`;
+    const { buildMiniAppLink } = await import("@/lib/telegram-webapp");
+    const payUrl =
+      buildMiniAppLink({ startParam: code }) ?? `${baseUrl}/pay/${code}`;
 
     const previewItems: PpvPreviewItem[] = ordered
       .filter((p): p is PpvRow & { media_url: string } => !!p.media_url)

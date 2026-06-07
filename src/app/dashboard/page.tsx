@@ -13,6 +13,7 @@ import {
   Plus, Link as LinkIcon, ArrowUpRight, LogOut, Menu,
 } from "lucide-react";
 import type { DashboardStats } from "@/app/api/dashboard/stats/route";
+import { agencyNet } from "@/lib/platform";
 
 // ─────────────────────────────────────────────
 // AGENCY DASHBOARD
@@ -23,7 +24,7 @@ type AgencyTab = "dashboard" | "ppvs" | "models" | "chatters" | "wallet" | "sett
 const menuItems = [
   { id: "dashboard" as AgencyTab, label: "Dashboard", emoji: "📊" },
   { id: "ppvs" as AgencyTab, label: "PPVs", emoji: "🔒" },
-  { id: "models" as AgencyTab, label: "Models", emoji: "👤" },
+  { id: "models" as AgencyTab, label: "Creators", emoji: "👤" },
   { id: "chatters" as AgencyTab, label: "Chatters", emoji: "💬" },
   { id: "wallet" as AgencyTab, label: "Wallet", emoji: "💰" },
   { id: "settings" as AgencyTab, label: "Settings", emoji: "⚙️" },
@@ -368,7 +369,7 @@ function DashboardTab() {
   // show their canonical windows (Today / Week / Month / All Time).
   const [period, setPeriod] = useState<ChartPeriod>("7d");
 
-  // Model scope: null = All models. Selector lives top-left in the header.
+  // Model scope: null = All creators. Selector lives top-left in the header.
   const [models, setModels] = useState<{ id: string; name: string }[]>([]);
   const [scopeModelId, setScopeModelId] = useState<string | null>(null);
   const [showModelMenu, setShowModelMenu] = useState(false);
@@ -407,8 +408,8 @@ function DashboardTab() {
   }, [reloadKey, period, scopeModelId]);
 
   const scopeModelName = scopeModelId
-    ? models.find((m) => m.id === scopeModelId)?.name ?? "Model"
-    : "All models";
+    ? models.find((m) => m.id === scopeModelId)?.name ?? "Creator"
+    : "All creators";
 
   const cards = stats
     ? [
@@ -452,7 +453,7 @@ function DashboardTab() {
                     !scopeModelId ? "bg-[#374151] text-[#6366f1]" : "text-white"
                   }`}
                 >
-                  All models
+                  All creators
                 </button>
                 {models.map((m) => (
                   <button
@@ -565,7 +566,7 @@ function DashboardTab() {
           {/* Left column: Models breakdown stacked over Recent Sales */}
           <div className="md:col-span-2 space-y-6">
             <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-5 flex flex-col">
-              <h2 className="text-[16px] font-semibold text-white mb-4">Models breakdown 👥</h2>
+              <h2 className="text-[16px] font-semibold text-white mb-4">Creators breakdown 👥</h2>
               <div className="flex-1 overflow-y-auto max-h-[300px] space-y-2 pr-2 custom-scrollbar">
                 {(stats?.models ?? []).length === 0 ? (
                   <div className="py-6 text-center text-[13px] text-[#6b7280]">
@@ -727,7 +728,9 @@ function ModelsTab() {
           (earningsByModel.get(t.model_id) ?? 0) + Number(t.amount ?? 0),
         );
       }
-      setModels(rows.map((r) => ({ ...r, earnings: earningsByModel.get(r.id) ?? 0 })));
+      // Net of the platform's 10% commission so the figure matches the
+      // Dashboard / Wallet numbers the agency sees everywhere else.
+      setModels(rows.map((r) => ({ ...r, earnings: agencyNet(earningsByModel.get(r.id) ?? 0) })));
     })();
   }, []);
 
@@ -850,7 +853,7 @@ function ModelsTab() {
 
             {step === 1 && (
               <div className="space-y-4">
-                <p className="text-[13px] text-[#9ca3af]">Enter Telegram API credentials and the model&apos;s phone number</p>
+                <p className="text-[13px] text-[#9ca3af]">Enter Telegram API credentials and the creator&apos;s phone number</p>
                 <div>
                   <label className="text-[12px] text-[#9ca3af] font-medium mb-1.5 block">API ID</label>
                   <input value={apiId} onChange={(e) => setApiId(e.target.value)} placeholder="12345678"
@@ -915,11 +918,11 @@ function ModelsTab() {
       <div className="max-w-[1400px] mx-auto space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-[24px] font-bold text-white mb-1">Models 👤</h1>
-            <p className="text-[14px] text-[#9ca3af]">Connect and manage your models&apos; Telegram accounts</p>
+            <h1 className="text-[24px] font-bold text-white mb-1">Creators 👤</h1>
+            <p className="text-[14px] text-[#9ca3af]">Connect and manage your creators&apos; Telegram accounts</p>
           </div>
           <button onClick={() => openModal()} className="px-4 py-2.5 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] rounded-lg text-[13px] font-semibold text-white hover:from-[#5558e3] hover:to-[#4338ca] transition-all shadow-lg shadow-[#6366f1]/20 flex items-center gap-2">
-            <Plus className="w-4 h-4" />Add Model
+            <Plus className="w-4 h-4" />Add Creator
           </button>
         </div>
 
@@ -934,7 +937,7 @@ function ModelsTab() {
                 <p><strong>Step 1:</strong> Go to <a href="https://my.telegram.org" target="_blank" rel="noopener noreferrer" className="text-[#6366f1] hover:underline">my.telegram.org</a> and log in with your phone number</p>
                 <p><strong>Step 2:</strong> Navigate to &quot;API Development Tools&quot; and create a new application</p>
                 <p><strong>Step 3:</strong> Copy your <span className="text-[#6366f1] font-medium">API ID</span> and <span className="text-[#6366f1] font-medium">API Hash</span></p>
-                <p><strong>Step 4:</strong> Click &quot;Add Model&quot;, enter the credentials and the model&apos;s phone number</p>
+                <p><strong>Step 4:</strong> Click &quot;Add Creator&quot;, enter the credentials and the creator&apos;s phone number</p>
                 <p><strong>Step 5:</strong> Enter the code Telegram sends — and you&apos;re connected</p>
               </div>
             </div>
@@ -945,10 +948,10 @@ function ModelsTab() {
           <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-8">
             <div className="text-center py-16">
               <div className="w-20 h-20 mx-auto mb-4 bg-[#1f2937] rounded-full flex items-center justify-center text-[32px]">👤</div>
-              <h3 className="text-[18px] font-semibold text-white mb-2">No models connected yet</h3>
-              <p className="text-[14px] text-[#9ca3af] mb-6">Add your first model to start managing their Telegram account</p>
+              <h3 className="text-[18px] font-semibold text-white mb-2">No creators connected yet</h3>
+              <p className="text-[14px] text-[#9ca3af] mb-6">Add your first creator to start managing their Telegram account</p>
               <button onClick={() => openModal()} className="px-6 py-3 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] rounded-lg text-[14px] font-semibold text-white hover:from-[#5558e3] hover:to-[#4338ca] transition-all shadow-lg shadow-[#6366f1]/20 flex items-center gap-2 mx-auto">
-                <Plus className="w-4 h-4" />Connect your first model
+                <Plus className="w-4 h-4" />Connect your first creator
               </button>
             </div>
           </div>
@@ -956,7 +959,7 @@ function ModelsTab() {
           <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg overflow-x-auto">
             <div className="min-w-[560px]">
             <div className="grid grid-cols-4 gap-4 p-4 border-b border-[#2a2d35] bg-[#1f2937]/30">
-              <div className="text-[11px] text-[#9ca3af] uppercase tracking-wider font-semibold">Model</div>
+              <div className="text-[11px] text-[#9ca3af] uppercase tracking-wider font-semibold">Creator</div>
               <div className="text-[11px] text-[#9ca3af] uppercase tracking-wider font-semibold">Username</div>
               <div className="text-[11px] text-[#9ca3af] uppercase tracking-wider font-semibold">Status</div>
               <div className="text-[11px] text-[#9ca3af] uppercase tracking-wider font-semibold">Total Earnings</div>
@@ -1164,7 +1167,7 @@ function WalletTab() {
             </div>
             <div className="text-[36px] font-bold text-white">{money(netAllTime)}</div>
             <div className="flex items-center gap-2 mt-2 text-[13px] text-white/80">
-              <TrendingUp className="w-4 h-4" /><span>All-time delivered revenue</span>
+              <TrendingUp className="w-4 h-4" /><span>All-time, after 10% platform fee</span>
             </div>
           </div>
           <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-6">
@@ -1201,7 +1204,7 @@ function WalletTab() {
                 <div className="text-[22px] font-bold text-white mt-1">{money(splitTotals.agencyCut)}</div>
               </div>
               <div className="bg-[#0f131a] border border-[#2a2d35] rounded-lg p-4">
-                <div className="text-[10px] uppercase tracking-wider text-[#9ca3af]">Owed to models</div>
+                <div className="text-[10px] uppercase tracking-wider text-[#9ca3af]">Owed to creators</div>
                 <div className="text-[22px] font-bold text-white mt-1">{money(splitTotals.modelCut)}</div>
               </div>
               <div className="bg-[#0f131a] border border-[#2a2d35] rounded-lg p-4">
@@ -1214,10 +1217,10 @@ function WalletTab() {
                 <table className="w-full text-[12px]">
                   <thead className="bg-[#161a22]">
                     <tr className="text-left text-[#9ca3af]">
-                      <th className="px-3 py-2">Model</th>
+                      <th className="px-3 py-2">Creator</th>
                       <th className="px-3 py-2">Chatter</th>
                       <th className="px-3 py-2 text-right">Gross</th>
-                      <th className="px-3 py-2 text-right">Model</th>
+                      <th className="px-3 py-2 text-right">Creator</th>
                       <th className="px-3 py-2 text-right">Chatter</th>
                       <th className="px-3 py-2 text-right">Agency</th>
                     </tr>

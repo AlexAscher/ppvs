@@ -307,7 +307,7 @@ export default function MassDmPage() {
 
           <div className="grid md:grid-cols-2 gap-4">
             <div>
-              <label className="text-[11px] text-[#9ca3af] block mb-1">Model</label>
+              <label className="text-[11px] text-[#9ca3af] block mb-1">Creator</label>
               <select
                 className={input}
                 value={modelId}

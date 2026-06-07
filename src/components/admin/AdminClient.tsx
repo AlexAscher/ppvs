@@ -619,7 +619,7 @@ function AgencyDetail({ agencyId, onBack }: { agencyId: string; onBack: () => vo
           <Panel title="Models 👤">
             <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
               {(data?.models ?? []).length === 0 ? (
-                <div className="py-6 text-center text-[13px] text-[#6b7280]">{data ? "No models." : "Loading…"}</div>
+                <div className="py-6 text-center text-[13px] text-[#6b7280]">{data ? "No creators." : "Loading…"}</div>
               ) : (
                 data!.models.map((m) => (
                   <div key={m.id} className="flex items-center gap-3 p-3 bg-[#1f2937]/30 rounded-lg">

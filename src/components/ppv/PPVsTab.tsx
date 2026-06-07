@@ -164,8 +164,8 @@ export function PPVsTab() {
           <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-8">
             <div className="text-center py-16">
               <div className="w-20 h-20 mx-auto mb-4 bg-[#1f2937] rounded-full flex items-center justify-center text-[32px]">👤</div>
-              <h3 className="text-[18px] font-semibold text-white mb-2">No models connected</h3>
-              <p className="text-[14px] text-[#9ca3af]">Add a model in the Models tab before creating PPVs.</p>
+              <h3 className="text-[18px] font-semibold text-white mb-2">No creators connected</h3>
+              <p className="text-[14px] text-[#9ca3af]">Add a creator in the Creators tab before creating PPVs.</p>
             </div>
           </div>
         </div>
@@ -187,7 +187,7 @@ export function PPVsTab() {
                 onClick={() => setShowModelDropdown(!showModelDropdown)}
                 className="px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] font-medium text-white hover:bg-[#374151] transition-all flex items-center gap-2 min-w-[180px] justify-between"
               >
-                <span>{selectedModel?.name ?? "Select model"}</span>
+                <span>{selectedModel?.name ?? "Select creator"}</span>
                 <ChevronDown className="w-4 h-4" />
               </button>
               {showModelDropdown && (

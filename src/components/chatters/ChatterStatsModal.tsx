@@ -95,7 +95,7 @@ export function ChatterStatsModal({ chatter, models, onClose, onReassigned, onDe
 
         <div className="space-y-5">
           <div>
-            <label className="text-[12px] text-[#9ca3af] font-medium mb-1.5 block">Assigned Model</label>
+            <label className="text-[12px] text-[#9ca3af] font-medium mb-1.5 block">Assigned Creator</label>
             <div className="relative">
               <button
                 type="button"

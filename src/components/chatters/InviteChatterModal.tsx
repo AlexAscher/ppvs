@@ -70,10 +70,10 @@ export function InviteChatterModal({ models, onClose, onInvited }: Props) {
           </div>
 
           <div>
-            <label className="text-[12px] text-[#9ca3af] font-medium mb-1.5 block">Assign to Model</label>
+            <label className="text-[12px] text-[#9ca3af] font-medium mb-1.5 block">Assign to Creator</label>
             {models.length === 0 ? (
               <div className="px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] text-[#9ca3af]">
-                No models yet. Add a model first.
+                No creators yet. Add a creator first.
               </div>
             ) : (
               <div className="relative">
@@ -88,7 +88,7 @@ export function InviteChatterModal({ models, onClose, onInvited }: Props) {
                     ) : (
                       <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#6366f1] to-[#4f46e5] shrink-0" />
                     )}
-                    <span className="truncate">{selectedModel?.name ?? "Select model"}</span>
+                    <span className="truncate">{selectedModel?.name ?? "Select creator"}</span>
                   </div>
                   <ChevronDown className="w-4 h-4 text-[#6b7280] shrink-0" />
                 </button>

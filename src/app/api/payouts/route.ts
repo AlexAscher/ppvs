@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase-server";
 import { getCachedAuthUser } from "@/lib/auth-cache";
+import { agencyNet } from "@/lib/platform";
 
 /**
  * Agency payout requests.
@@ -37,9 +38,10 @@ async function availableBalance(
     .from("ppv_sends")
     .select("total_price, status")
     .in("model_id", modelIds);
+  // Net of the platform's 10% commission (taken off the top).
   const net = ((sends ?? []) as { total_price: number; status: string }[])
     .filter((s) => PAID.has(s.status))
-    .reduce((sum, s) => sum + Number(s.total_price ?? 0), 0);
+    .reduce((sum, s) => sum + agencyNet(Number(s.total_price ?? 0)), 0);
 
   const { data: payouts } = await admin
     .from("payouts")

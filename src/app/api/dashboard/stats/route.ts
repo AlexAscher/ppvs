@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase-server";
 import { withTimeout } from "@/lib/with-timeout";
 import { getCachedAuthUser } from "@/lib/auth-cache";
+import { agencyNet } from "@/lib/platform";
 import {
   loadSends,
   loadFans,
@@ -167,7 +168,9 @@ export async function GET(req: NextRequest) {
 
     for (const s of sends) {
       if (!PAID.has(s.status)) continue;
-      const price = Number(s.total_price ?? 0);
+      // Revenue figures shown to the agency are NET of the platform's 10%
+      // commission (taken off the top). agencyNet() applies (1 − fee).
+      const price = agencyNet(Number(s.total_price ?? 0));
       const ts = new Date(s.created_at).getTime();
       netAllTime += price;
       sales += 1;

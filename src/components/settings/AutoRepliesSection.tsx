@@ -185,7 +185,7 @@ export function AutoRepliesSection() {
             onClick={() => setShowModelDropdown((v) => !v)}
             className="px-3 py-2 bg-[#1f2937] border border-[#374151] rounded-lg text-[12px] font-medium text-white hover:bg-[#374151] transition-all flex items-center gap-2 min-w-[160px] justify-between"
           >
-            <span className="truncate">{selectedModel?.name ?? "Select model"}</span>
+            <span className="truncate">{selectedModel?.name ?? "Select creator"}</span>
             <ChevronDown className="w-3.5 h-3.5 shrink-0" />
           </button>
           {showModelDropdown && (
@@ -202,7 +202,7 @@ export function AutoRepliesSection() {
                 </button>
               ))}
               {models.length === 0 && (
-                <div className="px-3 py-2 text-[11px] text-[#6b7280]">No models</div>
+                <div className="px-3 py-2 text-[11px] text-[#6b7280]">No creators</div>
               )}
             </div>
           )}
@@ -211,7 +211,7 @@ export function AutoRepliesSection() {
 
       {!selectedModelId ? (
         <p className="text-[12px] text-[#6b7280] mt-4">
-          Add a model in the Models tab to configure auto-replies.
+          Add a creator in the Creators tab to configure auto-replies.
         </p>
       ) : loading ? (
         <p className="text-[12px] text-[#6b7280] mt-4">Loading…</p>

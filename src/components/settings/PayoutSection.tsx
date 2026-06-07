@@ -226,7 +226,7 @@ export function PayoutSection() {
       <div className="mb-4">
         <h2 className="text-[15px] font-semibold text-white">Payout & Splits</h2>
         <p className="text-[12px] text-[#9ca3af] mt-0.5">
-          Configure revenue split between model, chatter, and agency. Per-model
+          Configure revenue split between creator, chatter, and agency. Per-model
           and per-chatter overrides supported.
         </p>
       </div>
@@ -263,7 +263,7 @@ export function PayoutSection() {
             >
               <div className="flex-1 text-[12px] text-white">
                 <div className="font-medium">
-                  {nameByModel.get(s.model_id) ?? "Model"}
+                  {nameByModel.get(s.model_id) ?? "Creator"}
                   {s.scope === "chatter" && s.chatter_user_id && (
                     <>
                       {" "}
@@ -272,7 +272,7 @@ export function PayoutSection() {
                   )}
                 </div>
                 <div className="text-[11px] text-[#9ca3af]">
-                  Model {Number(s.model_pct).toFixed(0)}% · Chatter {Number(s.chatter_pct).toFixed(0)}% · Agency{" "}
+                  Creator {Number(s.model_pct).toFixed(0)}% · Chatter {Number(s.chatter_pct).toFixed(0)}% · Agency{" "}
                   {Number(s.agency_pct).toFixed(0)}%
                 </div>
               </div>
@@ -335,7 +335,7 @@ export function PayoutSection() {
             <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
               <Stat title="Gross" value={fmt$(report.totals.gross)} />
               <Stat title="Platform fee 10%" value={fmt$(report.totals.platformFee)} />
-              <Stat title="Model cut" value={fmt$(report.totals.modelCut)} />
+              <Stat title="Creator cut" value={fmt$(report.totals.modelCut)} />
               <Stat title="Chatter cut" value={fmt$(report.totals.chatterCut)} />
               <Stat title="Agency cut" value={fmt$(report.totals.agencyCut)} />
             </div>
@@ -344,12 +344,12 @@ export function PayoutSection() {
                 <table className="w-full text-[12px]">
                   <thead className="bg-[#161a22]">
                     <tr className="text-left text-[#9ca3af]">
-                      <th className="px-3 py-2">Model</th>
+                      <th className="px-3 py-2">Creator</th>
                       <th className="px-3 py-2">Chatter</th>
                       <th className="px-3 py-2 text-right">Sales</th>
                       <th className="px-3 py-2 text-right">Gross</th>
                       <th className="px-3 py-2 text-right">Fee</th>
-                      <th className="px-3 py-2 text-right">Model</th>
+                      <th className="px-3 py-2 text-right">Creator</th>
                       <th className="px-3 py-2 text-right">Chatter</th>
                       <th className="px-3 py-2 text-right">Agency</th>
                     </tr>
@@ -420,7 +420,7 @@ function PercentTriplet({
   const ok = Math.abs(sum - 100) < 0.01;
   return (
     <div className="flex flex-wrap items-end gap-3">
-      <Pct label="Model %" value={m} onChange={setM} />
+      <Pct label="Creator %" value={m} onChange={setM} />
       <Pct label="Chatter %" value={c} onChange={setC} />
       <Pct label="Agency %" value={a} onChange={setA} />
       <div className={`text-[11px] ${ok ? "text-emerald-400" : "text-red-400"}`}>
@@ -506,8 +506,8 @@ function NewOverrideForm({
       </div>
       <div className="flex flex-wrap gap-2">
         <select className={input + " w-auto"} value={scope} onChange={(e) => setScope(e.target.value as "model" | "chatter")}>
-          <option value="model">Model</option>
-          <option value="chatter">Model + Chatter</option>
+          <option value="model">Creator</option>
+          <option value="chatter">Creator + Chatter</option>
         </select>
         <select className={input + " w-auto"} value={modelId} onChange={(e) => setModelId(e.target.value)}>
           {models.map((m) => (
@@ -522,7 +522,7 @@ function NewOverrideForm({
             {!chatters.length && <option value="">No chatters yet</option>}
           </select>
         )}
-        <NumberField className="w-24" value={m} onChange={setM} min={0} max={100} placeholder="Model %" />
+        <NumberField className="w-24" value={m} onChange={setM} min={0} max={100} placeholder="Creator %" />
         <NumberField className="w-24" value={c} onChange={setC} min={0} max={100} placeholder="Chatter %" />
         <NumberField className="w-24" value={a} onChange={setA} min={0} max={100} placeholder="Agency %" />
         <button

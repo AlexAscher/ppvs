@@ -23,6 +23,8 @@ export async function POST(req: NextRequest) {
     filters?: Filters;
     jitterMinMs?: number;
     jitterMaxMs?: number;
+    dailyLimit?: number;
+    excludePeerIds?: string[];
   } | null;
   if (!body?.modelId) return Response.json({ error: "modelId required" }, { status: 400 });
   if (!body.message?.trim()) return Response.json({ error: "message required" }, { status: 400 });
@@ -43,34 +45,53 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Model not yours" }, { status: 403 });
   }
 
-  const fans = await materializeRecipients(admin, body.modelId, body.filters ?? {});
+  let fans = await materializeRecipients(admin, body.modelId, body.filters ?? {});
+  // Drop any fans the user explicitly excluded in the preview list.
+  if (body.excludePeerIds && body.excludePeerIds.length > 0) {
+    const ex = new Set(body.excludePeerIds);
+    fans = fans.filter((f) => !ex.has(f.peer_id));
+  }
   if (fans.length === 0) {
     return Response.json({ error: "No recipients match these filters" }, { status: 400 });
   }
 
-  const jitterMin = Math.max(500, body.jitterMinMs ?? 2000);
-  const jitterMax = Math.max(jitterMin + 100, body.jitterMaxMs ?? 4000);
+  const jitterMin = Math.max(500, body.jitterMinMs ?? 20_000);
+  const jitterMax = Math.max(jitterMin + 100, body.jitterMaxMs ?? 40_000);
+  // Daily cap — defaults to 200/day. 0 or negative means "no cap".
+  const dailyLimit =
+    body.dailyLimit && body.dailyLimit > 0 ? Math.floor(body.dailyLimit) : null;
 
-  // Insert campaign first so we have the FK target.
-  const { data: campaign, error: cErr } = await admin
+  // Insert campaign first so we have the FK target. daily_limit is in a
+  // separate column added by 20260610_mass_dm_daily_limit.sql; if the
+  // migration hasn't run yet, retry the insert without it.
+  const baseRow = {
+    agency_user_id: agencyUserId,
+    model_id: body.modelId,
+    started_by: user.id,
+    message: body.message,
+    filters: body.filters ?? {},
+    jitter_min_ms: jitterMin,
+    jitter_max_ms: jitterMax,
+    total_recipients: fans.length,
+    status: "pending",
+  };
+  let campaignRes = await admin
     .from("mass_dm_campaigns")
-    .insert({
-      agency_user_id: agencyUserId,
-      model_id: body.modelId,
-      started_by: user.id,
-      message: body.message,
-      filters: body.filters ?? {},
-      jitter_min_ms: jitterMin,
-      jitter_max_ms: jitterMax,
-      total_recipients: fans.length,
-      status: "pending",
-    })
+    .insert({ ...baseRow, daily_limit: dailyLimit })
     .select("id")
     .single();
-  if (cErr || !campaign) {
-    return Response.json({ error: cErr?.message ?? "Insert failed" }, { status: 500 });
+  if (campaignRes.error && /daily_limit/.test(campaignRes.error.message)) {
+    // Column not present yet — fall back so the feature still works.
+    campaignRes = await admin
+      .from("mass_dm_campaigns")
+      .insert(baseRow)
+      .select("id")
+      .single();
   }
-  const campaignId = (campaign as { id: string }).id;
+  if (campaignRes.error || !campaignRes.data) {
+    return Response.json({ error: campaignRes.error?.message ?? "Insert failed" }, { status: 500 });
+  }
+  const campaignId = (campaignRes.data as { id: string }).id;
 
   // Insert recipients in chunks (Supabase default insert payload limit).
   const CHUNK = 500;
@@ -78,7 +99,6 @@ export async function POST(req: NextRequest) {
     const chunk = fans.slice(i, i + CHUNK).map((f, idx) => ({
       campaign_id: campaignId,
       peer_id: f.peer_id,
-      peer_access_hash: f.peer_access_hash,
       peer_username: f.telegram_username,
       first_name: (f.telegram_name ?? "").split(" ")[0] || null,
       ordinal: i + idx,

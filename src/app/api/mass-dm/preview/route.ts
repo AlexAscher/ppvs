@@ -5,8 +5,9 @@ import { materializeRecipients, type Filters } from "@/lib/mass-dm";
 /**
  * POST /api/mass-dm/preview { modelId, filters }
  *
- * Returns { count, sample } — count of fans matching the filter snapshot,
- * plus the first 8 by total_spent for the UI preview.
+ * Returns { count, recipients } — the FULL matched list (capped at 2000
+ * for payload sanity), sorted by total_spent desc, so the UI can show
+ * every fan the message will reach (with per-fan exclude).
  */
 export async function POST(req: NextRequest) {
   const ssr = await createSupabaseServerClient();
@@ -30,16 +31,17 @@ export async function POST(req: NextRequest) {
   }
 
   const fans = await materializeRecipients(admin, body.modelId, body.filters ?? {});
-  const sample = fans
+  const recipients = fans
     .slice()
     .sort((a, b) => Number(b.total_spent ?? 0) - Number(a.total_spent ?? 0))
-    .slice(0, 8)
+    .slice(0, 2000)
     .map((f) => ({
+      peerId: f.peer_id,
       name: f.telegram_username
         ? `@${f.telegram_username}`
         : f.telegram_name || "Fan",
       spent: Number(f.total_spent ?? 0),
     }));
 
-  return Response.json({ count: fans.length, sample });
+  return Response.json({ count: fans.length, recipients });
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase";
+import { Toggle } from "@/components/ui/Toggle";
 
 type Settings = {
   alerts_enabled: boolean;
@@ -136,9 +137,10 @@ export function SalesAlertsSection() {
             Real-time TG messages when a PPV or tip is paid.
           </p>
         </div>
-        <Switch
+        <Toggle
           checked={settings.alerts_enabled}
           onChange={(v) => patch({ alerts_enabled: v })}
+          ariaLabel="Toggle Sales Alerts"
         />
       </div>
 
@@ -241,26 +243,6 @@ export function SalesAlertsSection() {
         </div>
       </div>
     </div>
-  );
-}
-
-function Switch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      onClick={() => onChange(!checked)}
-      className={`relative w-10 h-6 rounded-full transition-colors ${
-        checked ? "bg-[#6366f1]" : "bg-[#374151]"
-      }`}
-    >
-      <span
-        className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
-          checked ? "translate-x-[18px]" : "translate-x-0.5"
-        }`}
-      />
-    </button>
   );
 }
 

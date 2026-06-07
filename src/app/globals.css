@@ -186,6 +186,18 @@
   box-sizing: border-box;
 }
 
+/* Hide native number-input spinners site-wide — we render custom
+ * chevron controls (see components/ui/NumberField) that match the theme. */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 *::-webkit-scrollbar {
   width: 10px;
   height: 10px;

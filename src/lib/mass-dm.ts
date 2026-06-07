@@ -26,14 +26,14 @@ import { withTelegramClient } from "@/lib/telegram-pool";
  */
 
 export type Filters = {
-  tags?: string[];        // any-of match
+  tags?: string[];        // any-of match against fans.tags (emoji labels)
+  groupIds?: string[];    // any-of match against fan_group_memberships
   minSpent?: number;
   lastSeenDays?: number;
 };
 
 export type FanRow = {
   peer_id: string;
-  peer_access_hash: string | null;
   telegram_username: string | null;
   telegram_name: string | null;
   total_spent: number | string | null;
@@ -54,10 +54,13 @@ export async function materializeRecipients(
   modelId: string,
   filters: Filters,
 ): Promise<FanRow[]> {
+  // NB: the fans table has NO peer_access_hash column — selecting it
+  // errors the whole query (silently returning 0 rows). The send worker
+  // resolves the access hash at send time via client.getInputEntity().
   let q = admin
     .from("fans")
     .select(
-      "peer_id, peer_access_hash, telegram_username, telegram_name, total_spent, tags, last_seen_at",
+      "peer_id, telegram_username, telegram_name, total_spent, tags, last_seen_at",
     )
     .eq("model_id", modelId);
 
@@ -73,7 +76,25 @@ export async function materializeRecipients(
     q = q.overlaps("tags", filters.tags);
   }
 
-  const { data } = await q.limit(5000);
+  // Group filter: restrict to peer_ids that belong to any of the selected
+  // groups for this model. Done as a separate query then an IN clause —
+  // the membership table is small per model.
+  if (filters.groupIds && filters.groupIds.length > 0) {
+    const { data: mems } = await admin
+      .from("fan_group_memberships")
+      .select("peer_id")
+      .eq("model_id", modelId)
+      .in("group_id", filters.groupIds);
+    const peerIds = [...new Set(((mems ?? []) as { peer_id: string }[]).map((m) => m.peer_id))];
+    if (peerIds.length === 0) return []; // no members → no recipients
+    q = q.in("peer_id", peerIds);
+  }
+
+  const { data, error } = await q.limit(5000);
+  if (error) {
+    console.error("[mass-dm] materializeRecipients query failed:", error.message);
+    return [];
+  }
   return (data ?? []) as FanRow[];
 }
 
@@ -121,10 +142,12 @@ export async function runCampaign(campaignId: string): Promise<void> {
 }
 
 async function runCampaignInner(admin: SupabaseClient, campaignId: string) {
-  // Pull campaign + model session credentials.
+  // Pull campaign + model session credentials. Select * so an optional
+  // daily_limit column (added later) is picked up without erroring the
+  // query when the migration hasn't run yet.
   const { data: campRaw } = await admin
     .from("mass_dm_campaigns")
-    .select("id, agency_user_id, model_id, message, jitter_min_ms, jitter_max_ms, status")
+    .select("*")
     .eq("id", campaignId)
     .maybeSingle();
   type CampaignRow = {
@@ -135,6 +158,7 @@ async function runCampaignInner(admin: SupabaseClient, campaignId: string) {
     jitter_min_ms: number;
     jitter_max_ms: number;
     status: string;
+    daily_limit?: number | null;
   };
   const campaign = campRaw as CampaignRow | null;
   if (!campaign) return;
@@ -205,6 +229,27 @@ async function runCampaignInner(admin: SupabaseClient, campaignId: string) {
       return;
     }
 
+    // Daily limit — pause (not cancel) when today's sent count for this
+    // campaign hits the cap. The agency can resume tomorrow; pending
+    // recipients are preserved and continue in ordinal order.
+    if (campaign.daily_limit && campaign.daily_limit > 0) {
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
+      const { count: sentToday } = await admin
+        .from("mass_dm_recipients")
+        .select("id", { count: "exact", head: true })
+        .eq("campaign_id", campaignId)
+        .eq("status", "sent")
+        .gte("sent_at", startOfToday.toISOString());
+      if ((sentToday ?? 0) >= campaign.daily_limit) {
+        await admin
+          .from("mass_dm_campaigns")
+          .update({ status: "paused", last_heartbeat_at: new Date().toISOString() })
+          .eq("id", campaignId);
+        return;
+      }
+    }
+
     const { data: nextRaw } = await admin
       .from("mass_dm_recipients")
       .select("id, peer_id, peer_access_hash, peer_username, first_name")
@@ -232,7 +277,6 @@ async function runCampaignInner(admin: SupabaseClient, campaignId: string) {
 
     const text = renderTemplate(campaign.message, {
       peer_id: recipient.peer_id,
-      peer_access_hash: recipient.peer_access_hash,
       telegram_username: recipient.peer_username,
       telegram_name: recipient.first_name,
       total_spent: null,
@@ -248,10 +292,21 @@ async function runCampaignInner(admin: SupabaseClient, campaignId: string) {
         model.api_id!,
         model.api_hash!,
         async (client) => {
-          const peer = new Api.InputPeerUser({
-            userId: bigInt(recipient.peer_id),
-            accessHash: bigInt(recipient.peer_access_hash ?? "0"),
-          });
+          // The fans table doesn't store access_hash. Resolve the peer
+          // from gramJS's session entity cache (these fans are in the
+          // model's dialogs, so they're cached). Falls back to stored
+          // access_hash if present on the recipient row.
+          let peer: Api.TypeInputPeer;
+          if (recipient.peer_access_hash) {
+            peer = new Api.InputPeerUser({
+              userId: bigInt(recipient.peer_id),
+              accessHash: bigInt(recipient.peer_access_hash),
+            });
+          } else {
+            peer = (await client.getInputEntity(
+              bigInt(recipient.peer_id),
+            )) as Api.TypeInputPeer;
+          }
           await client.sendMessage(peer, {
             message: text,
             linkPreview: false,

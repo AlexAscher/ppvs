@@ -1,29 +1,31 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import { Topbar } from "@/components/chatter-page-classic/Topbar";
+import { NumberField } from "@/components/ui/NumberField";
 
 /**
  * /mass-dm — agency Mass DMs page.
  *
- * Three columns:
- *   1. Compose: model picker, filters (tags / min spent / last seen),
- *      live recipient count + sample, message template editor,
- *      throttle slider, Send button.
- *   2. Live campaign (when one is running): progress bar, recent sends,
- *      Stop button.
- *   3. History: past campaigns list.
+ * Compose → filters (same emoji tags as the chat + Fan Groups + min spent
+ * + last seen) → live full recipient list (with per-fan exclude) →
+ * message template → throttle preset + daily cap → Send. Then a live
+ * progress panel + history.
  */
 
 type ModelLite = { id: string; name: string };
+type GroupLite = { id: string; name: string; color: string; emoji: string | null };
 
 type Filters = {
   tags?: string[];
+  groupIds?: string[];
   minSpent?: number;
   lastSeenDays?: number;
 };
+
+type Recipient = { peerId: string; name: string; spent: number };
 
 type Campaign = {
   id: string;
@@ -41,7 +43,18 @@ type Campaign = {
 type RecentSent = { peer_username: string | null; first_name: string | null; sent_at: string };
 type RecentFailed = { peer_username: string | null; first_name: string | null; error: string };
 
-const COMMON_TAGS = ["🔥", "💎", "💸", "⭐", "🆕", "💀", "🥶"];
+// Same emoji tag set the chat uses (FanProfileDrawer FAN_TAGS) so filters
+// are consistent across the app.
+const CHAT_TAGS = ["🔴", "💵", "💰", "⭐", "👑"] as const;
+
+// Throttle presets (ms). Default Normal — safe for warm fans who already
+// messaged the model.
+const PRESETS = {
+  safe: { label: "Safe", min: 30000, max: 60000, hint: "30–60s · ~80/hr" },
+  normal: { label: "Normal", min: 15000, max: 30000, hint: "15–30s · ~160/hr" },
+  fast: { label: "Fast", min: 5000, max: 10000, hint: "5–10s · risky, may flood-wait" },
+} as const;
+type PresetKey = keyof typeof PRESETS;
 
 export default function MassDmPage() {
   const supabase = createClient();
@@ -50,17 +63,19 @@ export default function MassDmPage() {
   const [displayName, setDisplayName] = useState("");
   const [models, setModels] = useState<ModelLite[]>([]);
   const [modelId, setModelId] = useState<string>("");
+  const [groups, setGroups] = useState<GroupLite[]>([]);
 
   const [filters, setFilters] = useState<Filters>({});
-  const [previewCount, setPreviewCount] = useState<number | null>(null);
-  const [previewSample, setPreviewSample] = useState<{ name: string; spent: number }[]>([]);
+  const [recipients, setRecipients] = useState<Recipient[]>([]);
+  const [totalCount, setTotalCount] = useState<number | null>(null);
+  const [excluded, setExcluded] = useState<Set<string>>(new Set());
   const [previewLoading, setPreviewLoading] = useState(false);
 
   const [message, setMessage] = useState(
     "Hey {first_name} 💋 you been quiet — anything I can send you?",
   );
-  const [jitterMin, setJitterMin] = useState(2000);
-  const [jitterMax, setJitterMax] = useState(4000);
+  const [preset, setPreset] = useState<PresetKey>("normal");
+  const [dailyLimit, setDailyLimit] = useState<number | undefined>(200);
 
   const [activeCampaign, setActiveCampaign] = useState<Campaign | null>(null);
   const [recentSent, setRecentSent] = useState<RecentSent[]>([]);
@@ -68,7 +83,7 @@ export default function MassDmPage() {
   const [history, setHistory] = useState<Campaign[]>([]);
   const [err, setErr] = useState<string>("");
 
-  // ── Boot: load user, models, history. ────────────────────────────────
+  // ── Boot: load user, models, groups, history. ───────────────────────
   useEffect(() => {
     void (async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -88,12 +103,18 @@ export default function MassDmPage() {
       const list = (m ?? []) as ModelLite[];
       setModels(list);
       if (list.length) setModelId(list[0].id);
+
+      const r = await fetch("/api/groups");
+      if (r.ok) {
+        const j = (await r.json()) as { groups: GroupLite[] };
+        setGroups(j.groups ?? []);
+      }
       void loadHistory();
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Live preview (debounced via filter+model key). ───────────────────
+  // ── Live preview (full recipient list). ──────────────────────────────
   const previewKey = useMemo(
     () => `${modelId}|${JSON.stringify(filters)}`,
     [modelId, filters],
@@ -108,10 +129,21 @@ export default function MassDmPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ modelId, filters }),
         });
-        const j = (await r.json()) as { count?: number; sample?: { name: string; spent: number }[]; error?: string };
-        if (j.count !== undefined) {
-          setPreviewCount(j.count);
-          setPreviewSample(j.sample ?? []);
+        const j = (await r.json()) as {
+          count?: number;
+          recipients?: Recipient[];
+          error?: string;
+        };
+        if (j.recipients) {
+          setTotalCount(j.count ?? j.recipients.length);
+          setRecipients(j.recipients);
+          // Drop excludes that are no longer in the list.
+          setExcluded((prev) => {
+            const live = new Set(j.recipients!.map((x) => x.peerId));
+            const next = new Set<string>();
+            for (const id of prev) if (live.has(id)) next.add(id);
+            return next;
+          });
         } else if (j.error) {
           setErr(j.error);
         }
@@ -122,7 +154,7 @@ export default function MassDmPage() {
     return () => clearTimeout(tid);
   }, [previewKey, modelId, filters]);
 
-  // ── Poll the active campaign every 1.5s. ─────────────────────────────
+  // ── Poll the active campaign. ────────────────────────────────────────
   useEffect(() => {
     if (!activeCampaign) return;
     const iv = setInterval(async () => {
@@ -136,11 +168,7 @@ export default function MassDmPage() {
       setActiveCampaign(j.campaign);
       setRecentSent(j.recentSent ?? []);
       setRecentFailed(j.recentFailed ?? []);
-      if (
-        j.campaign.status === "completed" ||
-        j.campaign.status === "cancelled" ||
-        j.campaign.status === "failed"
-      ) {
+      if (["completed", "cancelled", "failed", "paused"].includes(j.campaign.status)) {
         clearInterval(iv);
         void loadHistory();
       }
@@ -156,6 +184,8 @@ export default function MassDmPage() {
     setHistory(j.campaigns ?? []);
   }
 
+  const finalCount = recipients.filter((r) => !excluded.has(r.peerId)).length;
+
   async function startCampaign() {
     setErr("");
     if (!modelId) return;
@@ -163,10 +193,11 @@ export default function MassDmPage() {
       setErr("Message required");
       return;
     }
-    if ((previewCount ?? 0) === 0) {
-      setErr("No recipients match");
+    if (finalCount === 0) {
+      setErr("No recipients selected");
       return;
     }
+    const p = PRESETS[preset];
     const r = await fetch("/api/mass-dm/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -174,8 +205,10 @@ export default function MassDmPage() {
         modelId,
         message,
         filters,
-        jitterMinMs: jitterMin,
-        jitterMaxMs: jitterMax,
+        jitterMinMs: p.min,
+        jitterMaxMs: p.max,
+        dailyLimit: dailyLimit ?? null,
+        excludePeerIds: [...excluded],
       }),
     });
     const j = (await r.json()) as { campaignId?: string; total?: number; error?: string };
@@ -184,7 +217,6 @@ export default function MassDmPage() {
       return;
     }
     await fetch(`/api/mass-dm/${j.campaignId}/start`, { method: "POST" });
-    // Fetch initial state so the live panel shows up immediately.
     const sR = await fetch(`/api/mass-dm/${j.campaignId}`);
     if (sR.ok) {
       const sJ = (await sR.json()) as {
@@ -203,14 +235,22 @@ export default function MassDmPage() {
     await fetch(`/api/mass-dm/${activeCampaign.id}/stop`, { method: "POST" });
   }
 
-  const toggleTag = useCallback((tag: string) => {
+  function toggleTag(tag: string) {
     setFilters((f) => {
       const cur = new Set(f.tags ?? []);
       if (cur.has(tag)) cur.delete(tag);
       else cur.add(tag);
       return { ...f, tags: [...cur] };
     });
-  }, []);
+  }
+  function toggleGroup(id: string) {
+    setFilters((f) => {
+      const cur = new Set(f.groupIds ?? []);
+      if (cur.has(id)) cur.delete(id);
+      else cur.add(id);
+      return { ...f, groupIds: [...cur] };
+    });
+  }
 
   const card = "bg-[#161a22] border border-[#2a2d35] rounded-xl p-5";
   const input =
@@ -226,8 +266,6 @@ export default function MassDmPage() {
     await supabase.auth.signOut();
     router.push("/login");
   }
-
-  const messageCharCount = message.length;
 
   const progressPct =
     activeCampaign && activeCampaign.total_recipients > 0
@@ -275,122 +313,177 @@ export default function MassDmPage() {
 
             <div>
               <label className="text-[11px] text-[#9ca3af] block mb-1">
-                Throttle (ms between sends)
+                Send speed
               </label>
               <div className="flex items-center gap-2">
-                <input
-                  className={input + " w-24"}
-                  type="number"
-                  min={500}
-                  step={100}
-                  value={jitterMin}
-                  onChange={(e) => setJitterMin(Number(e.target.value))}
-                  disabled={isComposeDisabled}
-                />
-                <span className="text-[12px] text-[#6b7280]">to</span>
-                <input
-                  className={input + " w-24"}
-                  type="number"
-                  min={600}
-                  step={100}
-                  value={jitterMax}
-                  onChange={(e) => setJitterMax(Number(e.target.value))}
-                  disabled={isComposeDisabled}
-                />
+                {(Object.keys(PRESETS) as PresetKey[]).map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    disabled={isComposeDisabled}
+                    onClick={() => setPreset(k)}
+                    className={`px-3 py-2 rounded-lg text-[12px] font-medium border transition-all ${
+                      preset === k
+                        ? "bg-[#6366f1] border-[#6366f1] text-white"
+                        : "bg-[#1f2937] border-[#374151] text-[#9ca3af] hover:text-white"
+                    }`}
+                  >
+                    {PRESETS[k].label}
+                  </button>
+                ))}
               </div>
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="text-[11px] text-[#9ca3af] block mb-1">Filters</label>
-              <div className="space-y-3">
-                <div className="flex flex-wrap gap-2">
-                  {COMMON_TAGS.map((t) => {
-                    const on = (filters.tags ?? []).includes(t);
-                    return (
-                      <button
-                        key={t}
-                        type="button"
-                        onClick={() => toggleTag(t)}
-                        disabled={isComposeDisabled}
-                        className={`px-3 py-1.5 rounded-full text-[12px] border transition-all ${
-                          on
-                            ? "bg-[#6366f1] border-[#6366f1] text-white"
-                            : "bg-[#1f2937] border-[#374151] text-[#9ca3af] hover:text-white"
-                        }`}
-                      >
-                        {t}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-[11px] text-[#9ca3af] block mb-1">
-                      Min total spent ($)
-                    </label>
-                    <input
-                      className={input}
-                      type="number"
-                      min={0}
-                      value={filters.minSpent ?? ""}
-                      onChange={(e) =>
-                        setFilters({
-                          ...filters,
-                          minSpent: e.target.value ? Number(e.target.value) : undefined,
-                        })
-                      }
-                      placeholder="0"
-                      disabled={isComposeDisabled}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] text-[#9ca3af] block mb-1">
-                      Active in last N days
-                    </label>
-                    <input
-                      className={input}
-                      type="number"
-                      min={0}
-                      value={filters.lastSeenDays ?? ""}
-                      onChange={(e) =>
-                        setFilters({
-                          ...filters,
-                          lastSeenDays: e.target.value ? Number(e.target.value) : undefined,
-                        })
-                      }
-                      placeholder="all time"
-                      disabled={isComposeDisabled}
-                    />
-                  </div>
-                </div>
+              <div className="text-[10px] text-[#6b7280] mt-1">
+                {PRESETS[preset].hint}
+                {preset === "fast" && (
+                  <span className="text-amber-400"> · higher ban risk</span>
+                )}
               </div>
             </div>
           </div>
 
-          {/* Preview */}
-          <div className="mt-4 bg-[#0f131a] border border-[#2a2d35] rounded-lg p-3">
-            <div className="flex items-center justify-between mb-2">
+          {/* Filters */}
+          <div className="mt-4">
+            <label className="text-[11px] text-[#9ca3af] block mb-2">Filters</label>
+
+            {/* Emoji tags (same as chat) */}
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <span className="text-[10px] uppercase tracking-wider text-[#6b7280] mr-1">Tags</span>
+              {CHAT_TAGS.map((t) => {
+                const on = (filters.tags ?? []).includes(t);
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => toggleTag(t)}
+                    disabled={isComposeDisabled}
+                    className={`w-9 h-9 rounded-lg text-[16px] leading-none border flex items-center justify-center transition-all ${
+                      on
+                        ? "bg-[#6366f1]/20 border-[#6366f1] ring-1 ring-[#6366f1]"
+                        : "bg-[#1f2937] border-[#374151] opacity-70 hover:opacity-100"
+                    }`}
+                  >
+                    {t}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Fan Groups */}
+            {groups.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                <span className="text-[10px] uppercase tracking-wider text-[#6b7280] mr-1">Groups</span>
+                {groups.map((g) => {
+                  const on = (filters.groupIds ?? []).includes(g.id);
+                  return (
+                    <button
+                      key={g.id}
+                      type="button"
+                      onClick={() => toggleGroup(g.id)}
+                      disabled={isComposeDisabled}
+                      className="px-3 py-1.5 rounded-full text-[12px] font-medium border transition-all"
+                      style={{
+                        background: on ? `${g.color}30` : "#1f2937",
+                        borderColor: on ? g.color : "#374151",
+                        color: on ? g.color : "#9ca3af",
+                      }}
+                    >
+                      {g.emoji ? `${g.emoji} ` : ""}{g.name}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[11px] text-[#9ca3af] block mb-1">Min total spent ($)</label>
+                <NumberField
+                  value={filters.minSpent}
+                  onChange={(v) => setFilters({ ...filters, minSpent: v })}
+                  min={0}
+                  placeholder="0"
+                  disabled={isComposeDisabled}
+                />
+              </div>
+              <div>
+                <label className="text-[11px] text-[#9ca3af] block mb-1">Active in last N days</label>
+                <NumberField
+                  value={filters.lastSeenDays}
+                  onChange={(v) => setFilters({ ...filters, lastSeenDays: v })}
+                  min={0}
+                  placeholder="all time"
+                  disabled={isComposeDisabled}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Recipient list (full, scrollable, with exclude) */}
+          <div className="mt-4 bg-[#0f131a] border border-[#2a2d35] rounded-lg">
+            <div className="flex items-center justify-between px-3 py-2 border-b border-[#2a2d35]">
               <div className="text-[12px] font-semibold text-white">
                 {previewLoading
                   ? "Counting…"
-                  : `${previewCount ?? "—"} recipient${previewCount === 1 ? "" : "s"} match`}
+                  : `${finalCount} will receive${
+                      excluded.size ? ` · ${excluded.size} excluded` : ""
+                    }${
+                      totalCount !== null && totalCount > recipients.length
+                        ? ` · showing ${recipients.length} of ${totalCount}`
+                        : ""
+                    }`}
               </div>
-              <div className="text-[10px] text-[#6b7280] uppercase tracking-wider">
-                top spenders shown
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {previewSample.map((f, i) => (
-                <span
-                  key={i}
-                  className="px-2 py-1 bg-[#1f2937] border border-[#374151] rounded text-[11px] text-[#d1d5db]"
+              {excluded.size > 0 && (
+                <button
+                  className="text-[11px] text-[#6366f1] hover:underline"
+                  onClick={() => setExcluded(new Set())}
                 >
-                  {f.name} {f.spent > 0 && <span className="text-[#6366f1]">${f.spent.toFixed(0)}</span>}
-                </span>
-              ))}
-              {!previewSample.length && !previewLoading && (
-                <span className="text-[11px] text-[#6b7280]">No matches yet.</span>
+                  Reset excludes
+                </button>
               )}
+            </div>
+            <div className="max-h-[240px] overflow-y-auto p-1.5">
+              {recipients.length === 0 && !previewLoading && (
+                <div className="text-[12px] text-[#6b7280] px-2 py-3">
+                  No fans match these filters.
+                </div>
+              )}
+              {recipients.map((r) => {
+                const ex = excluded.has(r.peerId);
+                return (
+                  <div
+                    key={r.peerId}
+                    className={`flex items-center justify-between px-2 py-1.5 rounded text-[12px] ${
+                      ex ? "opacity-40" : ""
+                    }`}
+                  >
+                    <span className="text-[#d1d5db] truncate">
+                      {r.name}
+                      {r.spent > 0 && (
+                        <span className="text-[#6366f1] ml-2">${r.spent.toFixed(0)}</span>
+                      )}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={isComposeDisabled}
+                      onClick={() =>
+                        setExcluded((prev) => {
+                          const n = new Set(prev);
+                          if (n.has(r.peerId)) n.delete(r.peerId);
+                          else n.add(r.peerId);
+                          return n;
+                        })
+                      }
+                      className={`text-[11px] px-2 py-0.5 rounded transition-colors ${
+                        ex
+                          ? "text-emerald-400 hover:bg-[#1f2937]"
+                          : "text-[#9ca3af] hover:text-red-400 hover:bg-[#1f2937]"
+                      }`}
+                    >
+                      {ex ? "Include" : "Exclude"}
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -411,22 +504,29 @@ export default function MassDmPage() {
               disabled={isComposeDisabled}
             />
             <div className="text-[10px] text-[#6b7280] mt-1 text-right">
-              {messageCharCount}/4096
+              {message.length}/4096
             </div>
           </div>
 
-          <div className="flex items-center gap-3 mt-3">
+          {/* Daily cap + Send */}
+          <div className="flex flex-wrap items-end gap-3 mt-3">
+            <div>
+              <label className="text-[11px] text-[#9ca3af] block mb-1">Max per day</label>
+              <NumberField
+                className="w-28"
+                value={dailyLimit}
+                onChange={setDailyLimit}
+                min={0}
+                placeholder="no cap"
+                disabled={isComposeDisabled}
+              />
+            </div>
             <button
               className={btnPrimary}
               onClick={startCampaign}
-              disabled={
-                isComposeDisabled ||
-                !modelId ||
-                !message.trim() ||
-                (previewCount ?? 0) === 0
-              }
+              disabled={isComposeDisabled || !modelId || !message.trim() || finalCount === 0}
             >
-              Send to {previewCount ?? "?"} fans
+              Send to {finalCount} fans
             </button>
             {err && <span className="text-[11px] text-red-400">{err}</span>}
           </div>
@@ -455,6 +555,9 @@ export default function MassDmPage() {
                 </div>
                 <div className="text-[11px] text-[#9ca3af] mt-1">
                   Sent {activeCampaign.sent_count} · Failed {activeCampaign.failed_count}
+                  {activeCampaign.status === "paused" && (
+                    <span className="text-amber-400"> · daily cap reached, resume tomorrow</span>
+                  )}
                 </div>
               </div>
 
@@ -465,10 +568,7 @@ export default function MassDmPage() {
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {recentSent.map((r, i) => (
-                      <span
-                        key={i}
-                        className="px-2 py-0.5 bg-[#1f2937] rounded text-[11px] text-[#a7f3d0]"
-                      >
+                      <span key={i} className="px-2 py-0.5 bg-[#1f2937] rounded text-[11px] text-[#a7f3d0]">
                         {r.peer_username ? `@${r.peer_username}` : r.first_name ?? "Fan"}
                       </span>
                     ))}
@@ -478,9 +578,7 @@ export default function MassDmPage() {
 
               {recentFailed.length > 0 && (
                 <div className="bg-[#1f0d10] border border-[#3a1d20] rounded-lg p-3">
-                  <div className="text-[10px] uppercase tracking-wider text-red-400 mb-1.5">
-                    Failed
-                  </div>
+                  <div className="text-[10px] uppercase tracking-wider text-red-400 mb-1.5">Failed</div>
                   <div className="space-y-1">
                     {recentFailed.slice(0, 5).map((r, i) => (
                       <div key={i} className="text-[11px] text-[#fca5a5]">
@@ -491,9 +589,9 @@ export default function MassDmPage() {
                 </div>
               )}
 
-              {activeCampaign.status === "running" && (
+              {(activeCampaign.status === "running" || activeCampaign.status === "paused") && (
                 <button className={btnDanger} onClick={stopCampaign}>
-                  Stop campaign
+                  {activeCampaign.status === "paused" ? "Cancel campaign" : "Stop campaign"}
                 </button>
               )}
             </div>
@@ -516,9 +614,7 @@ export default function MassDmPage() {
                     <div className="text-[11px] text-[#6b7280] mb-0.5">
                       {new Date(c.created_at).toLocaleString()}
                     </div>
-                    <div className="text-[12px] text-white truncate max-w-[500px]">
-                      {c.message}
-                    </div>
+                    <div className="text-[12px] text-white truncate max-w-[500px]">{c.message}</div>
                   </div>
                   <div className="text-right shrink-0">
                     <div
@@ -527,6 +623,8 @@ export default function MassDmPage() {
                           ? "text-emerald-400"
                           : c.status === "running"
                           ? "text-[#6366f1]"
+                          : c.status === "paused"
+                          ? "text-amber-400"
                           : c.status === "cancelled"
                           ? "text-[#9ca3af]"
                           : "text-red-400"

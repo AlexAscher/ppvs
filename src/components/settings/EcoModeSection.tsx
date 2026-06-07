@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useEcoMode, setEcoMode, ECO_INTERVAL_MULTIPLIER } from "@/lib/use-eco";
+import { Toggle } from "@/components/ui/Toggle";
 
 /**
  * Eco Mode — agency Settings section.
@@ -35,22 +36,13 @@ export function EcoModeSection() {
             sessions.
           </p>
         </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={enabled}
+        <Toggle
+          checked={enabled}
+          onChange={toggle}
           disabled={saving}
-          onClick={toggle}
-          className={`relative w-10 h-6 rounded-full transition-colors disabled:opacity-50 ${
-            enabled ? "bg-[#10b981]" : "bg-[#374151]"
-          }`}
-        >
-          <span
-            className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
-              enabled ? "translate-x-[18px]" : "translate-x-0.5"
-            }`}
-          />
-        </button>
+          color="#10b981"
+          ariaLabel="Toggle Eco Mode"
+        />
       </div>
 
       {enabled && (

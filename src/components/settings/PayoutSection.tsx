@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase";
+import { NumberField } from "@/components/ui/NumberField";
 
 /**
  * Payout & Splits — agency Settings section.
@@ -402,29 +403,27 @@ function PercentTriplet({
   agency: number;
   onSave: (m: number, c: number, a: number) => void;
 }) {
-  const [m, setM] = useState(model);
-  const [c, setC] = useState(chatter);
-  const [a, setA] = useState(agency);
+  const [m, setM] = useState<number | undefined>(model);
+  const [c, setC] = useState<number | undefined>(chatter);
+  const [a, setA] = useState<number | undefined>(agency);
   useEffect(() => {
     setM(model);
     setC(chatter);
     setA(agency);
   }, [model, chatter, agency]);
-  const sum = Number(m) + Number(c) + Number(a);
+  const sum = (m ?? 0) + (c ?? 0) + (a ?? 0);
   const ok = Math.abs(sum - 100) < 0.01;
-  const inputCls =
-    "w-20 px-2 py-1.5 bg-[#1f2937] border border-[#374151] rounded text-[12px] text-white focus:outline-none focus:border-[#6366f1]";
   return (
     <div className="flex flex-wrap items-end gap-3">
-      <Pct label="Model %" value={m} onChange={setM} inputCls={inputCls} />
-      <Pct label="Chatter %" value={c} onChange={setC} inputCls={inputCls} />
-      <Pct label="Agency %" value={a} onChange={setA} inputCls={inputCls} />
+      <Pct label="Model %" value={m} onChange={setM} />
+      <Pct label="Chatter %" value={c} onChange={setC} />
+      <Pct label="Agency %" value={a} onChange={setA} />
       <div className={`text-[11px] ${ok ? "text-emerald-400" : "text-red-400"}`}>
         Sum: {sum.toFixed(2)}
       </div>
       <button
         disabled={!ok}
-        onClick={() => onSave(Number(m), Number(c), Number(a))}
+        onClick={() => onSave(m ?? 0, c ?? 0, a ?? 0)}
         className="px-4 py-2 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white rounded-lg font-semibold text-[12px] hover:from-[#5558e3] hover:to-[#4338ca] transition-all disabled:opacity-50"
       >
         Save default
@@ -437,24 +436,22 @@ function Pct({
   label,
   value,
   onChange,
-  inputCls,
 }: {
   label: string;
-  value: number;
-  onChange: (v: number) => void;
-  inputCls: string;
+  value: number | undefined;
+  onChange: (v: number | undefined) => void;
 }) {
   return (
     <div>
       <label className="text-[11px] text-[#9ca3af] block mb-1">{label}</label>
-      <input
-        className={inputCls}
-        type="number"
+      <NumberField
+        className="w-24"
+        value={value}
+        onChange={onChange}
         min={0}
         max={100}
         step={1}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
+        placeholder="0"
       />
     </div>
   );
@@ -483,9 +480,9 @@ function NewOverrideForm({
   const [scope, setScope] = useState<"model" | "chatter">("model");
   const [modelId, setModelId] = useState<string>("");
   const [chatterId, setChatterId] = useState<string>("");
-  const [m, setM] = useState(50);
-  const [c, setC] = useState(20);
-  const [a, setA] = useState(30);
+  const [m, setM] = useState<number | undefined>(50);
+  const [c, setC] = useState<number | undefined>(20);
+  const [a, setA] = useState<number | undefined>(30);
 
   useEffect(() => {
     if (!modelId && models.length) setModelId(models[0].id);
@@ -494,7 +491,7 @@ function NewOverrideForm({
     if (scope === "chatter" && !chatterId && chatters.length) setChatterId(chatters[0].id);
   }, [scope, chatters, chatterId]);
 
-  const sum = m + c + a;
+  const sum = (m ?? 0) + (c ?? 0) + (a ?? 0);
   const ok = Math.abs(sum - 100) < 0.01 && modelId && (scope === "model" || chatterId);
 
   return (
@@ -520,9 +517,9 @@ function NewOverrideForm({
             {!chatters.length && <option value="">No chatters yet</option>}
           </select>
         )}
-        <input className={input + " w-20"} type="number" placeholder="Model %" value={m} onChange={(e) => setM(Number(e.target.value))} />
-        <input className={input + " w-20"} type="number" placeholder="Chatter %" value={c} onChange={(e) => setC(Number(e.target.value))} />
-        <input className={input + " w-20"} type="number" placeholder="Agency %" value={a} onChange={(e) => setA(Number(e.target.value))} />
+        <NumberField className="w-24" value={m} onChange={setM} min={0} max={100} placeholder="Model %" />
+        <NumberField className="w-24" value={c} onChange={setC} min={0} max={100} placeholder="Chatter %" />
+        <NumberField className="w-24" value={a} onChange={setA} min={0} max={100} placeholder="Agency %" />
         <button
           className={btn}
           disabled={!ok}
@@ -531,9 +528,9 @@ function NewOverrideForm({
               scope,
               model_id: modelId,
               chatter_user_id: scope === "chatter" ? chatterId : null,
-              model_pct: m,
-              chatter_pct: c,
-              agency_pct: a,
+              model_pct: m ?? 0,
+              chatter_pct: c ?? 0,
+              agency_pct: a ?? 0,
             });
           }}
         >

@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase-server";
 import { consume, getClientIp, tooManyRequests } from "@/lib/rate-limit";
+import { sendSalesAlert } from "@/lib/sales-alerts";
 
 type TipRow = {
   id: string;
@@ -86,6 +87,34 @@ export async function POST(req: NextRequest) {
       } catch (e: unknown) {
         console.error(
           "[tips/deliver] fans.total_spent update failed:",
+          e instanceof Error ? e.message : e,
+        );
+      }
+    })();
+
+    // Sales Alert for tips (fire-and-forget).
+    void (async () => {
+      try {
+        const { data: modelRow } = await admin
+          .from("models")
+          .select("name, agency_user_id")
+          .eq("id", tipRow.model_id)
+          .maybeSingle();
+        const agencyUserId = (modelRow as { agency_user_id?: string } | null)?.agency_user_id;
+        if (!agencyUserId) return;
+
+        sendSalesAlert({
+          type: "tip",
+          agencyUserId,
+          modelId: tipRow.model_id,
+          modelName: (modelRow as { name?: string } | null)?.name ?? undefined,
+          fanDisplay: tipRow.peer_username ? `@${tipRow.peer_username}` : "Fan",
+          amount: Number(tipRow.amount ?? 0),
+          message: tipRow.message,
+        });
+      } catch (e: unknown) {
+        console.error(
+          "[tips/deliver] sales-alert dispatch failed:",
           e instanceof Error ? e.message : e,
         );
       }

@@ -3,6 +3,7 @@ import { createAdminSupabaseClient } from "@/lib/supabase-server";
 import { verifyMalumWebhookSignature, type MalumWebhookEvent } from "@/lib/malum";
 import { withTelegramClient } from "@/lib/telegram-pool";
 import { sendOriginalsAlbum } from "@/lib/ppv-delivery";
+import { sendSalesAlert } from "@/lib/sales-alerts";
 
 export const maxDuration = 300;
 
@@ -160,6 +161,52 @@ export async function POST(req: NextRequest) {
       } catch (e: unknown) {
         console.error(
           "[malum/webhook] fans.total_spent update failed:",
+          e instanceof Error ? e.message : e,
+        );
+      }
+    });
+
+    // Sales Alert — fire to the agency's configured TG channel.
+    // Fire-and-forget; failures inside sendSalesAlert are logged only.
+    after(async () => {
+      try {
+        const { data: modelRow } = await admin
+          .from("models")
+          .select("name, agency_user_id")
+          .eq("id", send.model_id)
+          .maybeSingle();
+        const agencyUserId = (modelRow as { agency_user_id?: string } | null)?.agency_user_id;
+        if (!agencyUserId) return;
+
+        // Resolve a single item name for the alert. Multi-item PPVs show
+        // "Pack name + N more" — agencies care more about which model
+        // earned than which specific item.
+        const { data: itemsRaw } = await admin
+          .from("ppv_send_items")
+          .select("ppvs(name)")
+          .eq("send_id", send.id)
+          .order("ordinal", { ascending: true })
+          .limit(2);
+        type ItemJoin = { ppvs: { name: string } | { name: string }[] | null };
+        const items = (itemsRaw ?? []) as ItemJoin[];
+        const firstName = items[0]
+          ? (Array.isArray(items[0].ppvs) ? items[0].ppvs[0]?.name : items[0].ppvs?.name) ?? "item"
+          : "item";
+        const itemName =
+          items.length > 1 ? `${firstName} +${items.length - 1} more` : firstName;
+
+        sendSalesAlert({
+          type: "ppv",
+          agencyUserId,
+          modelId: send.model_id,
+          modelName: (modelRow as { name?: string } | null)?.name ?? undefined,
+          fanDisplay: send.peer_username ? `@${send.peer_username}` : "Fan",
+          amount: Number(send.total_price ?? 0),
+          itemName,
+        });
+      } catch (e: unknown) {
+        console.error(
+          "[malum/webhook] sales-alert dispatch failed:",
           e instanceof Error ? e.message : e,
         );
       }

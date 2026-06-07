@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase";
 import { AutoRepliesSection } from "./AutoRepliesSection";
 import { SalesAlertsSection } from "./SalesAlertsSection";
+import { PayoutSection } from "./PayoutSection";
 
 /**
  * Settings — shared by agency dashboard and chatter dashboard. All writes
@@ -162,6 +163,9 @@ export function SettingsTab({ role }: { role: "agency" | "chatter" }) {
 
         {/* Sales Alerts — agency only */}
         {role === "agency" && <SalesAlertsSection />}
+
+        {/* Payout & Splits — agency only */}
+        {role === "agency" && <PayoutSection />}
 
         {/* Auto Replies — agency only */}
         {role === "agency" && <AutoRepliesSection />}

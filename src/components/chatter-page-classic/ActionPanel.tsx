@@ -67,6 +67,8 @@ interface ActionPanelProps {
   /** Raw user input, kept as a string so $X.XX cents work. Empty == 0 (free). */
   priceInput: string;
   onPriceInputChange: (v: string) => void;
+  /** Smart-pricing hint string (avg / common range / top sale). */
+  pricingHint?: string;
   recipientLabel: string;
   sending: boolean;
   onSendPpv: () => void;
@@ -114,6 +116,7 @@ export function ActionPanel({
   onCaptionChange,
   priceInput,
   onPriceInputChange,
+  pricingHint,
   recipientLabel,
   sending,
   onSendPpv,
@@ -351,6 +354,12 @@ export function ActionPanel({
                     <span className="text-[12px] text-[#6b7280]">{selectedItems.length} items</span>
                   </div>
                 </div>
+
+                {pricingHint && (
+                  <div className="text-[10px] text-[#9ca3af] bg-[#1f2937]/40 border border-[#2a2d35] rounded-md px-2.5 py-1.5">
+                    💡 {pricingHint}
+                  </div>
+                )}
 
                 <button
                   onClick={onSendPpv}

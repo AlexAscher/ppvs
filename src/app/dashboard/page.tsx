@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import type { DashboardStats } from "@/app/api/dashboard/stats/route";
 import { agencyNet } from "@/lib/platform";
+import { GlobalSearch } from "@/components/GlobalSearch";
 
 // ─────────────────────────────────────────────
 // AGENCY DASHBOARD
@@ -116,6 +117,10 @@ function AgencySidebar({
           ppvs<span className="text-[#6366f1]">.io</span>
         </div>
         <span className="text-[12px] px-2 py-0.5 bg-[#6366f1]/10 text-[#6366f1] rounded-full font-medium">Agency</span>
+      </div>
+
+      <div className="px-3 pt-3">
+        <GlobalSearch />
       </div>
 
       <div className="flex-1 py-4 px-3">

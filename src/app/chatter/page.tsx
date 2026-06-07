@@ -202,6 +202,9 @@ export default function ChatterPage() {
   // Engagement score per peer (0-100) → hot-lead dot in the chat list.
   const [engagementByPeer, setEngagementByPeer] = useState<Record<string, number>>({});
 
+  // Smart pricing hint for the send panel (avg / common range / top sale).
+  const [pricingHint, setPricingHint] = useState<string>("");
+
   // Mobile single-panel view switch (under md). Desktop shows all three
   // panels side by side regardless. "list" = dialog list, "chat" = open
   // conversation, "actions" = Send PPV / Tips / Notes / Stats panel.
@@ -454,6 +457,22 @@ export default function ChatterPage() {
       })
       .catch(() => { /* best-effort */ });
   }, [selectedModelId, dialogsByModel]);
+
+  // Smart-pricing hint per model (avg sale / common range / top sale).
+  useEffect(() => {
+    if (!selectedModelId) { setPricingHint(""); return; }
+    void fetch(`/api/ppv/pricing-stats?modelId=${selectedModelId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { avgPaid?: number; sales?: number; commonRange?: string | null; topSale?: number } | null) => {
+        if (!d || !d.sales) { setPricingHint(""); return; }
+        const parts: string[] = [];
+        if (d.avgPaid) parts.push(`Avg sale $${d.avgPaid}`);
+        if (d.commonRange) parts.push(`most common ${d.commonRange}`);
+        if (d.topSale) parts.push(`top $${d.topSale}`);
+        setPricingHint(parts.join(" · "));
+      })
+      .catch(() => setPricingHint(""));
+  }, [selectedModelId]);
 
   // Load the agency's group library once (for the dialog-list filter chips).
   useEffect(() => {
@@ -1564,6 +1583,7 @@ export default function ChatterPage() {
           onCaptionChange={setCaption}
           priceInput={priceInput}
           onPriceInputChange={setPriceInput}
+          pricingHint={pricingHint}
           recipientLabel={recipientLabel}
           sending={sending}
           onSendPpv={handleSendPpv}

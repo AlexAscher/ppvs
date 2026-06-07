@@ -1,10 +1,10 @@
-import { createServerSupabaseClient, createAdminSupabaseClient } from "@/lib/supabase-server";
+import { createSupabaseServerClient, createAdminSupabaseClient } from "@/lib/supabase-server";
 
 /**
  * GET /api/mass-dm → list this agency's campaigns (most recent first).
  */
 export async function GET() {
-  const ssr = await createServerSupabaseClient();
+  const ssr = await createSupabaseServerClient();
   const { data: { user } } = await ssr.auth.getUser();
   if (!user) return Response.json({ error: "Not authenticated" }, { status: 401 });
 

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { createServerSupabaseClient, createAdminSupabaseClient } from "@/lib/supabase-server";
+import { createSupabaseServerClient, createAdminSupabaseClient } from "@/lib/supabase-server";
 
 /**
  * GET  /api/alerts/settings  → current agency_settings row (auto-creates defaults)
@@ -17,7 +17,7 @@ type Settings = {
 };
 
 export async function GET() {
-  const ssr = await createServerSupabaseClient();
+  const ssr = await createSupabaseServerClient();
   const { data: { user } } = await ssr.auth.getUser();
   if (!user) return Response.json({ error: "Not authenticated" }, { status: 401 });
 
@@ -47,7 +47,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const ssr = await createServerSupabaseClient();
+  const ssr = await createSupabaseServerClient();
   const { data: { user } } = await ssr.auth.getUser();
   if (!user) return Response.json({ error: "Not authenticated" }, { status: 401 });
 

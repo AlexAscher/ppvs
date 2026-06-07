@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { createServerSupabaseClient, createAdminSupabaseClient } from "@/lib/supabase-server";
+import { createSupabaseServerClient, createAdminSupabaseClient } from "@/lib/supabase-server";
 
 /**
  * GET  /api/eco → { enabled: boolean }
@@ -14,7 +14,7 @@ import { createServerSupabaseClient, createAdminSupabaseClient } from "@/lib/sup
  * fetches it once on mount.
  */
 export async function GET() {
-  const ssr = await createServerSupabaseClient();
+  const ssr = await createSupabaseServerClient();
   const { data: { user } } = await ssr.auth.getUser();
   if (!user) return Response.json({ enabled: false });
 
@@ -29,7 +29,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const ssr = await createServerSupabaseClient();
+  const ssr = await createSupabaseServerClient();
   const { data: { user } } = await ssr.auth.getUser();
   if (!user) return Response.json({ error: "Not authenticated" }, { status: 401 });
 

@@ -1,4 +1,4 @@
-import { createServerSupabaseClient, createAdminSupabaseClient } from "@/lib/supabase-server";
+import { createSupabaseServerClient, createAdminSupabaseClient } from "@/lib/supabase-server";
 import { sendSalesAlert } from "@/lib/sales-alerts";
 
 /**
@@ -8,7 +8,7 @@ import { sendSalesAlert } from "@/lib/sales-alerts";
  * connected model session. Used by the "Send test" button in Settings.
  */
 export async function POST() {
-  const ssr = await createServerSupabaseClient();
+  const ssr = await createSupabaseServerClient();
   const { data: { user } } = await ssr.auth.getUser();
   if (!user) return Response.json({ error: "Not authenticated" }, { status: 401 });
 

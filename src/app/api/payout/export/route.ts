@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { createServerSupabaseClient, createAdminSupabaseClient } from "@/lib/supabase-server";
+import { createSupabaseServerClient, createAdminSupabaseClient } from "@/lib/supabase-server";
 import { buildPayoutReport, reportToCsv } from "@/lib/payout";
 
 /**
@@ -11,7 +11,7 @@ import { buildPayoutReport, reportToCsv } from "@/lib/payout";
 export const maxDuration = 60;
 
 export async function GET(req: NextRequest) {
-  const ssr = await createServerSupabaseClient();
+  const ssr = await createSupabaseServerClient();
   const { data: { user } } = await ssr.auth.getUser();
   if (!user) return Response.json({ error: "Not authenticated" }, { status: 401 });
 

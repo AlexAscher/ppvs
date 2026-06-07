@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { createServerSupabaseClient, createAdminSupabaseClient } from "@/lib/supabase-server";
+import { createSupabaseServerClient, createAdminSupabaseClient } from "@/lib/supabase-server";
 import { materializeRecipients, type Filters } from "@/lib/mass-dm";
 
 /**
@@ -9,7 +9,7 @@ import { materializeRecipients, type Filters } from "@/lib/mass-dm";
  * plus the first 8 by total_spent for the UI preview.
  */
 export async function POST(req: NextRequest) {
-  const ssr = await createServerSupabaseClient();
+  const ssr = await createSupabaseServerClient();
   const { data: { user } } = await ssr.auth.getUser();
   if (!user) return Response.json({ error: "Not authenticated" }, { status: 401 });
 

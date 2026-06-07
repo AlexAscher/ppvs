@@ -76,6 +76,10 @@ export async function GET(req: NextRequest) {
     // Week / Month / All Time) are NOT affected — they always show their
     // canonical windows so the user can read both at once.
     const period = parseChartPeriod(new URL(req.url).searchParams.get("period"));
+    // Optional scope: ?modelId=<uuid> restricts every aggregate to a
+    // single model. Anything not owned by the caller is ignored (falls
+    // back to all models).
+    const scopeModelId = new URL(req.url).searchParams.get("modelId");
 
     const admin = createAdminSupabaseClient();
 
@@ -95,8 +99,11 @@ export async function GET(req: NextRequest) {
     } catch {
       partial = true;
     }
-    const modelIds = models.map((m) => m.id);
+    // Keep the full name map (so chart/labels resolve), but scope the
+    // aggregated model id list when a valid modelId is requested.
     const nameByModel = new Map(models.map((m) => [m.id, m.name]));
+    const scoped = scopeModelId && models.some((m) => m.id === scopeModelId);
+    const modelIds = scoped ? [scopeModelId as string] : models.map((m) => m.id);
 
     const empty: DashboardStats = {
       netToday: 0, netWeek: 0, netMonth: 0, netAllTime: 0,

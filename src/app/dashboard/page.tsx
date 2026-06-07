@@ -368,11 +368,30 @@ function DashboardTab() {
   // show their canonical windows (Today / Week / Month / All Time).
   const [period, setPeriod] = useState<ChartPeriod>("7d");
 
+  // Model scope: null = All models. Selector lives top-left in the header.
+  const [models, setModels] = useState<{ id: string; name: string }[]>([]);
+  const [scopeModelId, setScopeModelId] = useState<string | null>(null);
+  const [showModelMenu, setShowModelMenu] = useState(false);
+
+  useEffect(() => {
+    const supabase = createClient();
+    void (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase
+        .from("models")
+        .select("id, name")
+        .eq("agency_user_id", user.id);
+      setModels((data ?? []) as { id: string; name: string }[]);
+    })();
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/api/dashboard/stats?period=${period}`);
+        const qs = `?period=${period}${scopeModelId ? `&modelId=${scopeModelId}` : ""}`;
+        const res = await fetch(`/api/dashboard/stats${qs}`);
         const data = await res.json();
         if (cancelled) return;
         if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
@@ -385,7 +404,11 @@ function DashboardTab() {
     return () => {
       cancelled = true;
     };
-  }, [reloadKey, period]);
+  }, [reloadKey, period, scopeModelId]);
+
+  const scopeModelName = scopeModelId
+    ? models.find((m) => m.id === scopeModelId)?.name ?? "Model"
+    : "All models";
 
   const cards = stats
     ? [
@@ -407,10 +430,43 @@ function DashboardTab() {
   return (
     <div className="flex-1 bg-[#0d1117] overflow-y-auto p-4 md:p-6">
       <div className="max-w-[1400px] mx-auto space-y-6">
-        <div className="flex items-start justify-between">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-[24px] font-bold text-white mb-1">Dashboard 📊</h1>
             <p className="text-[14px] text-[#9ca3af]">Overview of your agency performance</p>
+          </div>
+          {/* Model scope selector */}
+          <div className="relative">
+            <button
+              onClick={() => setShowModelMenu((v) => !v)}
+              className="px-4 py-2 bg-[#161a22] border border-[#2a2d35] rounded-lg text-[13px] font-medium text-white hover:bg-[#1f2937] transition-all flex items-center gap-2 min-w-[180px] justify-between"
+            >
+              <span className="truncate">{scopeModelName}</span>
+              <span className="text-[#9ca3af] text-[10px]">▼</span>
+            </button>
+            {showModelMenu && (
+              <div className="absolute top-full right-0 mt-1 w-full bg-[#1f2937] border border-[#374151] rounded-lg shadow-2xl overflow-hidden z-20 max-h-[280px] overflow-y-auto">
+                <button
+                  onClick={() => { setScopeModelId(null); setShowModelMenu(false); }}
+                  className={`w-full px-3 py-2 text-[13px] text-left hover:bg-[#374151] transition-colors ${
+                    !scopeModelId ? "bg-[#374151] text-[#6366f1]" : "text-white"
+                  }`}
+                >
+                  All models
+                </button>
+                {models.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => { setScopeModelId(m.id); setShowModelMenu(false); }}
+                    className={`w-full px-3 py-2 text-[13px] text-left hover:bg-[#374151] transition-colors ${
+                      scopeModelId === m.id ? "bg-[#374151] text-[#6366f1]" : "text-white"
+                    }`}
+                  >
+                    {m.name}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -1000,6 +1056,20 @@ function WalletTab() {
   const [submitting, setSubmitting] = useState(false);
   const [msg, setMsg] = useState("");
 
+  // Agency split breakdown (all-time) — both gross turnover and the
+  // agency's own cut, plus what's owed to models / chatters per splits.
+  type SplitTotals = { gross: number; modelCut: number; chatterCut: number; agencyCut: number };
+  type SplitPair = {
+    modelName: string;
+    chatterName: string;
+    gross: number;
+    modelCut: number;
+    chatterCut: number;
+    agencyCut: number;
+  };
+  const [splitTotals, setSplitTotals] = useState<SplitTotals | null>(null);
+  const [splitPairs, setSplitPairs] = useState<SplitPair[]>([]);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -1010,9 +1080,11 @@ function WalletTab() {
         if (saved) setAddress((a) => a || saved);
       });
       try {
-        const [statsRes, payoutsRes] = await Promise.all([
+        const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+        const [statsRes, payoutsRes, splitRes] = await Promise.all([
           fetch("/api/dashboard/stats"),
           fetch("/api/payouts"),
+          fetch(`/api/payout/report?from=2000-01-01&to=${tomorrow}`),
         ]);
         if (cancelled) return;
         if (statsRes.ok) {
@@ -1024,6 +1096,11 @@ function WalletTab() {
           const p = await payoutsRes.json();
           setPayouts((p.payouts ?? []) as Payout[]);
           if (typeof p.availableBalance === "number") setAvailable(p.availableBalance);
+        }
+        if (splitRes.ok) {
+          const r = await splitRes.json();
+          if (r.totals) setSplitTotals(r.totals as SplitTotals);
+          if (r.byPair) setSplitPairs(r.byPair as SplitPair[]);
         }
       } catch {
         /* best-effort */
@@ -1098,6 +1175,66 @@ function WalletTab() {
             <div className="text-[13px] text-[#6b7280] mt-2">Net minus requested payouts</div>
           </div>
         </div>
+
+        {/* Agency split breakdown — both gross and the agency's own cut,
+            plus what's owed out to models / chatters (per Payout splits). */}
+        {splitTotals && (
+          <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-6">
+            <h2 className="text-[18px] font-semibold text-white mb-1 flex items-center gap-2">
+              Agency split 🧮
+            </h2>
+            <p className="text-[13px] text-[#9ca3af] mb-4">
+              All-time, aggregated across every model. Configure the split in Settings → Payout.
+            </p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+              <div className="bg-[#0f131a] border border-[#2a2d35] rounded-lg p-4">
+                <div className="text-[10px] uppercase tracking-wider text-[#9ca3af]">Gross turnover</div>
+                <div className="text-[22px] font-bold text-white mt-1">{money(splitTotals.gross)}</div>
+              </div>
+              <div className="bg-gradient-to-br from-[#6366f1]/20 to-[#4f46e5]/10 border border-[#6366f1]/40 rounded-lg p-4">
+                <div className="text-[10px] uppercase tracking-wider text-[#a5a8ff]">Agency cut</div>
+                <div className="text-[22px] font-bold text-white mt-1">{money(splitTotals.agencyCut)}</div>
+              </div>
+              <div className="bg-[#0f131a] border border-[#2a2d35] rounded-lg p-4">
+                <div className="text-[10px] uppercase tracking-wider text-[#9ca3af]">Owed to models</div>
+                <div className="text-[22px] font-bold text-white mt-1">{money(splitTotals.modelCut)}</div>
+              </div>
+              <div className="bg-[#0f131a] border border-[#2a2d35] rounded-lg p-4">
+                <div className="text-[10px] uppercase tracking-wider text-[#9ca3af]">Owed to chatters</div>
+                <div className="text-[22px] font-bold text-white mt-1">{money(splitTotals.chatterCut)}</div>
+              </div>
+            </div>
+            {splitPairs.length > 0 && (
+              <div className="bg-[#0f131a] border border-[#2a2d35] rounded-lg overflow-x-auto">
+                <table className="w-full text-[12px]">
+                  <thead className="bg-[#161a22]">
+                    <tr className="text-left text-[#9ca3af]">
+                      <th className="px-3 py-2">Model</th>
+                      <th className="px-3 py-2">Chatter</th>
+                      <th className="px-3 py-2 text-right">Gross</th>
+                      <th className="px-3 py-2 text-right">Model</th>
+                      <th className="px-3 py-2 text-right">Chatter</th>
+                      <th className="px-3 py-2 text-right">Agency</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-white">
+                    {splitPairs.map((p, i) => (
+                      <tr key={i} className="border-t border-[#2a2d35]">
+                        <td className="px-3 py-2">{p.modelName}</td>
+                        <td className="px-3 py-2">{p.chatterName}</td>
+                        <td className="px-3 py-2 text-right">{money(p.gross)}</td>
+                        <td className="px-3 py-2 text-right">{money(p.modelCut)}</td>
+                        <td className="px-3 py-2 text-right">{money(p.chatterCut)}</td>
+                        <td className="px-3 py-2 text-right">{money(p.agencyCut)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-6">
           <h2 className="text-[18px] font-semibold text-white mb-6 flex items-center gap-2">
             Withdraw Funds <ArrowUpRight className="w-5 h-5 text-[#6366f1]" />

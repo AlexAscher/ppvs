@@ -94,6 +94,12 @@ interface TelegramChatProps {
   selectedChat: string;
   onSelectChat: (id: string) => void;
   selected: ChatListItem | null;
+  /** Active model — used to build fan-avatar image URLs. */
+  modelId?: string | null;
+  /** Fan Group library + active dialog-list filter (null = All). */
+  groups?: { id: string; name: string; color: string; emoji: string | null }[];
+  activeGroupId?: string | null;
+  onSelectGroup?: (id: string | null) => void;
   messages: Message[];
   /** Fan's lifetime spend, pre-formatted ("$245"). Shown in the header. */
   totalSpent: string;
@@ -380,11 +386,58 @@ function Lightbox({ media, onClose }: { media: MessageMediaInfo; onClose: () => 
   );
 }
 
+/**
+ * Fan avatar with graceful fallback. Tries the cached Telegram photo
+ * (served via /api/telegram/fan-avatar, which caches to Storage); on any
+ * error or when no model is known, falls back to coloured initials.
+ * `loading="lazy"` so off-screen dialogs don't all fetch at once.
+ */
+function FanAvatar({
+  modelId,
+  peerId,
+  initials,
+  size = 44,
+}: {
+  modelId?: string | null;
+  peerId: string;
+  initials: string;
+  size?: number;
+}) {
+  const [failed, setFailed] = useState(false);
+  const px = `${size}px`;
+  if (!modelId || failed) {
+    return (
+      <div
+        className="bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-full flex items-center justify-center text-white font-semibold flex-shrink-0"
+        style={{ width: px, height: px, fontSize: size * 0.3 }}
+      >
+        {initials}
+      </div>
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={`/api/telegram/fan-avatar/${modelId}?peerId=${encodeURIComponent(peerId)}`}
+      alt={initials}
+      loading="lazy"
+      draggable={false}
+      onError={() => setFailed(true)}
+      className="rounded-full object-cover flex-shrink-0 bg-[#1f2937]"
+      style={{ width: px, height: px }}
+    />
+  );
+}
+
 export function TelegramChat({
   chatList,
   selectedChat,
   onSelectChat,
   selected,
+  modelId,
+  groups,
+  activeGroupId,
+  onSelectGroup,
   messages,
   totalSpent,
   inputText,
@@ -522,6 +575,41 @@ export function TelegramChat({
               className="w-full pl-9 pr-3 py-2 bg-[#1f2937] border border-[#374151] rounded-lg text-[10px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1]"
             />
           </div>
+
+          {/* Group filter chips — only when the agency has groups. */}
+          {groups && groups.length > 0 && (
+            <div className="flex items-center gap-1.5 mt-2 overflow-x-auto pb-1 -mb-1">
+              <button
+                type="button"
+                onClick={() => onSelectGroup?.(null)}
+                className={`px-2.5 py-1 rounded-full text-[10px] font-medium whitespace-nowrap border transition-all ${
+                  !activeGroupId
+                    ? "bg-[#6366f1] border-[#6366f1] text-white"
+                    : "bg-[#1f2937] border-[#374151] text-[#9ca3af] hover:text-white"
+                }`}
+              >
+                All
+              </button>
+              {groups.map((g) => {
+                const on = activeGroupId === g.id;
+                return (
+                  <button
+                    key={g.id}
+                    type="button"
+                    onClick={() => onSelectGroup?.(on ? null : g.id)}
+                    className="px-2.5 py-1 rounded-full text-[10px] font-medium whitespace-nowrap border transition-all"
+                    style={{
+                      background: on ? `${g.color}30` : "#1f2937",
+                      borderColor: on ? g.color : "#374151",
+                      color: on ? g.color : "#9ca3af",
+                    }}
+                  >
+                    {g.emoji ? `${g.emoji} ` : ""}{g.name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -533,9 +621,7 @@ export function TelegramChat({
                 selectedChat === chat.id ? "bg-[#1f2937]" : ""
               }`}
             >
-              <div className="w-11 h-11 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-full flex items-center justify-center text-white font-semibold text-[13px] flex-shrink-0">
-                {chat.avatar}
-              </div>
+              <FanAvatar modelId={modelId} peerId={chat.id} initials={chat.avatar} size={44} />
               <div className="flex-1 min-w-0 text-left">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-[13px] font-medium text-white truncate">@{chat.username}</span>
@@ -586,9 +672,11 @@ export function TelegramChat({
             className="flex items-center gap-3 hover:opacity-80 transition-opacity disabled:cursor-not-allowed"
             title={selected ? "Open fan profile" : ""}
           >
-            <div className="w-10 h-10 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-full flex items-center justify-center text-white font-semibold">
-              {selected?.avatar ?? ""}
-            </div>
+            {selected ? (
+              <FanAvatar modelId={modelId} peerId={selected.id} initials={selected.avatar} size={40} />
+            ) : (
+              <div className="w-10 h-10 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-full flex-shrink-0" />
+            )}
             <div className="text-left">
               <div className="text-[14px] font-semibold text-white">
                 {selected ? `@${selected.username}` : ""}

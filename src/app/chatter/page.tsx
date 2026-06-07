@@ -191,6 +191,14 @@ export default function ChatterPage() {
   // arrive. Keyed by peerId so TelegramChat can render them without N fetches.
   const [fanTagsByPeer, setFanTagsByPeer] = useState<Record<string, string[]>>({});
 
+  // Fan Groups: the agency's group library + which groups each peer is in,
+  // plus the active dialog-list filter (null = All).
+  const [fanGroups, setFanGroups] = useState<
+    { id: string; name: string; color: string; emoji: string | null }[]
+  >([]);
+  const [groupIdsByPeer, setGroupIdsByPeer] = useState<Record<string, string[]>>({});
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+
   // Mobile single-panel view switch (under md). Desktop shows all three
   // panels side by side regardless. "list" = dialog list, "chat" = open
   // conversation, "actions" = Send PPV / Tips / Notes / Stats panel.
@@ -420,7 +428,31 @@ export default function ChatterPage() {
         if (data.tags) setFanTagsByPeer(data.tags);
       })
       .catch(() => { /* best-effort */ });
+
+    // Group memberships for the same peers (so the dialog-list filter can
+    // restrict by group). byPeer maps peerId -> group chips.
+    void fetch(`/api/groups/for-fan?modelId=${model}&peerIds=${peerIds}`)
+      .then((r) => r.json())
+      .then((data: { byPeer?: Record<string, { id: string }[]> }) => {
+        if (!data.byPeer) return;
+        const map: Record<string, string[]> = {};
+        for (const [pid, chips] of Object.entries(data.byPeer)) {
+          map[pid] = chips.map((c) => c.id);
+        }
+        setGroupIdsByPeer(map);
+      })
+      .catch(() => { /* best-effort */ });
   }, [selectedModelId, dialogsByModel]);
+
+  // Load the agency's group library once (for the dialog-list filter chips).
+  useEffect(() => {
+    void fetch("/api/groups")
+      .then((r) => (r.ok ? r.json() : { groups: [] }))
+      .then((data: { groups?: { id: string; name: string; color: string; emoji: string | null }[] }) => {
+        setFanGroups(data.groups ?? []);
+      })
+      .catch(() => { /* best-effort */ });
+  }, []);
 
   // ── dialogs polling ───────────────────────────────────────────────────────
 
@@ -1230,11 +1262,15 @@ export default function ChatterPage() {
 
   const filteredDialogs = useMemo((): ChatListItem[] => {
     const q = search.trim().toLowerCase();
-    const list = q
+    let list = q
       ? currentDialogs.filter(
           (d) => d.title.toLowerCase().includes(q) || (d.username ?? "").toLowerCase().includes(q),
         )
       : currentDialogs;
+    // Group filter: keep only dialogs whose peer is in the active group.
+    if (activeGroupId) {
+      list = list.filter((d) => (groupIdsByPeer[d.id] ?? []).includes(activeGroupId));
+    }
     return list.map((d) => ({
       id: d.id,
       username: d.username ?? d.title,
@@ -1245,7 +1281,7 @@ export default function ChatterPage() {
       status: d.status,
       tags: fanTagsByPeer[d.id] ?? [],
     }));
-  }, [currentDialogs, search, fanTagsByPeer]);
+  }, [currentDialogs, search, fanTagsByPeer, activeGroupId, groupIdsByPeer]);
 
   const chatMessages = useMemo(
     (): ChatMessage[] =>
@@ -1446,6 +1482,10 @@ export default function ChatterPage() {
           selectedChat={selectedDialog?.id ?? ""}
           onSelectChat={handleDialogSelect}
           selected={selectedChatItem}
+          modelId={selectedModelId}
+          groups={fanGroups}
+          activeGroupId={activeGroupId}
+          onSelectGroup={setActiveGroupId}
           messages={chatMessages}
           totalSpent={totalSpentFormatted}
           inputText={inputText}

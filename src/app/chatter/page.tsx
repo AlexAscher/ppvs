@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
+import { useEcoMode, ECO_INTERVAL_MULTIPLIER } from "@/lib/use-eco";
 // Both roles (agency + chatter) render the single indigo design from
 // Create_prompt_design — the chatter-page-classic/* components are the
 // pixel-match of that design. The older medium-sized chatter-page/* design
@@ -130,6 +131,11 @@ function initialsFromTitle(title: string) {
 export default function ChatterPage() {
   const router = useRouter();
   const supabase = createClient();
+  // Eco mode: multiplies every polling interval below by ECO_INTERVAL_MULTIPLIER
+  // so dialogs / messages / activity refresh less often when the agency
+  // has chosen to dial down VPS + MTProto load.
+  const eco = useEcoMode();
+  const ecoMul = eco ? ECO_INTERVAL_MULTIPLIER : 1;
 
   const [displayName, setDisplayName] = useState("");
   const [role, setRole] = useState<"agency" | "chatter" | null>(null);
@@ -463,12 +469,12 @@ export default function ChatterPage() {
     }, 0);
     const iv = setInterval(() => {
       void fetchDialogs(selectedModelId, false);
-    }, DIALOGS_POLL_MS);
+    }, DIALOGS_POLL_MS * ecoMul);
     return () => {
       clearTimeout(tid);
       clearInterval(iv);
     };
-  }, [selectedModelId, fetchDialogs]);
+  }, [selectedModelId, fetchDialogs, ecoMul]);
 
   useEffect(() => {
     if (role !== "agency") return;
@@ -542,12 +548,12 @@ export default function ChatterPage() {
     }, 0);
     const iv = setInterval(() => {
       void fetchMessages(selectedModelId, selectedDialog);
-    }, MESSAGES_POLL_MS);
+    }, MESSAGES_POLL_MS * ecoMul);
     return () => {
       clearTimeout(tid);
       clearInterval(iv);
     };
-  }, [selectedModelId, selectedDialog, fetchMessages]);
+  }, [selectedModelId, selectedDialog, fetchMessages, ecoMul]);
 
   // ── activity polling (typing / fresh online) ──────────────────────────────
 
@@ -577,13 +583,13 @@ export default function ChatterPage() {
     }, 0);
     const iv = setInterval(() => {
       void fetchActivity(selectedModelId, selectedDialog);
-    }, ACTIVITY_POLL_MS);
+    }, ACTIVITY_POLL_MS * ecoMul);
     return () => {
       clearTimeout(resetTid);
       clearTimeout(tid);
       clearInterval(iv);
     };
-  }, [selectedModelId, selectedDialog, fetchActivity]);
+  }, [selectedModelId, selectedDialog, fetchActivity, ecoMul]);
 
   // ── SSE realtime stream (typing + new messages) ───────────────────────────
   // Replaces tight polling — server pushes events as gramJS emits them.
@@ -642,12 +648,12 @@ export default function ChatterPage() {
     // Defer out of the effect body (React 19 strict effects) + keep it
     // refreshing while the tab stays open.
     const tid = setTimeout(() => void fetchStats(modelId), 0);
-    const iv = setInterval(() => void fetchStats(modelId), 60_000);
+    const iv = setInterval(() => void fetchStats(modelId), 60_000 * ecoMul);
     return () => {
       clearTimeout(tid);
       clearInterval(iv);
     };
-  }, [selectedModelId, activeTab, fetchStats]);
+  }, [selectedModelId, activeTab, fetchStats, ecoMul]);
 
   // ── fan profile (notes + tags + total_spent) ──────────────────────────────
   // One fetch per (model, peer). On open we also touch last_seen_at and

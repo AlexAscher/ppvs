@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase";
 import { AutoRepliesSection } from "./AutoRepliesSection";
 import { SalesAlertsSection } from "./SalesAlertsSection";
 import { PayoutSection } from "./PayoutSection";
+import { EcoModeSection } from "./EcoModeSection";
 
 /**
  * Settings — shared by agency dashboard and chatter dashboard. All writes
@@ -166,6 +167,9 @@ export function SettingsTab({ role }: { role: "agency" | "chatter" }) {
 
         {/* Payout & Splits — agency only */}
         {role === "agency" && <PayoutSection />}
+
+        {/* Eco Mode — agency only */}
+        {role === "agency" && <EcoModeSection />}
 
         {/* Auto Replies — agency only */}
         {role === "agency" && <AutoRepliesSection />}

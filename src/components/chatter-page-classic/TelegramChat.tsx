@@ -89,6 +89,8 @@ export interface ChatListItem {
   tags?: string[];
   /** Engagement score 0–100 → hot-lead dot (🟢 ≥60 / 🟡 ≥30 / 🔴 <30). */
   engagement?: number;
+  /** Conversation status label id (single per chat). */
+  statusLabelId?: string;
 }
 
 interface TelegramChatProps {
@@ -106,6 +108,10 @@ interface TelegramChatProps {
   onCreateGroup?: (name: string) => void | Promise<void>;
   /** Delete a group via right-click on its chip. */
   onDeleteGroup?: (id: string) => void | Promise<void>;
+  /** Conversation status labels (single status per chat). */
+  labels?: { id: string; name: string; color: string }[];
+  statusByPeer?: Record<string, string>;
+  onSetStatus?: (peerId: string, labelId: string | null) => void | Promise<void>;
   messages: Message[];
   /** Fan's lifetime spend, pre-formatted ("$245"). Shown in the header. */
   totalSpent: string;
@@ -446,6 +452,9 @@ export function TelegramChat({
   onSelectGroup,
   onCreateGroup,
   onDeleteGroup,
+  labels,
+  statusByPeer,
+  onSetStatus,
   messages,
   totalSpent,
   inputText,
@@ -480,6 +489,7 @@ export function TelegramChat({
   const [addingCategory, setAddingCategory] = useState(false);
   const [newCategory, setNewCategory] = useState("");
   const [groupMenu, setGroupMenu] = useState<{ id: string; name: string; x: number; y: number } | null>(null);
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   useEffect(() => {
     if (!groupMenu) return;
     const close = () => setGroupMenu(null);
@@ -794,6 +804,49 @@ export function TelegramChat({
             <div className="px-3 py-1.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[11px] text-[#9ca3af]">
               Total spent: <span className="text-[#6366f1] font-bold">{totalSpent}</span>
             </div>
+
+            {/* Conversation status (single label per chat) */}
+            {selected && onSetStatus && labels && labels.length > 0 && (() => {
+              const cur = labels.find((l) => l.id === selected.statusLabelId);
+              return (
+                <div className="relative">
+                  <button
+                    onClick={() => setStatusMenuOpen((v) => !v)}
+                    className="px-3 py-1.5 rounded-lg text-[11px] font-medium border transition-all flex items-center gap-1.5"
+                    style={
+                      cur
+                        ? { background: `${cur.color}25`, borderColor: cur.color, color: cur.color }
+                        : { background: "#1f2937", borderColor: "#374151", color: "#9ca3af" }
+                    }
+                  >
+                    {cur ? cur.name : "Set status"}
+                    <span className="text-[8px] opacity-70">▼</span>
+                  </button>
+                  {statusMenuOpen && (
+                    <div className="absolute right-0 top-full mt-1 bg-[#1f2937] border border-[#374151] rounded-lg shadow-2xl z-50 min-w-[150px] py-1">
+                      {labels.map((l) => (
+                        <button
+                          key={l.id}
+                          onClick={() => { void onSetStatus(selected.id, l.id); setStatusMenuOpen(false); }}
+                          className="w-full px-3 py-1.5 text-left text-[12px] text-white hover:bg-[#374151] flex items-center gap-2"
+                        >
+                          <span className="w-2 h-2 rounded-full" style={{ background: l.color }} />
+                          {l.name}
+                        </button>
+                      ))}
+                      {cur && (
+                        <button
+                          onClick={() => { void onSetStatus(selected.id, null); setStatusMenuOpen(false); }}
+                          className="w-full px-3 py-1.5 text-left text-[12px] text-[#9ca3af] hover:bg-[#374151] border-t border-[#374151]"
+                        >
+                          Clear status
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
 

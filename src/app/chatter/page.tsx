@@ -205,6 +205,12 @@ export default function ChatterPage() {
   // Smart pricing hint for the send panel (avg / common range / top sale).
   const [pricingHint, setPricingHint] = useState<string>("");
 
+  // Conversation status labels: library + one status per peer.
+  const [convoLabels, setConvoLabels] = useState<
+    { id: string; name: string; color: string }[]
+  >([]);
+  const [statusByPeer, setStatusByPeer] = useState<Record<string, string>>({});
+
   // Mobile single-panel view switch (under md). Desktop shows all three
   // panels side by side regardless. "list" = dialog list, "chat" = open
   // conversation, "actions" = Send PPV / Tips / Notes / Stats panel.
@@ -456,7 +462,23 @@ export default function ChatterPage() {
         if (data.scores) setEngagementByPeer(data.scores);
       })
       .catch(() => { /* best-effort */ });
+
+    // Conversation status per peer.
+    void fetch(`/api/labels/status?modelId=${model}&peerIds=${peerIds}`)
+      .then((r) => r.json())
+      .then((data: { byPeer?: Record<string, string> }) => {
+        if (data.byPeer) setStatusByPeer(data.byPeer);
+      })
+      .catch(() => { /* best-effort */ });
   }, [selectedModelId, dialogsByModel]);
+
+  // Conversation-label library once.
+  useEffect(() => {
+    void fetch("/api/labels")
+      .then((r) => (r.ok ? r.json() : { labels: [] }))
+      .then((d: { labels?: { id: string; name: string; color: string }[] }) => setConvoLabels(d.labels ?? []))
+      .catch(() => { /* best-effort */ });
+  }, []);
 
   // Smart-pricing hint per model (avg sale / common range / top sale).
   useEffect(() => {
@@ -1311,8 +1333,9 @@ export default function ChatterPage() {
       status: d.status,
       tags: fanTagsByPeer[d.id] ?? [],
       engagement: engagementByPeer[d.id],
+      statusLabelId: statusByPeer[d.id],
     }));
-  }, [currentDialogs, search, fanTagsByPeer, activeGroupId, groupIdsByPeer, engagementByPeer]);
+  }, [currentDialogs, search, fanTagsByPeer, activeGroupId, groupIdsByPeer, engagementByPeer, statusByPeer]);
 
   const chatMessages = useMemo(
     (): ChatMessage[] =>
@@ -1517,6 +1540,22 @@ export default function ChatterPage() {
           groups={fanGroups}
           activeGroupId={activeGroupId}
           onSelectGroup={setActiveGroupId}
+          labels={convoLabels}
+          statusByPeer={statusByPeer}
+          onSetStatus={async (peerId, labelId) => {
+            if (!selectedModelId) return;
+            setStatusByPeer((cur) => {
+              const next = { ...cur };
+              if (labelId) next[peerId] = labelId;
+              else delete next[peerId];
+              return next;
+            });
+            await fetch("/api/labels/status", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ modelId: selectedModelId, peerId, labelId }),
+            });
+          }}
           onCreateGroup={async (name) => {
             const r = await fetch("/api/groups", {
               method: "POST",

@@ -601,7 +601,7 @@ export function TelegramChat({
           {/* Group filter chips: All + categories + Add. Right-click a
               category to delete it (All is permanent). */}
           {(onSelectGroup || (groups && groups.length > 0)) && (
-            <div className="flex items-center gap-1.5 mt-2 overflow-x-auto pb-1 -mb-1">
+            <div className="flex flex-wrap items-center gap-1.5 mt-2">
               <button
                 type="button"
                 onClick={() => onSelectGroup?.(null)}

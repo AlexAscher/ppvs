@@ -14,6 +14,9 @@ type Settings = {
   alerts_channel_access_hash: string | null;
   alerts_channel_title: string | null;
   alerts_sender_model_id: string | null;
+  // Bot delivery (added by 20260611_alerts_bot.sql). Exposed as a bool
+  // so we never leak the raw chat id to the client.
+  alerts_bot_connected?: boolean;
 };
 
 export async function GET() {
@@ -22,28 +25,36 @@ export async function GET() {
   if (!user) return Response.json({ error: "Not authenticated" }, { status: 401 });
 
   const admin = createAdminSupabaseClient();
+  // select * so the optional alerts_bot_* columns come through without
+  // erroring on older schemas.
   let { data } = await admin
     .from("agency_settings")
-    .select(
-      "alerts_enabled, alerts_ppv, alerts_tips, alerts_channel_id, alerts_channel_access_hash, alerts_channel_title, alerts_sender_model_id",
-    )
+    .select("*")
     .eq("user_id", user.id)
     .maybeSingle();
 
   if (!data) {
-    // Auto-provision a default row on first read.
     await admin.from("agency_settings").insert({ user_id: user.id });
     const { data: created } = await admin
       .from("agency_settings")
-      .select(
-        "alerts_enabled, alerts_ppv, alerts_tips, alerts_channel_id, alerts_channel_access_hash, alerts_channel_title, alerts_sender_model_id",
-      )
+      .select("*")
       .eq("user_id", user.id)
       .maybeSingle();
     data = created;
   }
 
-  return Response.json({ settings: (data ?? null) as Settings | null });
+  const row = (data ?? {}) as Record<string, unknown>;
+  const settings: Settings = {
+    alerts_enabled: !!row.alerts_enabled,
+    alerts_ppv: row.alerts_ppv === undefined ? true : !!row.alerts_ppv,
+    alerts_tips: row.alerts_tips === undefined ? true : !!row.alerts_tips,
+    alerts_channel_id: (row.alerts_channel_id as string) ?? null,
+    alerts_channel_access_hash: (row.alerts_channel_access_hash as string) ?? null,
+    alerts_channel_title: (row.alerts_channel_title as string) ?? null,
+    alerts_sender_model_id: (row.alerts_sender_model_id as string) ?? null,
+    alerts_bot_connected: !!row.alerts_bot_chat_id,
+  };
+  return Response.json({ settings });
 }
 
 export async function POST(req: NextRequest) {

@@ -43,12 +43,14 @@ type PairAgg = {
   chatterName: string;
   sales: number;
   gross: number;
+  platformFee: number;
   modelCut: number;
   chatterCut: number;
   agencyCut: number;
 };
 type ReportTotals = {
   gross: number;
+  platformFee: number;
   modelCut: number;
   chatterCut: number;
   agencyCut: number;
@@ -330,8 +332,9 @@ export function PayoutSection() {
 
         {report && (
           <div className="space-y-2">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
               <Stat title="Gross" value={fmt$(report.totals.gross)} />
+              <Stat title="Platform fee 10%" value={fmt$(report.totals.platformFee)} />
               <Stat title="Model cut" value={fmt$(report.totals.modelCut)} />
               <Stat title="Chatter cut" value={fmt$(report.totals.chatterCut)} />
               <Stat title="Agency cut" value={fmt$(report.totals.agencyCut)} />
@@ -345,6 +348,7 @@ export function PayoutSection() {
                       <th className="px-3 py-2">Chatter</th>
                       <th className="px-3 py-2 text-right">Sales</th>
                       <th className="px-3 py-2 text-right">Gross</th>
+                      <th className="px-3 py-2 text-right">Fee</th>
                       <th className="px-3 py-2 text-right">Model</th>
                       <th className="px-3 py-2 text-right">Chatter</th>
                       <th className="px-3 py-2 text-right">Agency</th>
@@ -357,6 +361,7 @@ export function PayoutSection() {
                         <td className="px-3 py-2">{p.chatterName}</td>
                         <td className="px-3 py-2 text-right">{p.sales}</td>
                         <td className="px-3 py-2 text-right">{fmt$(p.gross)}</td>
+                        <td className="px-3 py-2 text-right text-[#9ca3af]">{fmt$(p.platformFee)}</td>
                         <td className="px-3 py-2 text-right">{fmt$(p.modelCut)}</td>
                         <td className="px-3 py-2 text-right">{fmt$(p.chatterCut)}</td>
                         <td className="px-3 py-2 text-right">{fmt$(p.agencyCut)}</td>

@@ -88,20 +88,49 @@ async function sendSalesAlertInner(event: SalesAlertEvent): Promise<void> {
 
   const admin = createAdminSupabaseClient();
 
-  // Load agency settings + decide whether to send.
-  const { data: settingsRaw } = await admin
-    .from("agency_settings")
-    .select(
-      "alerts_enabled, alerts_ppv, alerts_tips, alerts_channel_id, alerts_channel_access_hash, alerts_sender_model_id",
-    )
-    .eq("user_id", event.agencyUserId)
-    .maybeSingle();
+  // Load agency settings + decide whether to send. alerts_bot_chat_id is
+  // in a column added by 20260611_alerts_bot.sql; select it but tolerate
+  // its absence on older schemas.
+  let settingsRaw: unknown = null;
+  {
+    const withBot = await admin
+      .from("agency_settings")
+      .select(
+        "alerts_enabled, alerts_ppv, alerts_tips, alerts_channel_id, alerts_channel_access_hash, alerts_sender_model_id, alerts_bot_chat_id",
+      )
+      .eq("user_id", event.agencyUserId)
+      .maybeSingle();
+    if (withBot.error && /alerts_bot_chat_id/.test(withBot.error.message)) {
+      const fallback = await admin
+        .from("agency_settings")
+        .select(
+          "alerts_enabled, alerts_ppv, alerts_tips, alerts_channel_id, alerts_channel_access_hash, alerts_sender_model_id",
+        )
+        .eq("user_id", event.agencyUserId)
+        .maybeSingle();
+      settingsRaw = fallback.data;
+    } else {
+      settingsRaw = withBot.data;
+    }
+  }
 
-  const settings = (settingsRaw ?? null) as AgencySettings | null;
+  const settings = (settingsRaw ?? null) as (AgencySettings & { alerts_bot_chat_id?: string | null }) | null;
   if (!settings || !settings.alerts_enabled) return;
-  if (!settings.alerts_channel_id || !settings.alerts_channel_access_hash) return;
   if (event.type === "ppv" && !settings.alerts_ppv) return;
   if (event.type === "tip" && !settings.alerts_tips) return;
+
+  const text = buildMessage(event);
+
+  // ── Primary path: bot DM (no userbot, no ban risk) ──────────────────
+  if (settings.alerts_bot_chat_id) {
+    markRecent(dupKey);
+    const { sendBotMessage } = await import("@/lib/alert-bot");
+    await sendBotMessage(settings.alerts_bot_chat_id, text);
+    return;
+  }
+
+  // ── Legacy path: model MTProto session → channel ────────────────────
+  if (!settings.alerts_channel_id || !settings.alerts_channel_access_hash) return;
 
   // Pick the sender model: configured one, falling back to the model
   // that actually made the sale (which we know is connected because the
@@ -118,8 +147,6 @@ async function sendSalesAlertInner(event: SalesAlertEvent): Promise<void> {
   if (sender.session_status === "expired") return;
 
   markRecent(dupKey);
-
-  const text = buildMessage(event);
 
   await withTelegramClient(
     sender.id,

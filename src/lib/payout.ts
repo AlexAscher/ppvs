@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { PLATFORM_FEE_PCT } from "@/lib/platform";
 
 /**
  * Split-resolution + period-report utilities used by the Payout UI and
@@ -107,12 +108,16 @@ export function resolveSplit(
 }
 
 export function applySplit(gross: number, pcts: SplitPcts) {
-  // Round at 2 decimals so cents stay whole. Agency cut takes the
-  // rounding remainder so model+chatter+agency = gross exactly.
-  const model = Math.round(gross * pcts.model_pct) / 100;
-  const chatter = Math.round(gross * pcts.chatter_pct) / 100;
-  const agency = Math.round((gross - model - chatter) * 100) / 100;
-  return { model, chatter, agency };
+  // Platform takes its commission off the TOP first; only the remaining
+  // net is split between model / chatter / agency. Round at 2 decimals so
+  // cents stay whole; agency takes the rounding remainder so
+  // platformFee + model + chatter + agency = gross exactly.
+  const platformFee = Math.round(gross * PLATFORM_FEE_PCT * 100) / 100;
+  const net = gross - platformFee;
+  const model = Math.round(net * pcts.model_pct) / 100;
+  const chatter = Math.round(net * pcts.chatter_pct) / 100;
+  const agency = Math.round((net - model - chatter) * 100) / 100;
+  return { platformFee, model, chatter, agency };
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -129,6 +134,7 @@ export type SaleRow = {
   fanDisplay: string;
   itemName: string;    // PPV item name or "Tip" / tip message
   gross: number;
+  platformFee: number;
   modelCut: number;
   chatterCut: number;
   agencyCut: number;
@@ -138,6 +144,7 @@ export type PayoutReport = {
   rows: SaleRow[];
   totals: {
     gross: number;
+    platformFee: number;
     modelCut: number;
     chatterCut: number;
     agencyCut: number;
@@ -151,6 +158,7 @@ export type PayoutReport = {
     chatterName: string;
     sales: number;
     gross: number;
+    platformFee: number;
     modelCut: number;
     chatterCut: number;
     agencyCut: number;
@@ -210,7 +218,7 @@ export async function buildPayoutReport({
   if (!modelIds.length) {
     return {
       rows: [],
-      totals: { gross: 0, modelCut: 0, chatterCut: 0, agencyCut: 0, sales: 0 },
+      totals: { gross: 0, platformFee: 0, modelCut: 0, chatterCut: 0, agencyCut: 0, sales: 0 },
       byPair: [],
     };
   }
@@ -351,6 +359,7 @@ export async function buildPayoutReport({
         (p.peer_username ? `@${p.peer_username}` : "Fan"),
       itemName: itemNameBySend.get(p.id) ?? "PPV",
       gross,
+      platformFee: cut.platformFee,
       modelCut: cut.model,
       chatterCut: cut.chatter,
       agencyCut: cut.agency,
@@ -373,6 +382,7 @@ export async function buildPayoutReport({
         (t.peer_username ? `@${t.peer_username}` : "Fan"),
       itemName: t.message ? `Tip — ${t.message.slice(0, 40)}` : "Tip",
       gross,
+      platformFee: cut.platformFee,
       modelCut: cut.model,
       chatterCut: cut.chatter,
       agencyCut: cut.agency,
@@ -382,7 +392,7 @@ export async function buildPayoutReport({
   rows.sort((a, b) => (a.date < b.date ? 1 : -1));
 
   // Aggregates
-  const totals = { gross: 0, modelCut: 0, chatterCut: 0, agencyCut: 0, sales: 0 };
+  const totals = { gross: 0, platformFee: 0, modelCut: 0, chatterCut: 0, agencyCut: 0, sales: 0 };
   const pairAgg = new Map<
     string,
     {
@@ -392,6 +402,7 @@ export async function buildPayoutReport({
       chatterName: string;
       sales: number;
       gross: number;
+      platformFee: number;
       modelCut: number;
       chatterCut: number;
       agencyCut: number;
@@ -399,6 +410,7 @@ export async function buildPayoutReport({
   >();
   for (const r of rows) {
     totals.gross += r.gross;
+    totals.platformFee += r.platformFee;
     totals.modelCut += r.modelCut;
     totals.chatterCut += r.chatterCut;
     totals.agencyCut += r.agencyCut;
@@ -409,6 +421,7 @@ export async function buildPayoutReport({
     if (cur) {
       cur.sales += 1;
       cur.gross += r.gross;
+      cur.platformFee += r.platformFee;
       cur.modelCut += r.modelCut;
       cur.chatterCut += r.chatterCut;
       cur.agencyCut += r.agencyCut;
@@ -420,6 +433,7 @@ export async function buildPayoutReport({
         chatterName: r.chatterName,
         sales: 1,
         gross: r.gross,
+        platformFee: r.platformFee,
         modelCut: r.modelCut,
         chatterCut: r.chatterCut,
         agencyCut: r.agencyCut,
@@ -428,6 +442,7 @@ export async function buildPayoutReport({
   }
   // Round totals for display.
   totals.gross = Math.round(totals.gross * 100) / 100;
+  totals.platformFee = Math.round(totals.platformFee * 100) / 100;
   totals.modelCut = Math.round(totals.modelCut * 100) / 100;
   totals.chatterCut = Math.round(totals.chatterCut * 100) / 100;
   totals.agencyCut = Math.round(totals.agencyCut * 100) / 100;
@@ -449,6 +464,7 @@ export function reportToCsv(report: PayoutReport): string {
     "fan",
     "item",
     "gross",
+    "platform_fee",
     "model_cut",
     "chatter_cut",
     "agency_cut",
@@ -463,6 +479,7 @@ export function reportToCsv(report: PayoutReport): string {
         csv(r.fanDisplay),
         csv(r.itemName),
         r.gross.toFixed(2),
+        r.platformFee.toFixed(2),
         r.modelCut.toFixed(2),
         r.chatterCut.toFixed(2),
         r.agencyCut.toFixed(2),

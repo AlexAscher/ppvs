@@ -1058,11 +1058,12 @@ function WalletTab() {
 
   // Agency split breakdown (all-time) — both gross turnover and the
   // agency's own cut, plus what's owed to models / chatters per splits.
-  type SplitTotals = { gross: number; modelCut: number; chatterCut: number; agencyCut: number };
+  type SplitTotals = { gross: number; platformFee: number; modelCut: number; chatterCut: number; agencyCut: number };
   type SplitPair = {
     modelName: string;
     chatterName: string;
     gross: number;
+    platformFee: number;
     modelCut: number;
     chatterCut: number;
     agencyCut: number;
@@ -1186,10 +1187,14 @@ function WalletTab() {
             <p className="text-[13px] text-[#9ca3af] mb-4">
               All-time, aggregated across every model. Configure the split in Settings → Payout.
             </p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
               <div className="bg-[#0f131a] border border-[#2a2d35] rounded-lg p-4">
                 <div className="text-[10px] uppercase tracking-wider text-[#9ca3af]">Gross turnover</div>
                 <div className="text-[22px] font-bold text-white mt-1">{money(splitTotals.gross)}</div>
+              </div>
+              <div className="bg-[#0f131a] border border-[#2a2d35] rounded-lg p-4">
+                <div className="text-[10px] uppercase tracking-wider text-[#9ca3af]">Platform fee 10%</div>
+                <div className="text-[22px] font-bold text-[#9ca3af] mt-1">−{money(splitTotals.platformFee)}</div>
               </div>
               <div className="bg-gradient-to-br from-[#6366f1]/20 to-[#4f46e5]/10 border border-[#6366f1]/40 rounded-lg p-4">
                 <div className="text-[10px] uppercase tracking-wider text-[#a5a8ff]">Agency cut</div>
@@ -1352,7 +1357,7 @@ function AgencyDashboard() {
   }
 
   return (
-    <div className="h-screen w-screen flex bg-[#0d1117] text-white overflow-hidden" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif' }}>
+    <div className="fixed inset-0 flex bg-[#0d1117] text-white overflow-hidden" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif' }}>
       <AgencySidebar
         activeTab={activeTab}
         onTabChange={selectTab}

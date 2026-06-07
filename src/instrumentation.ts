@@ -22,6 +22,19 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
 
+  await setupProxy();
+
+  // Start the Sales-Alert bot's getUpdates poller. Idempotent + a no-op
+  // when TELEGRAM_BOT_TOKEN isn't set, so it's safe to always call.
+  try {
+    const { startAlertBotPolling } = await import("@/lib/alert-bot");
+    startAlertBotPolling();
+  } catch (e) {
+    console.error("[instrumentation] alert bot start failed:", e instanceof Error ? e.message : e);
+  }
+}
+
+async function setupProxy() {
   const proxyUrl =
     process.env.HTTPS_PROXY ||
     process.env.HTTP_PROXY ||

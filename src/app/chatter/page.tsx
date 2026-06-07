@@ -199,6 +199,9 @@ export default function ChatterPage() {
   const [groupIdsByPeer, setGroupIdsByPeer] = useState<Record<string, string[]>>({});
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
 
+  // Engagement score per peer (0-100) → hot-lead dot in the chat list.
+  const [engagementByPeer, setEngagementByPeer] = useState<Record<string, number>>({});
+
   // Mobile single-panel view switch (under md). Desktop shows all three
   // panels side by side regardless. "list" = dialog list, "chat" = open
   // conversation, "actions" = Send PPV / Tips / Notes / Stats panel.
@@ -440,6 +443,14 @@ export default function ChatterPage() {
           map[pid] = chips.map((c) => c.id);
         }
         setGroupIdsByPeer(map);
+      })
+      .catch(() => { /* best-effort */ });
+
+    // Engagement scores for the same peers (hot-lead dot).
+    void fetch(`/api/fans/${model}/engagement?peerIds=${peerIds}`)
+      .then((r) => r.json())
+      .then((data: { scores?: Record<string, number> }) => {
+        if (data.scores) setEngagementByPeer(data.scores);
       })
       .catch(() => { /* best-effort */ });
   }, [selectedModelId, dialogsByModel]);
@@ -1280,8 +1291,9 @@ export default function ChatterPage() {
       avatar: initialsFromTitle(d.title),
       status: d.status,
       tags: fanTagsByPeer[d.id] ?? [],
+      engagement: engagementByPeer[d.id],
     }));
-  }, [currentDialogs, search, fanTagsByPeer, activeGroupId, groupIdsByPeer]);
+  }, [currentDialogs, search, fanTagsByPeer, activeGroupId, groupIdsByPeer, engagementByPeer]);
 
   const chatMessages = useMemo(
     (): ChatMessage[] =>

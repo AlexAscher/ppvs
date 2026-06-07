@@ -87,6 +87,8 @@ export interface ChatListItem {
   status?: string | null;
   /** Fan emoji tags (🔴💵💰⭐👑) shown next to username in the list. */
   tags?: string[];
+  /** Engagement score 0–100 → hot-lead dot (🟢 ≥60 / 🟡 ≥30 / 🔴 <30). */
+  engagement?: number;
 }
 
 interface TelegramChatProps {
@@ -682,7 +684,23 @@ export function TelegramChat({
               <FanAvatar modelId={modelId} peerId={chat.id} initials={chat.avatar} size={44} />
               <div className="flex-1 min-w-0 text-left">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[13px] font-medium text-white truncate">@{chat.username}</span>
+                  <span className="text-[13px] font-medium text-white truncate flex items-center gap-1.5">
+                    {chat.engagement !== undefined && (
+                      <span
+                        className="w-2 h-2 rounded-full shrink-0"
+                        title={`Engagement ${chat.engagement}/100`}
+                        style={{
+                          backgroundColor:
+                            chat.engagement >= 60
+                              ? "#10b981"
+                              : chat.engagement >= 30
+                                ? "#f59e0b"
+                                : "#ef4444",
+                        }}
+                      />
+                    )}
+                    <span className="truncate">@{chat.username}</span>
+                  </span>
                   <div className="flex items-center gap-0.5 flex-shrink-0 ml-1">
                     {(chat.tags ?? []).map((t, i) => (
                       <span key={i} className="text-[11px] leading-none">{t}</span>

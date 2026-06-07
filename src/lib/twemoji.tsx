@@ -1,4 +1,10 @@
-import { Fragment, type ReactNode } from "react";
+import { Fragment, type ReactNode, type SyntheticEvent } from "react";
+import {
+  EMOJI_BASE,
+  EMOJI_REGEX,
+  emojiFallbackFilename,
+  emojiFilename,
+} from "./emoji";
 
 /**
  * Render text with unicode emoji swapped for Apple Color Emoji PNGs.
@@ -11,38 +17,8 @@ import { Fragment, type ReactNode } from "react";
  * Set source: github.com/iamcal/emoji-data — the canonical Apple emoji
  * PNG dump used by Slack, Mattermost, etc. Served via jsDelivr.
  *
- *   https://cdn.jsdelivr.net/gh/iamcal/emoji-data@v15.1.2/img-apple-64/{codepoint}.png
- *
- * Filename convention (matches iamcal/emoji-data):
- *   - Lowercase hex codepoints joined by "-".
- *   - Variation Selector 16 (FE0F) is STRIPPED (always).
- *   - Skin-tone / ZWJ continuations are KEPT.
- */
-
-const EMOJI_VERSION = "v15.1.2";
-const EMOJI_BASE = `https://cdn.jsdelivr.net/gh/iamcal/emoji-data@${EMOJI_VERSION}/img-apple-64`;
-
-// Extended_Pictographic + optional ZWJ/skin-tone/variation-selector tail.
-const EMOJI_REGEX =
-  /\p{Extended_Pictographic}(\u{FE0F}|\u{200D}\p{Extended_Pictographic}|[\u{1F3FB}-\u{1F3FF}]|\p{Extended_Pictographic}|\u{20E3})*/gu;
-
-function toFilename(text: string): string {
-  // iamcal's filenames omit U+FE0F (variation selector for emoji
-  // presentation) entirely — strip it before serializing.
-  const cps: string[] = [];
-  for (const ch of text) {
-    const cp = ch.codePointAt(0);
-    if (cp === undefined) continue;
-    if (cp === 0xfe0f) continue;
-    cps.push(cp.toString(16));
-  }
-  return cps.join("-");
-}
-
-/**
- * Walk a string, replacing every emoji sequence with an `<img>` to the
- * iamcal Apple PNG set. The image is aligned to the surrounding text
- * baseline and sized 1em so it inherits the parent font-size naturally.
+ * Algorithm + FE0F handling lives in `./emoji.ts` (shared with
+ * `GlobalEmojiSwap`).
  */
 export function twemoji(text: string, key?: string | number): ReactNode {
   if (!text) return text;
@@ -53,13 +29,16 @@ export function twemoji(text: string, key?: string | number): ReactNode {
   for (let m = EMOJI_REGEX.exec(text); m !== null; m = EMOJI_REGEX.exec(text)) {
     const start = m.index;
     if (start > last) parts.push(text.slice(last, start));
-    const file = toFilename(m[0]);
-    if (file) {
+    const primary = emojiFilename(m[0]);
+    const fallback = emojiFallbackFilename(m[0]);
+    if (primary) {
       parts.push(
         // eslint-disable-next-line @next/next/no-img-element
         <img
           key={`e-${key ?? ""}-${imgIdx++}`}
-          src={`${EMOJI_BASE}/${file}.png`}
+          src={`${EMOJI_BASE}/${primary}.png`}
+          data-emoji-fallback={fallback !== primary ? fallback : undefined}
+          data-emoji-glyph={m[0]}
           alt={m[0]}
           draggable={false}
           style={{
@@ -69,6 +48,7 @@ export function twemoji(text: string, key?: string | number): ReactNode {
             verticalAlign: "-0.15em",
             marginInline: "0.05em",
           }}
+          onError={handleEmojiError}
         />,
       );
     } else {
@@ -78,4 +58,23 @@ export function twemoji(text: string, key?: string | number): ReactNode {
   }
   if (last < text.length) parts.push(text.slice(last));
   return <Fragment key={key !== undefined ? String(key) : undefined}>{parts}</Fragment>;
+}
+
+function handleEmojiError(e: SyntheticEvent<HTMLImageElement>) {
+  const img = e.currentTarget;
+  const tried = img.dataset.emojiTried ?? "";
+  const fallback = img.dataset.emojiFallback;
+  const glyph = img.dataset.emojiGlyph ?? img.alt ?? "";
+  if (!tried.includes("fb") && fallback) {
+    img.dataset.emojiTried = `${tried}fb,`;
+    img.src = `${EMOJI_BASE}/${fallback}.png`;
+    return;
+  }
+  if (!tried.includes("txt")) {
+    img.dataset.emojiTried = `${tried}txt,`;
+    const span = document.createElement("span");
+    span.textContent = glyph;
+    span.style.display = "inline";
+    img.replaceWith(span);
+  }
 }

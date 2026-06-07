@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { X, CreditCard, Calendar, User as UserIcon, Tag as TagIcon } from "lucide-react";
 import type { FanRow } from "@/lib/fan-types";
+import { FanGroupsSection } from "./FanGroupsSection";
 
 /**
  * FanProfileDrawer — right-side slide-out panel summarising one fan.
@@ -229,6 +230,11 @@ export function FanProfileDrawer({
               </div>
             )}
           </div>
+
+          {/* Groups */}
+          {modelId && peerId && (
+            <FanGroupsSection modelId={modelId} peerId={peerId} />
+          )}
 
           {/* Notes log */}
           <div>

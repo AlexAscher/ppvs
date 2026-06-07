@@ -1,6 +1,6 @@
 "use client";
 
-import { Send, Lock } from "lucide-react";
+import { Send, Lock, RefreshCw } from "lucide-react";
 
 interface TopbarProps {
   displayName: string;
@@ -9,13 +9,22 @@ interface TopbarProps {
    *  unchanged. */
   sales?: string;
   onLogout: () => void;
+  /** Optional reload — when present, renders a refresh icon button.
+   *  Triggered by the chatter page to force-fetch dialogs + messages
+   *  outside the polling interval (useful when Eco Mode dilutes it). */
+  onReload?: () => void;
+  reloading?: boolean;
 }
 
 /**
  * Classic Topbar — pixel match of Create_prompt_design/Topbar.tsx with
  * the "All Time Net Sales" plate stripped (lives in the Stats tab now).
+ *
+ * The reload button is rendered only when `onReload` is wired. The spin
+ * animation comes from Tailwind's `animate-spin` on the icon while
+ * `reloading` is true.
  */
-export function Topbar({ displayName, onLogout }: TopbarProps) {
+export function Topbar({ displayName, onLogout, onReload, reloading }: TopbarProps) {
   return (
     <div className="h-[52px] bg-[#1a1d24] border-b border-[#2a2d35] flex items-center justify-between px-5">
       <div className="flex items-center gap-2.5">
@@ -28,9 +37,22 @@ export function Topbar({ displayName, onLogout }: TopbarProps) {
         </div>
       </div>
 
-      <div className="flex items-center gap-2 px-4 py-1.5 bg-[#1f2937]/40 border border-[#374151]/50 rounded-full">
-        <span className="text-[12px] font-medium text-[#d1d5db]">{displayName}</span>
-        <span className="text-[14px]">✍️</span>
+      <div className="flex items-center gap-3">
+        {onReload && (
+          <button
+            onClick={onReload}
+            disabled={reloading}
+            title="Refresh dialogs & messages"
+            aria-label="Reload"
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-[#1f2937]/40 border border-[#374151]/50 text-[#9ca3af] hover:text-white hover:bg-[#1f2937] transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${reloading ? "animate-spin" : ""}`} />
+          </button>
+        )}
+        <div className="flex items-center gap-2 px-4 py-1.5 bg-[#1f2937]/40 border border-[#374151]/50 rounded-full">
+          <span className="text-[12px] font-medium text-[#d1d5db]">{displayName}</span>
+          <span className="text-[14px]">✍️</span>
+        </div>
       </div>
 
       <button

@@ -137,6 +137,11 @@ export default function ChatterPage() {
   const eco = useEcoMode();
   const ecoMul = eco ? ECO_INTERVAL_MULTIPLIER : 1;
 
+  // Manual reload — Topbar's refresh button. Spins while async work runs
+  // and force-fetches dialogs + the active dialog's messages outside the
+  // polling cadence. Particularly useful when Eco Mode dilutes intervals.
+  const [reloading, setReloading] = useState(false);
+
   const [displayName, setDisplayName] = useState("");
   const [role, setRole] = useState<"agency" | "chatter" | null>(null);
 
@@ -1382,7 +1387,25 @@ export default function ChatterPage() {
       className="chatter-root h-screen w-screen flex flex-col bg-[#0d1117] text-white overflow-hidden"
       style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif' }}
     >
-      <Topbar displayName={displayName} sales="$0" onLogout={handleLogout} />
+      <Topbar
+        displayName={displayName}
+        sales="$0"
+        onLogout={handleLogout}
+        reloading={reloading}
+        onReload={async () => {
+          if (reloading) return;
+          if (!selectedModelId) return;
+          setReloading(true);
+          try {
+            await fetchDialogs(selectedModelId, true);
+            if (selectedDialog) {
+              await fetchMessages(selectedModelId, selectedDialog);
+            }
+          } finally {
+            setReloading(false);
+          }
+        }}
+      />
       <ModelSelectorBar
         models={modelOptions}
         selectedModel={selectedModelId ?? ""}

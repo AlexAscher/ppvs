@@ -32,6 +32,18 @@ export function PPVsTab() {
 
   const [loading, setLoading] = useState(false);
 
+  // Bulk operations on standalone PPVs.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const toggleSel = useCallback((id: string) => {
+    setSelectedIds((cur) => {
+      const n = new Set(cur);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  }, []);
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) setAgencyUserId(user.id);
@@ -138,6 +150,29 @@ export function PPVsTab() {
     setStandalonePpvs((prev) => prev.filter((p) => p.id !== id));
     setGroups((prev) => prev.map((g) => ({ ...g, items: g.items.filter((it) => it.id !== id) })));
     setPpvForm(null);
+  }
+
+  async function bulkDelete() {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    if (!confirm(`Delete ${ids.length} PPV${ids.length > 1 ? "s" : ""}? This can't be undone.`)) return;
+    await supabase.from("ppvs").delete().in("id", ids);
+    setStandalonePpvs((prev) => prev.filter((p) => !selectedIds.has(p.id)));
+    setSelectedIds(new Set());
+    setSelectMode(false);
+  }
+
+  async function bulkSetCaption() {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    const caption = prompt(`Set caption/description for ${ids.length} selected PPV(s):`);
+    if (caption === null) return;
+    await supabase.from("ppvs").update({ description: caption }).in("id", ids);
+    setStandalonePpvs((prev) =>
+      prev.map((p) => (selectedIds.has(p.id) ? { ...p, description: caption } : p)),
+    );
+    setSelectedIds(new Set());
+    setSelectMode(false);
   }
 
   function handleGroupSaved(saved: PpvGroup) {
@@ -296,12 +331,63 @@ export function PPVsTab() {
 
             {filteredStandalone.length > 0 && (
               <div className="space-y-4">
-                <h2 className="text-[14px] font-semibold text-[#9ca3af] uppercase tracking-wider">Individual PPVs</h2>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-[14px] font-semibold text-[#9ca3af] uppercase tracking-wider">Individual PPVs</h2>
+                  <button
+                    onClick={() => { setSelectMode((v) => !v); setSelectedIds(new Set()); }}
+                    className={`text-[12px] px-3 py-1.5 rounded-lg border transition-all ${
+                      selectMode
+                        ? "bg-[#6366f1] border-[#6366f1] text-white"
+                        : "bg-[#1f2937] border-[#374151] text-[#9ca3af] hover:text-white"
+                    }`}
+                  >
+                    {selectMode ? "Done" : "Select"}
+                  </button>
+                </div>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                   {filteredStandalone.map((p) => (
-                    <PpvCard key={p.id} ppv={p} onClick={() => setPpvForm({ kind: "edit", ppv: p })} />
+                    <div key={p.id} className="relative">
+                      {selectMode && (
+                        <button
+                          onClick={() => toggleSel(p.id)}
+                          className={`absolute top-2 left-2 z-10 w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all ${
+                            selectedIds.has(p.id)
+                              ? "bg-[#6366f1] border-[#6366f1] text-white"
+                              : "bg-black/50 border-white/70"
+                          }`}
+                        >
+                          {selectedIds.has(p.id) && "✓"}
+                        </button>
+                      )}
+                      <div
+                        className={selectMode && selectedIds.has(p.id) ? "ring-2 ring-[#6366f1] rounded-lg" : ""}
+                      >
+                        <PpvCard
+                          ppv={p}
+                          onClick={() =>
+                            selectMode ? toggleSel(p.id) : setPpvForm({ kind: "edit", ppv: p })
+                          }
+                        />
+                      </div>
+                    </div>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* Bulk action bar */}
+            {selectMode && selectedIds.size > 0 && (
+              <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-[#1f2937] border border-[#374151] rounded-xl shadow-2xl px-4 py-2.5">
+                <span className="text-[12px] text-white font-medium">{selectedIds.size} selected</span>
+                <button onClick={bulkSetCaption} className="text-[12px] px-3 py-1.5 rounded-lg bg-[#374151] text-white hover:bg-[#454c5a]">
+                  Set caption
+                </button>
+                <button onClick={bulkDelete} className="text-[12px] px-3 py-1.5 rounded-lg bg-red-600 text-white hover:bg-red-700">
+                  Delete
+                </button>
+                <button onClick={() => setSelectedIds(new Set())} className="text-[12px] text-[#9ca3af] hover:text-white">
+                  Clear
+                </button>
               </div>
             )}
 

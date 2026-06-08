@@ -16,6 +16,32 @@ export function ChattersTab() {
   const [selectedChatter, setSelectedChatter] = useState<AgencyChatter | null>(null);
   const [loading, setLoading] = useState(true);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+  // Presence: chatter_id -> last_seen ISO. Polled every 30s.
+  const [presence, setPresence] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const loadPresence = () => {
+      void fetch("/api/presence")
+        .then((r) => (r.ok ? r.json() : { presence: {} }))
+        .then((d: { presence?: Record<string, string> }) => setPresence(d.presence ?? {}))
+        .catch(() => {});
+    };
+    loadPresence();
+    const iv = setInterval(loadPresence, 30_000);
+    return () => clearInterval(iv);
+  }, []);
+
+  function presenceLabel(chatterId: string): { online: boolean; text: string } {
+    const iso = presence[chatterId];
+    if (!iso) return { online: false, text: "offline" };
+    const ago = Date.now() - new Date(iso).getTime();
+    if (ago < 90_000) return { online: true, text: "online" };
+    const mins = Math.floor(ago / 60_000);
+    if (mins < 60) return { online: false, text: `last active ${mins}m ago` };
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return { online: false, text: `last active ${hrs}h ago` };
+    return { online: false, text: `last active ${Math.floor(hrs / 24)}d ago` };
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -188,12 +214,26 @@ export function ChattersTab() {
                   onClick={() => setSelectedChatter(c)}
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-full flex items-center justify-center text-white font-semibold text-[13px] shrink-0">
-                      {initials}
+                    <div className="relative shrink-0">
+                      <div className="w-10 h-10 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-full flex items-center justify-center text-white font-semibold text-[13px]">
+                        {initials}
+                      </div>
+                      <span
+                        className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[#161a22]"
+                        style={{ backgroundColor: presenceLabel(c.chatter_id).online ? "#10b981" : "#6b7280" }}
+                      />
                     </div>
                     <div className="min-w-0">
                       <div className="text-[14px] font-medium text-white truncate">{c.chatter_email}</div>
-                      <div className="text-[11px] text-[#6b7280]">Joined {new Date(c.joined_at).toLocaleDateString("en-US")}</div>
+                      <div className="text-[11px]">
+                        {(() => {
+                          const p = presenceLabel(c.chatter_id);
+                          return (
+                            <span className={p.online ? "text-emerald-400" : "text-[#6b7280]"}>{p.text}</span>
+                          );
+                        })()}
+                        <span className="text-[#6b7280]"> · joined {new Date(c.joined_at).toLocaleDateString("en-US")}</span>
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center" onClick={(e) => e.stopPropagation()}>

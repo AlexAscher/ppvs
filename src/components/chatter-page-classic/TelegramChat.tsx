@@ -96,6 +96,8 @@ interface TelegramChatProps {
   selected: ChatListItem | null;
   /** Active model — used to build fan-avatar image URLs. */
   modelId?: string | null;
+  /** Max id of our outgoing message the fan has read (✓✓ when msg.id ≤ this). */
+  readOutboxMaxId?: number;
   /** Fan Group library + active dialog-list filter (null = All). */
   groups?: { id: string; name: string; color: string; emoji: string | null }[];
   activeGroupId?: string | null;
@@ -433,12 +435,33 @@ function FanAvatar({
   );
 }
 
+/** Telegram-style delivery ticks for our outgoing messages: a single
+ *  grey check = sent, a double blue check = read by the fan (derived from
+ *  the dialog's read_outbox_max_id). */
+function ReadTicks({ read }: { read: boolean }) {
+  return (
+    <span
+      className="inline-flex shrink-0"
+      title={read ? "Read" : "Sent"}
+      style={{ color: read ? "#34a3f5" : "#9ca3af" }}
+    >
+      <svg width="15" height="10" viewBox="0 0 15 10" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M1 5.2 L3.9 8.1 L9.3 1.9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+        {read && (
+          <path d="M5.4 8.1 L10.8 1.9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+        )}
+      </svg>
+    </span>
+  );
+}
+
 export function TelegramChat({
   chatList,
   selectedChat,
   onSelectChat,
   selected,
   modelId,
+  readOutboxMaxId,
   groups,
   activeGroupId,
   onSelectGroup,
@@ -854,9 +877,17 @@ export function TelegramChat({
                       )}
                     </div>
                     <div
-                      className={`text-[10px] text-[#6b7280] px-1 ${first.isChatter ? "text-right" : "text-left"}`}
+                      className={`text-[10px] text-[#6b7280] px-1 flex items-center gap-1 ${first.isChatter ? "justify-end" : "justify-start"}`}
                     >
                       {chunk.msgs[chunk.msgs.length - 1].time}
+                      {first.isChatter && (
+                        <ReadTicks
+                          read={
+                            readOutboxMaxId !== undefined &&
+                            Number(chunk.msgs[chunk.msgs.length - 1].id) <= readOutboxMaxId
+                          }
+                        />
+                      )}
                     </div>
                   </div>
                 </div>
@@ -934,9 +965,14 @@ export function TelegramChat({
                   </div>
                 )}
                 <div
-                  className={`text-[10px] text-[#6b7280] px-1 ${message.isChatter ? "text-right" : "text-left"}`}
+                  className={`text-[10px] text-[#6b7280] px-1 flex items-center gap-1 ${message.isChatter ? "justify-end" : "justify-start"}`}
                 >
                   {message.time}
+                  {message.isChatter && (
+                    <ReadTicks
+                      read={readOutboxMaxId !== undefined && Number(message.id) <= readOutboxMaxId}
+                    />
+                  )}
                 </div>
               </div>
             </div>

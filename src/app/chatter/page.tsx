@@ -51,6 +51,7 @@ type Dialog = {
   unreadCount: number;
   accessHash: string | null;
   status: string | null;
+  readOutboxMaxId?: number;
 };
 
 type ApiMessageMedia =
@@ -466,6 +467,15 @@ export default function ChatterPage() {
       .catch(() => setPricingHint(""));
   }, [selectedModelId]);
 
+  // Presence heartbeat — bump my last_seen_at every 30s while this page is
+  // open so the agency's Chatters tab can show who's online.
+  useEffect(() => {
+    const ping = () => { void fetch("/api/presence", { method: "POST" }).catch(() => {}); };
+    ping();
+    const iv = setInterval(ping, 30_000);
+    return () => clearInterval(iv);
+  }, []);
+
   // Load the agency's group library once (for the dialog-list filter chips).
   useEffect(() => {
     void fetch("/api/groups")
@@ -607,12 +617,14 @@ export default function ChatterPage() {
     }, 0);
     const iv = setInterval(() => {
       void fetchMessages(selectedModelId, selectedDialog);
-    }, MESSAGES_POLL_MS * ecoMul);
+      // Eco mode never slows the OPEN chat — messages stay instant. It only
+      // dilutes the chat-list / presence / stats polls below.
+    }, MESSAGES_POLL_MS);
     return () => {
       clearTimeout(tid);
       clearInterval(iv);
     };
-  }, [selectedModelId, selectedDialog, fetchMessages, ecoMul]);
+  }, [selectedModelId, selectedDialog, fetchMessages]);
 
   // ── activity polling (typing / fresh online) ──────────────────────────────
 
@@ -1505,6 +1517,7 @@ export default function ChatterPage() {
           onSelectChat={handleDialogSelect}
           selected={selectedChatItem}
           modelId={selectedModelId}
+          readOutboxMaxId={selectedDialog?.readOutboxMaxId}
           groups={fanGroups}
           activeGroupId={activeGroupId}
           onSelectGroup={setActiveGroupId}

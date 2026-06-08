@@ -25,6 +25,8 @@ export type DialogItem = {
   unreadCount: number;
   accessHash: string | null;
   status: string | null;   // "online" | "last seen recently" | "last seen DD.MM HH:MM" | null
+  /** Max id of OUR outgoing message the peer has read — drives ✓✓ ticks. */
+  readOutboxMaxId: number;
 };
 
 function formatLastSeen(unix: number): string {
@@ -119,6 +121,8 @@ export async function GET(
             unreadCount: d.unreadCount ?? 0,
             accessHash,
             status,
+            readOutboxMaxId:
+              Number((d as { dialog?: { readOutboxMaxId?: number } }).dialog?.readOutboxMaxId ?? 0),
           });
         }
         return items;

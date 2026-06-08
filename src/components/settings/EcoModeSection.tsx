@@ -31,9 +31,9 @@ export function EcoModeSection() {
         <div>
           <h2 className="text-[15px] font-semibold text-white">Eco Mode 🌱</h2>
           <p className="text-[12px] text-[#9ca3af] mt-0.5">
-            Slows polling by {ECO_INTERVAL_MULTIPLIER}× to reduce VPS and Telegram
-            link load. Use it during off-hours or for big agencies running many
-            sessions.
+            Cuts background load by {ECO_INTERVAL_MULTIPLIER}× (chat-list, presence
+            and stats refresh less often). The open chat stays instant — your
+            messages are never delayed. Good for low-end PCs or big agencies.
           </p>
         </div>
         <Toggle
@@ -47,9 +47,9 @@ export function EcoModeSection() {
 
       {enabled && (
         <div className="bg-[#0f1f17] border border-[#1f3a2a] rounded-lg p-3 text-[12px] text-[#a7f3d0]">
-          Eco Mode is ON. Dialogs refresh every {10 * ECO_INTERVAL_MULTIPLIER}s,
-          messages every {5 * ECO_INTERVAL_MULTIPLIER}s, presence every{" "}
-          {3 * ECO_INTERVAL_MULTIPLIER}s.
+          Eco Mode is ON. Open chat is instant. Chat-list refreshes every{" "}
+          {10 * ECO_INTERVAL_MULTIPLIER}s, presence every {3 * ECO_INTERVAL_MULTIPLIER}s,
+          stats every {60 * ECO_INTERVAL_MULTIPLIER}s.
         </div>
       )}
     </div>

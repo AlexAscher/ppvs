@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Plus, FolderPlus, Tag, ChevronDown, Pencil, Folder } from "lucide-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Plus, FolderPlus, Tag, ChevronDown, Pencil, Folder, Upload } from "lucide-react";
 import { createClient } from "@/lib/supabase";
+import { uploadPpvMedia } from "@/lib/ppv-storage";
 import { PpvGroup, PpvItem, PpvModel, PpvTag } from "./types";
 import { TagManagerModal } from "./TagManagerModal";
 import { PpvFormModal } from "./PpvFormModal";
@@ -37,6 +38,45 @@ export function PPVsTab() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkModal, setBulkModal] = useState<"delete" | "caption" | null>(null);
   const [captionDraft, setCaptionDraft] = useState("");
+
+  // Bulk upload: pick many files → each becomes a PPV named after the file.
+  const bulkInputRef = useRef<HTMLInputElement | null>(null);
+  const [bulkUpload, setBulkUpload] = useState<{ done: number; total: number } | null>(null);
+
+  async function handleBulkFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = ""; // allow re-picking the same files
+    if (!files.length || !agencyUserId || !selectedModelId) return;
+    setBulkUpload({ done: 0, total: files.length });
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      try {
+        const uploaded = await uploadPpvMedia(supabase, agencyUserId, f);
+        const baseName = f.name.replace(/\.[^.]+$/, "").slice(0, 80) || "Untitled";
+        const { data } = await supabase
+          .from("ppvs")
+          .insert({
+            agency_user_id: agencyUserId,
+            model_id: selectedModelId,
+            group_id: null,
+            name: baseName,
+            description: null,
+            price: 0,
+            media_url: uploaded.mediaUrl,
+            preview_url: uploaded.previewUrl,
+          })
+          .select("id, model_id, group_id, name, description, price, media_url, preview_url, created_at")
+          .single();
+        if (data) {
+          setStandalonePpvs((prev) => [{ ...(data as PpvItem), tags: [] }, ...prev]);
+        }
+      } catch {
+        /* skip this file, keep going */
+      }
+      setBulkUpload({ done: i + 1, total: files.length });
+    }
+    setBulkUpload(null);
+  }
   const toggleSel = useCallback((id: string) => {
     setSelectedIds((cur) => {
       const n = new Set(cur);
@@ -159,6 +199,9 @@ export function PPVsTab() {
     if (ids.length === 0) return;
     await supabase.from("ppvs").delete().in("id", ids);
     setStandalonePpvs((prev) => prev.filter((p) => !selectedIds.has(p.id)));
+    setGroups((prev) =>
+      prev.map((g) => ({ ...g, items: g.items.filter((it) => !selectedIds.has(it.id)) })),
+    );
     setSelectedIds(new Set());
     setSelectMode(false);
     setBulkModal(null);
@@ -168,9 +211,9 @@ export function PPVsTab() {
     const ids = [...selectedIds];
     if (ids.length === 0) return;
     await supabase.from("ppvs").update({ description: caption }).in("id", ids);
-    setStandalonePpvs((prev) =>
-      prev.map((p) => (selectedIds.has(p.id) ? { ...p, description: caption } : p)),
-    );
+    const patch = (p: PpvItem) => (selectedIds.has(p.id) ? { ...p, description: caption } : p);
+    setStandalonePpvs((prev) => prev.map(patch));
+    setGroups((prev) => prev.map((g) => ({ ...g, items: g.items.map(patch) })));
     setSelectedIds(new Set());
     setSelectMode(false);
     setBulkModal(null);
@@ -255,6 +298,38 @@ export function PPVsTab() {
               <FolderPlus className="w-4 h-4" />Create Group
             </button>
             <button
+              onClick={() => { setSelectMode((v) => !v); setSelectedIds(new Set()); }}
+              disabled={!selectedModelId}
+              className={`px-4 py-2.5 rounded-lg text-[13px] font-medium transition-all flex items-center gap-2 disabled:opacity-50 border ${
+                selectMode
+                  ? "bg-[#6366f1] border-[#6366f1] text-white"
+                  : "bg-[#1f2937] border-[#374151] text-white hover:bg-[#374151]"
+              }`}
+            >
+              {selectMode ? "Done" : "Select"}
+            </button>
+            <button
+              onClick={() => bulkInputRef.current?.click()}
+              disabled={!selectedModelId || !!bulkUpload}
+              className="px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] font-medium text-white hover:bg-[#374151] transition-all flex items-center gap-2 disabled:opacity-50"
+            >
+              <Upload className="w-4 h-4" />Bulk upload
+            </button>
+            <input
+              ref={bulkInputRef}
+              type="file"
+              accept="image/*,video/*"
+              multiple
+              className="hidden"
+              onChange={handleBulkFiles}
+            />
+            {bulkUpload && (
+              <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 bg-[#1f2937] border border-[#374151] rounded-xl px-4 py-2.5 text-[12px] text-white shadow-2xl flex items-center gap-2">
+                <span className="inline-block w-3.5 h-3.5 border-2 border-[#374151] border-t-[#6366f1] rounded-full animate-spin" />
+                Uploading {bulkUpload.done}/{bulkUpload.total}…
+              </div>
+            )}
+            <button
               onClick={() => setPpvForm({ kind: "add", groupId: null })}
               disabled={!selectedModelId}
               className="px-4 py-2.5 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] rounded-lg text-[13px] font-semibold text-white hover:from-[#5558e3] hover:to-[#4338ca] transition-all shadow-lg shadow-[#6366f1]/20 flex items-center gap-2 disabled:opacity-50"
@@ -325,6 +400,9 @@ export function PPVsTab() {
                     onEdit={() => setEditingGroup(g)}
                     onAddItem={() => setPpvForm({ kind: "add", groupId: g.id })}
                     onItemClick={(item) => setPpvForm({ kind: "edit", ppv: item })}
+                    selectMode={selectMode}
+                    selectedIds={selectedIds}
+                    onToggleSel={toggleSel}
                   />
                 ))}
               </div>
@@ -332,19 +410,7 @@ export function PPVsTab() {
 
             {filteredStandalone.length > 0 && (
               <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-[14px] font-semibold text-[#9ca3af] uppercase tracking-wider">Individual PPVs</h2>
-                  <button
-                    onClick={() => { setSelectMode((v) => !v); setSelectedIds(new Set()); }}
-                    className={`text-[12px] px-3 py-1.5 rounded-lg border transition-all ${
-                      selectMode
-                        ? "bg-[#6366f1] border-[#6366f1] text-white"
-                        : "bg-[#1f2937] border-[#374151] text-[#9ca3af] hover:text-white"
-                    }`}
-                  >
-                    {selectMode ? "Done" : "Select"}
-                  </button>
-                </div>
+                <h2 className="text-[14px] font-semibold text-[#9ca3af] uppercase tracking-wider">Individual PPVs</h2>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                   {filteredStandalone.map((p) => (
                     <div
@@ -549,11 +615,17 @@ function GroupCard({
   onEdit,
   onAddItem,
   onItemClick,
+  selectMode = false,
+  selectedIds,
+  onToggleSel,
 }: {
   group: PpvGroup;
   onEdit: () => void;
   onAddItem: () => void;
   onItemClick: (item: PpvItem) => void;
+  selectMode?: boolean;
+  selectedIds?: Set<string>;
+  onToggleSel?: (id: string) => void;
 }) {
   return (
     <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg overflow-hidden">
@@ -603,9 +675,24 @@ function GroupCard({
         </div>
       ) : (
         <div className="p-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-          {group.items.map((it) => (
-            <PpvCard key={it.id} ppv={it} onClick={() => onItemClick(it)} />
-          ))}
+          {group.items.map((it) => {
+            const sel = !!selectedIds?.has(it.id);
+            return (
+              <div key={it.id} className={`relative h-full rounded-lg ${selectMode && sel ? "ring-2 ring-[#6366f1]" : ""}`}>
+                {selectMode && (
+                  <button
+                    onClick={() => onToggleSel?.(it.id)}
+                    className={`absolute top-2 left-2 z-10 w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all ${
+                      sel ? "bg-[#6366f1] border-[#6366f1] text-white" : "bg-black/50 border-white/70"
+                    }`}
+                  >
+                    {sel && "✓"}
+                  </button>
+                )}
+                <PpvCard ppv={it} onClick={() => (selectMode ? onToggleSel?.(it.id) : onItemClick(it))} />
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

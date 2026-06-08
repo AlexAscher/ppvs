@@ -6,11 +6,13 @@ import { MessageSquare, LogOut, DollarSign, Mail, Check, X } from "lucide-react"
 import { createClient } from "@/lib/supabase";
 import { Invitation, ChatterModel } from "./types";
 import { SettingsTab } from "@/components/settings/SettingsTab";
+import { FeedPanel } from "@/components/feed/FeedPanel";
 
-type ChatterTab = "dashboard" | "settings";
+type ChatterTab = "dashboard" | "feed" | "settings";
 
 const menuItems = [
   { id: "dashboard" as ChatterTab, label: "Dashboard", emoji: "📊" },
+  { id: "feed" as ChatterTab, label: "Agency Feed", emoji: "📰" },
   { id: "settings" as ChatterTab, label: "Settings", emoji: "⚙️" },
 ];
 
@@ -342,12 +344,28 @@ function ChatterDashboardTab() {
   );
 }
 
+function ChatterFeedTab() {
+  return (
+    <div className="flex-1 bg-[#0d1117] overflow-y-auto p-6">
+      <div className="max-w-[820px] mx-auto space-y-5">
+        <div>
+          <h1 className="text-[24px] font-bold text-white mb-1">Agency Feed 📰</h1>
+          <p className="text-[14px] text-[#9ca3af]">Latest announcements from your agency.</p>
+        </div>
+        <FeedPanel />
+      </div>
+    </div>
+  );
+}
+
 export function ChatterDashboardLayout() {
   const [activeTab, setActiveTab] = useState<ChatterTab>("dashboard");
   return (
     <div className="h-screen w-screen flex bg-[#0d1117] text-white overflow-hidden" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif' }}>
       <ChatterSidebar activeTab={activeTab} onTabChange={setActiveTab} />
-      {activeTab === "dashboard" ? <ChatterDashboardTab /> : <SettingsTab role="chatter" />}
+      {activeTab === "dashboard" && <ChatterDashboardTab />}
+      {activeTab === "feed" && <ChatterFeedTab />}
+      {activeTab === "settings" && <SettingsTab role="chatter" />}
     </div>
   );
 }

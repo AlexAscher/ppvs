@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Folder, ChevronLeft, Trash2, Plus } from "lucide-react";
+import { Check, Folder, ChevronLeft, Trash2, Plus, Music } from "lucide-react";
 import { useState } from "react";
 import type { FanNote } from "@/lib/fan-types";
 
@@ -48,6 +48,8 @@ export interface PpvItem {
 export interface PpvGroup {
   id: string;
   name: string;
+  /** When set, the whole group can be sold as one unlock at this price. */
+  bundle_price?: number | null;
 }
 
 type Tab = "ppv" | "tips" | "notes" | "stats";
@@ -69,6 +71,11 @@ interface ActionPanelProps {
   onPriceInputChange: (v: string) => void;
   /** Smart-pricing hint string (avg / common range / top sale). */
   pricingHint?: string;
+  /** Urgency timer (hours until the pay link dies). 0 = no expiry. */
+  expiresInHours: number;
+  onExpiresInHoursChange: (n: number) => void;
+  /** Select every item in a group + set the bundle price, in one click. */
+  onSelectBundle?: (itemIds: string[], price: number) => void;
   recipientLabel: string;
   sending: boolean;
   onSendPpv: () => void;
@@ -117,6 +124,9 @@ export function ActionPanel({
   priceInput,
   onPriceInputChange,
   pricingHint,
+  expiresInHours,
+  onExpiresInHoursChange,
+  onSelectBundle,
   recipientLabel,
   sending,
   onSendPpv,
@@ -197,6 +207,21 @@ export function ActionPanel({
               </div>
             )}
 
+            {/* Bundle offer — one click selects every item in the group and
+                sets the agency's bundle price, ready to send as one unlock. */}
+            {currentFolder && !!currentFolder.bundle_price && currentFolder.bundle_price > 0 && onSelectBundle && (
+              <button
+                onClick={() => {
+                  const ids = ppvItems.filter((i) => i.group_id === currentFolder.id).map((i) => i.id);
+                  if (ids.length) onSelectBundle(ids, currentFolder.bundle_price!);
+                }}
+                className="w-full py-2.5 rounded-lg text-[12px] font-semibold text-white bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
+              >
+                🎁 Sell bundle · ${Number(currentFolder.bundle_price).toFixed(2)}
+                <span className="opacity-80">· {itemCountInGroup(currentFolder.id)} items</span>
+              </button>
+            )}
+
             {/* Filter chips — px-3 py-1.5 text-[10px] rounded-md from design */}
             <div className="flex flex-wrap gap-2">
               <button
@@ -254,6 +279,7 @@ export function ActionPanel({
 
               {filteredItems.map((item) => {
                 const isVid = !!item.media_url && /\.(mp4|mov|webm|m4v|mkv)(\?|$)/i.test(item.media_url);
+                const isAud = !!item.media_url && /\.(mp3|m4a|aac|ogg|oga|opus|wav|flac)(\?|$)/i.test(item.media_url);
                 return (
                 <button
                   key={item.id}
@@ -265,7 +291,11 @@ export function ActionPanel({
                   }`}
                 >
                   {item.media_url && (
-                    isVid ? (
+                    isAud ? (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <Music className="w-8 h-8 text-[#6366f1]" />
+                      </div>
+                    ) : isVid ? (
                       <video
                         src={item.media_url}
                         muted
@@ -289,6 +319,11 @@ export function ActionPanel({
                   {isVid && (
                     <div className="absolute top-1 left-1 px-1 py-0.5 bg-black/70 rounded text-[8px] font-semibold text-white">
                       ▶
+                    </div>
+                  )}
+                  {isAud && (
+                    <div className="absolute top-1 left-1 px-1 py-0.5 bg-black/70 rounded text-[8px] font-semibold text-white">
+                      ♪
                     </div>
                   )}
                   {selectedItems.includes(item.id) && (
@@ -354,6 +389,42 @@ export function ActionPanel({
                     <span className="text-[12px] text-[#6b7280]">{selectedItems.length} items</span>
                   </div>
                 </div>
+
+                {/* Urgency timer — only meaningful for paid sends (a free
+                    send has no pay link to expire). */}
+                {!isFree && (
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[11px] text-[#9ca3af] font-medium">Expires</span>
+                      {expiresInHours > 0 && (
+                        <span className="text-[10px] text-[#f59e0b]">⏳ link dies in {expiresInHours}h</span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        { label: "No timer", h: 0 },
+                        { label: "1h", h: 1 },
+                        { label: "6h", h: 6 },
+                        { label: "12h", h: 12 },
+                        { label: "24h", h: 24 },
+                        { label: "48h", h: 48 },
+                      ].map((opt) => (
+                        <button
+                          key={opt.h}
+                          type="button"
+                          onClick={() => onExpiresInHoursChange(opt.h)}
+                          className={`px-2.5 py-1 rounded-md text-[10px] font-medium border transition-all ${
+                            expiresInHours === opt.h
+                              ? "bg-[#6366f1] text-white border-[#6366f1]"
+                              : "bg-transparent text-[#9ca3af] border-[#374151] hover:border-[#4b5563] hover:text-[#d1d5db]"
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {pricingHint && (
                   <div className="text-[10px] text-[#9ca3af] bg-[#1f2937]/40 border border-[#2a2d35] rounded-md px-2.5 py-1.5">

@@ -132,6 +132,17 @@ function initialsFromTitle(title: string) {
 export default function ChatterPage() {
   const router = useRouter();
   const supabase = createClient();
+  // Deep-link from agency Inbox: ?modelId=&peerId= picks both before dialogs
+  // load. We grab them once at mount via window.location (avoids importing
+  // useSearchParams + Suspense). The peer is consumed in the dialogs effect.
+  const initialDeepLinkRef = useRef<{ modelId: string | null; peerId: string | null }>(
+    typeof window === "undefined"
+      ? { modelId: null, peerId: null }
+      : {
+          modelId: new URLSearchParams(window.location.search).get("modelId"),
+          peerId: new URLSearchParams(window.location.search).get("peerId"),
+        },
+  );
   // Eco mode: multiplies every polling interval below by ECO_INTERVAL_MULTIPLIER
   // so dialogs / messages / activity refresh less often when the agency
   // has chosen to dial down VPS + MTProto load.
@@ -170,6 +181,8 @@ export default function ChatterPage() {
   const [caption, setCaption] = useState("");
   // Raw price input from the chatter — empty/0 means free send (no pay link).
   const [priceInput, setPriceInput] = useState("");
+  // Urgency timer: hours until the PPV pay link expires (0 = never).
+  const [expiresInHours, setExpiresInHours] = useState(0);
   const [tipAmount, setTipAmount] = useState("");
   const [tipMessage, setTipMessage] = useState("");
   const [notes, setNotes] = useState("");
@@ -237,6 +250,9 @@ export default function ChatterPage() {
   } | null>(null);
 
   const autoSelectedRef = useRef<string | null>(null);
+  // Deep-link from the agency Inbox (?modelId=&peerId=) — the peer to open
+  // once that model's dialogs have loaded. Consumed once, then cleared.
+  const deepLinkPeerRef = useRef<string | null>(null);
   // Track in-flight network requests so polling never piles up requests
   // against the per-model gramJS serializer in the server-side pool.
   const dialogsInFlight = useRef<Set<string>>(new Set());
@@ -290,7 +306,17 @@ export default function ChatterPage() {
         if (cancelled) return;
         const list = rows ?? [];
         setModels(list);
-        if (list.length > 0) setSelectedModelId(list[0].id);
+        // If we arrived via the Inbox deep-link, pick that model and stash
+        // the peer so the dialogs effect can auto-select it once dialogs
+        // arrive. Otherwise default to the first model.
+        const deep = initialDeepLinkRef.current;
+        const wanted = deep.modelId && list.find((m) => m.id === deep.modelId);
+        if (wanted) {
+          setSelectedModelId(wanted.id);
+          deepLinkPeerRef.current = deep.peerId;
+        } else if (list.length > 0) {
+          setSelectedModelId(list[0].id);
+        }
       } else {
         const { data: ac } = await supabase
           .from("agency_chatters")
@@ -359,7 +385,7 @@ export default function ChatterPage() {
           supabase.from("ppv_item_tags").select("ppv_id, tag_id"),
           supabase
             .from("ppv_groups")
-            .select("id, name, created_at")
+            .select("id, name, bundle_price, created_at")
             .eq("model_id", selectedModelId)
             .order("created_at", { ascending: false }),
         ]);
@@ -393,7 +419,12 @@ export default function ChatterPage() {
       const groups: PpvGroup[] = ((groupsRaw ?? []) as Array<{
         id: string;
         name: string;
-      }>).map((g) => ({ id: g.id, name: g.name }));
+        bundle_price: number | string | null;
+      }>).map((g) => ({
+        id: g.id,
+        name: g.name,
+        bundle_price: g.bundle_price == null ? null : Number(g.bundle_price),
+      }));
       setPpvTags(tags);
       setPpvItems(items);
       setPpvGroups(groups);
@@ -521,7 +552,15 @@ export default function ChatterPage() {
       setDialogsByModel((prev) => ({ ...prev, [modelId]: list }));
       if (autoSelectFirst && list.length > 0 && autoSelectedRef.current !== modelId) {
         autoSelectedRef.current = modelId;
-        setSelectedDialog(list[0]);
+        // If we have an inbox deep-link peer pending, open that chat instead
+        // of the first dialog. Otherwise fall back to the newest dialog.
+        const wantedPeer = deepLinkPeerRef.current;
+        const wanted = wantedPeer ? list.find((d) => d.id === wantedPeer) : null;
+        setSelectedDialog(wanted ?? list[0]);
+        if (wanted) {
+          // Consume the deep-link so polling refreshes don't keep re-selecting.
+          deepLinkPeerRef.current = null;
+        }
       }
       setError("");
     } catch (e: unknown) {
@@ -1081,6 +1120,7 @@ export default function ChatterPage() {
           caption,
           ppvIds: ordered,
           totalPrice: priceForSend,
+          expiresInHours: priceForSend > 0 ? expiresInHours : 0,
         }),
       });
       let data: { ok?: boolean; error?: string; code?: string; payUrl?: string } = {};
@@ -1094,6 +1134,7 @@ export default function ChatterPage() {
       setSelectedItems([]);
       setCaption("");
       setPriceInput("");
+      setExpiresInHours(0);
       setNotice(priceForSend > 0 ? "Sending PPV to fan…" : "Sending free content to fan…");
       const sentCode = data.code;
       const modelIdForRefresh = selectedModelId;
@@ -1588,6 +1629,12 @@ export default function ChatterPage() {
           priceInput={priceInput}
           onPriceInputChange={setPriceInput}
           pricingHint={pricingHint}
+          expiresInHours={expiresInHours}
+          onExpiresInHoursChange={setExpiresInHours}
+          onSelectBundle={(itemIds, price) => {
+            setSelectedItems(itemIds);
+            setPriceInput(price > 0 ? String(price) : "");
+          }}
           recipientLabel={recipientLabel}
           sending={sending}
           onSendPpv={handleSendPpv}

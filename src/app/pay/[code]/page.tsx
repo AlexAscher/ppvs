@@ -9,6 +9,7 @@ type SendRow = {
   caption: string | null;
   peer_username: string | null;
   status: string;
+  expires_at: string | null;
 };
 
 // Supabase's typed select infers the relation as an array even though the FK
@@ -28,7 +29,7 @@ export default async function PayPage({ params }: { params: Promise<{ code: stri
   // Fetch the send + its id in one query so we don't round-trip twice.
   const { data: sendRaw } = await admin
     .from("ppv_sends")
-    .select("id, total_price, caption, peer_username, status")
+    .select("id, total_price, caption, peer_username, status, expires_at")
     .eq("code", code)
     .maybeSingle();
   if (!sendRaw) notFound();
@@ -70,6 +71,7 @@ export default async function PayPage({ params }: { params: Promise<{ code: stri
       caption={send.caption ?? ""}
       recipient={send.peer_username ?? null}
       initiallyDelivered={send.status === "delivered"}
+      expiresAt={send.expires_at}
     />
   );
 }

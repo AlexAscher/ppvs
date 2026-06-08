@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, FolderPlus, Tag, ChevronDown, Pencil, Folder, Upload } from "lucide-react";
+import { Plus, FolderPlus, Tag, ChevronDown, Pencil, Folder, Upload, Music } from "lucide-react";
 import { createClient } from "@/lib/supabase";
-import { uploadPpvMedia } from "@/lib/ppv-storage";
+import { uploadPpvMedia, validatePpvFile, ppvMediaKind, PPV_ACCEPT } from "@/lib/ppv-storage";
 import { PpvGroup, PpvItem, PpvModel, PpvTag } from "./types";
 import { TagManagerModal } from "./TagManagerModal";
 import { PpvFormModal } from "./PpvFormModal";
@@ -42,11 +42,20 @@ export function PPVsTab() {
   // Bulk upload: pick many files → each becomes a PPV named after the file.
   const bulkInputRef = useRef<HTMLInputElement | null>(null);
   const [bulkUpload, setBulkUpload] = useState<{ done: number; total: number } | null>(null);
+  const [bulkNotice, setBulkNotice] = useState("");
 
   async function handleBulkFiles(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files ?? []);
+    const all = Array.from(e.target.files ?? []);
     e.target.value = ""; // allow re-picking the same files
-    if (!files.length || !agencyUserId || !selectedModelId) return;
+    if (!all.length || !agencyUserId || !selectedModelId) return;
+    // Drop anything Telegram can't display (.jfif, .heic, …) before uploading.
+    const files = all.filter((f) => validatePpvFile(f).ok);
+    const skipped = all.length - files.length;
+    if (!files.length) {
+      setBulkNotice(`Skipped ${skipped} unsupported file${skipped > 1 ? "s" : ""} — only Telegram-displayable media can be uploaded.`);
+      return;
+    }
+    setBulkNotice("");
     setBulkUpload({ done: 0, total: files.length });
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
@@ -76,6 +85,9 @@ export function PPVsTab() {
       setBulkUpload({ done: i + 1, total: files.length });
     }
     setBulkUpload(null);
+    if (skipped > 0) {
+      setBulkNotice(`Uploaded ${files.length}. Skipped ${skipped} unsupported file${skipped > 1 ? "s" : ""} (won't display in Telegram).`);
+    }
   }
   const toggleSel = useCallback((id: string) => {
     setSelectedIds((cur) => {
@@ -106,7 +118,7 @@ export function PPVsTab() {
     try {
       const [tagsRes, groupsRes, ppvsRes, itemTagsRes, groupTagsRes] = await Promise.all([
         supabase.from("ppv_tags").select("id, model_id, name, color, emoji").eq("model_id", modelId).order("created_at"),
-        supabase.from("ppv_groups").select("id, model_id, name, created_at").eq("model_id", modelId).order("created_at", { ascending: false }),
+        supabase.from("ppv_groups").select("id, model_id, name, bundle_price, created_at").eq("model_id", modelId).order("created_at", { ascending: false }),
         supabase.from("ppvs").select("id, model_id, group_id, name, description, price, media_url, preview_url, created_at").eq("model_id", modelId).order("created_at", { ascending: false }),
         supabase.from("ppv_item_tags").select("ppv_id, tag_id"),
         supabase.from("ppv_group_tags").select("group_id, tag_id"),
@@ -318,7 +330,7 @@ export function PPVsTab() {
             <input
               ref={bulkInputRef}
               type="file"
-              accept="image/*,video/*"
+              accept={PPV_ACCEPT}
               multiple
               className="hidden"
               onChange={handleBulkFiles}
@@ -327,6 +339,12 @@ export function PPVsTab() {
               <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 bg-[#1f2937] border border-[#374151] rounded-xl px-4 py-2.5 text-[12px] text-white shadow-2xl flex items-center gap-2">
                 <span className="inline-block w-3.5 h-3.5 border-2 border-[#374151] border-t-[#6366f1] rounded-full animate-spin" />
                 Uploading {bulkUpload.done}/{bulkUpload.total}…
+              </div>
+            )}
+            {bulkNotice && !bulkUpload && (
+              <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 max-w-[440px] bg-[#1f2937] border border-[#f59e0b]/40 rounded-xl px-4 py-2.5 text-[12px] text-[#f59e0b] shadow-2xl flex items-start gap-3">
+                <span>{bulkNotice}</span>
+                <button onClick={() => setBulkNotice("")} className="text-[#9ca3af] hover:text-white shrink-0" aria-label="Dismiss">×</button>
               </div>
             )}
             <button
@@ -552,6 +570,7 @@ function PpvCard({ ppv, onClick }: { ppv: PpvItem; onClick: () => void }) {
   // not the fan-facing pay page. For images: original media_url. For videos:
   // render an actual <video> element (autoplay/muted for thumbnail feel).
   const isVideo = !!ppv.media_url && /\.(mp4|mov|webm|m4v|mkv)(\?|$)/i.test(ppv.media_url);
+  const isAudio = !!ppv.media_url && /\.(mp3|m4a|aac|ogg|oga|opus|wav|flac)(\?|$)/i.test(ppv.media_url);
   return (
     <button
       onClick={onClick}
@@ -559,7 +578,11 @@ function PpvCard({ ppv, onClick }: { ppv: PpvItem; onClick: () => void }) {
     >
       <div className="relative aspect-[4/3] bg-[#1f2937] flex items-center justify-center overflow-hidden">
         {ppv.media_url && (
-          isVideo ? (
+          isAudio ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-[#1f2937] to-[#111827]">
+              <Music className="w-10 h-10 text-[#6366f1]" />
+            </div>
+          ) : isVideo ? (
             <video
               src={ppv.media_url}
               muted
@@ -583,6 +606,11 @@ function PpvCard({ ppv, onClick }: { ppv: PpvItem; onClick: () => void }) {
         {isVideo && (
           <div className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/70 backdrop-blur-sm rounded-md text-[10px] font-semibold text-white flex items-center gap-1">
             <span className="text-[8px]">▶</span> Video
+          </div>
+        )}
+        {isAudio && (
+          <div className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/70 backdrop-blur-sm rounded-md text-[10px] font-semibold text-white flex items-center gap-1">
+            <Music className="w-2.5 h-2.5" /> Audio
           </div>
         )}
       </div>
@@ -635,9 +663,14 @@ function GroupCard({
             <Folder className="w-5 h-5 text-[#6366f1]" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[15px] font-semibold text-white">{group.name}</span>
               <span className="text-[11px] text-[#6b7280]">· {group.items.length} item{group.items.length === 1 ? "" : "s"}</span>
+              {!!group.bundle_price && group.bundle_price > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-[#10b981]/15 text-[#10b981] inline-flex items-center gap-1">
+                  🎁 Bundle ${Number(group.bundle_price).toFixed(2)}
+                </span>
+              )}
             </div>
             {group.tags.length > 0 && (
               <div className="flex gap-1 mt-1">

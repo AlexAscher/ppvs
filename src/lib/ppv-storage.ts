@@ -7,6 +7,83 @@ export type UploadResult = {
   previewUrl: string | null;
 };
 
+// ─── Allowed media types ──────────────────────────────────────────────────
+// Telegram only renders a fixed set of formats inline. Anything else arrives
+// as a "file" the fan must download, or doesn't preview at all (e.g. .jfif,
+// .heic). We refuse those at upload time so the vault only ever holds content
+// that delivers cleanly to a fan's chat.
+export const PPV_IMAGE_EXT = ["jpg", "jpeg", "png", "webp", "gif"] as const;
+export const PPV_VIDEO_EXT = ["mp4", "mov", "m4v", "webm"] as const;
+export const PPV_AUDIO_EXT = ["mp3", "m4a", "aac", "ogg", "oga", "opus", "wav", "flac"] as const;
+
+export type PpvMediaKind = "image" | "video" | "audio";
+
+/** Accept attribute string for <input type="file"> — the allowlist above. */
+export const PPV_ACCEPT = [
+  ...PPV_IMAGE_EXT,
+  ...PPV_VIDEO_EXT,
+  ...PPV_AUDIO_EXT,
+].map((e) => `.${e}`).join(",") + ",image/*,video/*,audio/*";
+
+function extOf(srcOrFile: string | File): string {
+  const name = typeof srcOrFile === "string" ? srcOrFile.split("?")[0] : srcOrFile.name;
+  const m = name.toLowerCase().match(/\.([a-z0-9]+)$/);
+  return m ? m[1] : "";
+}
+
+/** Map a recognized MIME subtype to our canonical extension (for files the OS
+ *  handed us without a usable extension). */
+function extFromMime(mime: string): string {
+  const m = mime.toLowerCase();
+  const map: Record<string, string> = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/gif": "gif",
+    "video/mp4": "mp4",
+    "video/quicktime": "mov",
+    "video/webm": "webm",
+    "audio/mpeg": "mp3",
+    "audio/mp4": "m4a",
+    "audio/aac": "aac",
+    "audio/ogg": "ogg",
+    "audio/opus": "opus",
+    "audio/wav": "wav",
+    "audio/x-wav": "wav",
+    "audio/flac": "flac",
+  };
+  return map[m] ?? "";
+}
+
+/** Classify a file/url as image | video | audio, or null if it's not a
+ *  Telegram-displayable type. Extension-first (the .jfif trap has an
+ *  image/jpeg MIME but won't preview), falling back to MIME when no extension
+ *  is present. */
+export function ppvMediaKind(srcOrFile: string | File): PpvMediaKind | null {
+  let ext = extOf(srcOrFile);
+  if (!ext && typeof srcOrFile !== "string" && srcOrFile.type) {
+    ext = extFromMime(srcOrFile.type);
+  }
+  if ((PPV_IMAGE_EXT as readonly string[]).includes(ext)) return "image";
+  if ((PPV_VIDEO_EXT as readonly string[]).includes(ext)) return "video";
+  if ((PPV_AUDIO_EXT as readonly string[]).includes(ext)) return "audio";
+  return null;
+}
+
+/** Validate a picked file before upload. Returns a friendly error naming the
+ *  rejected extension so the agency understands why (e.g. .jfif). */
+export function validatePpvFile(file: File): { ok: true; kind: PpvMediaKind } | { ok: false; error: string } {
+  const kind = ppvMediaKind(file);
+  if (kind) return { ok: true, kind };
+  const ext = extOf(file) || "unknown";
+  return {
+    ok: false,
+    error:
+      `".${ext}" files don't display in Telegram, so they can't be added to the vault. ` +
+      `Use images (JPG, PNG, WebP, GIF), video (MP4, MOV, M4V, WebM) or audio (MP3, M4A, AAC, OGG, WAV).`,
+  };
+}
+
 /**
  * Tunables — picked to cut PPV-send time on slow / unstable home internet.
  *
@@ -210,15 +287,22 @@ export async function uploadPpvMedia(
   userId: string,
   file: File,
 ): Promise<UploadResult> {
-  const isImage = file.type.startsWith("image/");
-  const isVideo = file.type.startsWith("video/");
+  // Refuse anything Telegram can't render inline (.jfif, .heic, .tiff, …) so
+  // the vault never holds content that arrives broken in a fan's chat.
+  const valid = validatePpvFile(file);
+  if (!valid.ok) throw new Error(valid.error);
+  const kind = valid.kind;
+  const isImage = kind === "image";
+  const isVideo = kind === "video";
   const id = crypto.randomUUID();
 
   let originalBlob: Blob = file;
   let previewBlob: Blob | null = null;
   let originalExt = file.name.split(".").pop()?.toLowerCase() || "bin";
 
-  if (isImage) {
+  const isGif = originalExt === "gif" || file.type === "image/gif";
+
+  if (isImage && !isGif) {
     try {
       const { original, preview } = await processImage(file);
       originalBlob = original;
@@ -229,6 +313,16 @@ export async function uploadPpvMedia(
     } catch (e) {
       // Image processing failed entirely — fall through with the raw file.
       console.warn("[uploadPpvMedia] image processing failed, uploading original as-is:", e);
+    }
+  } else if (isGif) {
+    // Keep the animated GIF verbatim (re-encoding to JPEG would freeze it to
+    // one frame). Best-effort blurred poster from the first frame for the
+    // teaser tile; if it fails the tile just shows a lock.
+    try {
+      const { preview } = await processImage(file);
+      previewBlob = preview;
+    } catch (e) {
+      console.warn("[uploadPpvMedia] gif preview capture failed:", e);
     }
   } else if (isVideo) {
     // Keep the original video verbatim, but capture a blurred poster frame

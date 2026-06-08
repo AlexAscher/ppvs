@@ -6,6 +6,8 @@ import { PPVsTab } from "@/components/ppv/PPVsTab";
 import { ChattersTab } from "@/components/chatters/ChattersTab";
 import { ChatterDashboardLayout } from "@/components/chatters/ChatterDashboardLayout";
 import { SettingsTab } from "@/components/settings/SettingsTab";
+import { InboxTab } from "@/components/inbox/InboxTab";
+import { FeedPanel } from "@/components/feed/FeedPanel";
 import { createClient } from "@/lib/supabase";
 import {
   MessageSquare,
@@ -19,10 +21,12 @@ import { agencyNet } from "@/lib/platform";
 // AGENCY DASHBOARD
 // ─────────────────────────────────────────────
 
-type AgencyTab = "dashboard" | "ppvs" | "models" | "chatters" | "wallet" | "settings";
+type AgencyTab = "dashboard" | "inbox" | "feed" | "ppvs" | "models" | "chatters" | "wallet" | "settings";
 
 const menuItems = [
   { id: "dashboard" as AgencyTab, label: "Dashboard", emoji: "📊" },
+  { id: "inbox" as AgencyTab, label: "Inbox", emoji: "📥" },
+  { id: "feed" as AgencyTab, label: "Feed", emoji: "📰" },
   { id: "ppvs" as AgencyTab, label: "PPVs", emoji: "🔒" },
   { id: "models" as AgencyTab, label: "Creators", emoji: "👤" },
   { id: "chatters" as AgencyTab, label: "Chatters", emoji: "💬" },
@@ -1350,6 +1354,24 @@ function WalletTab() {
   );
 }
 
+function FeedTab() {
+  // The agency-side wrapper around the shared FeedPanel — same component is
+  // reused on the chatter dashboard (read-only there).
+  return (
+    <div className="flex-1 bg-[#0d1117] overflow-y-auto p-4 md:p-6">
+      <div className="max-w-[820px] mx-auto space-y-5">
+        <div>
+          <h1 className="text-[24px] font-bold text-white mb-1">Agency Feed 📰</h1>
+          <p className="text-[14px] text-[#9ca3af]">
+            Internal announcements for your chatters. Stays on the platform — no Telegram involved.
+          </p>
+        </div>
+        <FeedPanel />
+      </div>
+    </div>
+  );
+}
+
 function AgencyDashboard() {
   const [activeTab, setActiveTab] = useState<AgencyTab>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -1383,6 +1405,8 @@ function AgencyDashboard() {
         </div>
         <div className="flex-1 flex min-h-0 overflow-hidden">
           {activeTab === "dashboard" && <DashboardTab />}
+          {activeTab === "inbox" && <InboxTab />}
+          {activeTab === "feed" && <FeedTab />}
           {activeTab === "ppvs" && <PPVsTab />}
           {activeTab === "models" && <ModelsTab />}
           {activeTab === "chatters" && <ChattersTab />}

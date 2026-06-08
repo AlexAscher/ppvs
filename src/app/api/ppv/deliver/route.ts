@@ -23,6 +23,7 @@ type SendRow = {
   caption: string | null;
   status: string;
   total_price: number;
+  expires_at: string | null;
 };
 
 type ModelRow = {
@@ -92,7 +93,7 @@ export async function POST(req: NextRequest) {
           admin
             .from("ppv_sends")
             .select(
-              "id, model_id, peer_id, peer_access_hash, peer_username, caption, status, total_price",
+              "id, model_id, peer_id, peer_access_hash, peer_username, caption, status, total_price, expires_at",
             )
             .eq("code", code)
             .maybeSingle(),
@@ -122,6 +123,17 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: "Delivery is slow right now — try again." }, { status: 503 });
     }
     const send = sendRaw;
+
+    // Urgency timer: once expired, a not-yet-paid order can't be unlocked.
+    // Already paid/delivered orders stay deliverable (idempotent re-reveal).
+    if (
+      send.status !== "paid" &&
+      send.status !== "delivered" &&
+      send.expires_at &&
+      Date.now() > new Date(send.expires_at).getTime()
+    ) {
+      return Response.json({ error: "This offer has expired." }, { status: 410 });
+    }
 
     // Two parallel projections from the joined rows: the user-facing
     // DeliverItem list (returned to the browser for web reveal) and the

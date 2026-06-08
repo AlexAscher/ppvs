@@ -32,6 +32,7 @@ export function CreateGroupModal({ modelId, agencyUserId, allTags, onClose, onSa
   const supabase = createClient();
   const [step, setStep] = useState<1 | 2>(1);
   const [groupName, setGroupName] = useState("");
+  const [bundlePrice, setBundlePrice] = useState("");
   const [groupTagIds, setGroupTagIds] = useState<string[]>([]);
   const [items, setItems] = useState<DraftItem[]>([blankItem()]);
   const [saving, setSaving] = useState(false);
@@ -59,13 +60,18 @@ export function CreateGroupModal({ modelId, agencyUserId, allTags, onClose, onSa
     const valid = items.every((it) => it.name.trim() && Number.isFinite(Number(it.price)) && Number(it.price) >= 0);
     if (!valid) { setError("Every media item needs a name and valid price"); return; }
 
+    const bundlePriceNum =
+      bundlePrice.trim() && Number.isFinite(Number(bundlePrice)) && Number(bundlePrice) > 0
+        ? Math.round(Number(bundlePrice) * 100) / 100
+        : null;
+
     setSaving(true);
     setError("");
     try {
       const { data: group, error: groupErr } = await supabase
         .from("ppv_groups")
-        .insert({ agency_user_id: agencyUserId, model_id: modelId, name: groupName.trim() })
-        .select("id, model_id, name, created_at")
+        .insert({ agency_user_id: agencyUserId, model_id: modelId, name: groupName.trim(), bundle_price: bundlePriceNum })
+        .select("id, model_id, name, bundle_price, created_at")
         .single();
       if (groupErr) throw new Error(groupErr.message);
 
@@ -116,6 +122,7 @@ export function CreateGroupModal({ modelId, agencyUserId, allTags, onClose, onSa
         id: group.id,
         model_id: modelId,
         name: group.name,
+        bundle_price: bundlePriceNum,
         created_at: group.created_at,
         tags: allTags.filter((t) => groupTagIds.includes(t.id)),
         items: savedItems,
@@ -162,6 +169,20 @@ export function CreateGroupModal({ modelId, agencyUserId, allTags, onClose, onSa
             <div>
               <label className="text-[12px] text-[#9ca3af] font-medium mb-1.5 block">Tags (optional)</label>
               <TagSelector allTags={allTags} selectedIds={groupTagIds} onToggle={toggleGroupTag} />
+            </div>
+            <div>
+              <label className="text-[12px] text-[#9ca3af] font-medium mb-1.5 block">Bundle price (optional)</label>
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#6b7280] text-[13px]">$</span>
+                <input
+                  type="number" step="0.01" min="0"
+                  value={bundlePrice}
+                  onChange={(e) => setBundlePrice(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full pl-8 pr-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#4b5563] focus:border-[#6366f1] focus:outline-none transition-colors"
+                />
+              </div>
+              <p className="text-[11px] text-[#6b7280] mt-1.5">Set a price to let chatters sell the whole group as one unlock. Leave empty to sell items individually.</p>
             </div>
             {error && <p className="text-[12px] text-red-400">{error}</p>}
             <button

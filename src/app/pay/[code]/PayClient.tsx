@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 type Item = { name: string; media_url: string | null };
 
@@ -19,7 +19,18 @@ type Props = {
   caption: string;
   recipient: string | null;
   initiallyDelivered: boolean;
+  /** Urgency timer — ISO instant after which the link is dead. Null = never. */
+  expiresAt: string | null;
 };
+
+function formatRemaining(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`;
+}
 
 export function PayClient({
   code,
@@ -28,11 +39,30 @@ export function PayClient({
   caption,
   recipient,
   initiallyDelivered,
+  expiresAt,
 }: Props) {
-  const [state, setState] = useState<"locked" | "loading" | "delivered" | "error">(
-    initiallyDelivered ? "delivered" : "locked",
+  const expiryMs = expiresAt ? new Date(expiresAt).getTime() : null;
+  const expiredAtMount = !initiallyDelivered && expiryMs != null && Date.now() > expiryMs;
+
+  const [state, setState] = useState<"locked" | "loading" | "delivered" | "error" | "expired">(
+    initiallyDelivered ? "delivered" : expiredAtMount ? "expired" : "locked",
   );
   const [errMsg, setErrMsg] = useState("");
+  const [now, setNow] = useState(() => Date.now());
+
+  // Live countdown — ticks every second until the offer expires, then flips
+  // the page to the "expired" state so the buy button dies in real time.
+  useEffect(() => {
+    if (expiryMs == null || state === "delivered" || state === "expired") return;
+    const iv = setInterval(() => {
+      const t = Date.now();
+      setNow(t);
+      if (t >= expiryMs) setState((s) => (s === "locked" || s === "error" ? "expired" : s));
+    }, 1000);
+    return () => clearInterval(iv);
+  }, [expiryMs, state]);
+
+  const remainingMs = expiryMs != null ? Math.max(0, expiryMs - now) : null;
 
   async function handlePay() {
     setState("loading");
@@ -66,6 +96,11 @@ export function PayClient({
   // ── Delivered: playful "flying to Telegram" screen ────────────────────────
   if (state === "delivered") {
     return <DeliveredScreen itemCount={items.length} recipient={recipient} />;
+  }
+
+  // ── Expired: the urgency timer ran out before payment ─────────────────────
+  if (state === "expired") {
+    return <ExpiredScreen recipient={recipient} />;
   }
 
   // ── Locked: preview tiles + Pay button ────────────────────────────────────
@@ -138,6 +173,20 @@ export function PayClient({
               <div className="text-[12px] text-[#9ca3af] mb-3 whitespace-pre-wrap">{caption}</div>
             )}
 
+            {remainingMs != null && (
+              <div
+                className="flex items-center gap-2 mb-4 px-3 py-2 rounded-[10px] text-[13px] font-semibold"
+                style={
+                  remainingMs <= 5 * 60_000
+                    ? { background: "rgba(239,68,68,0.12)", color: "#f87171", border: "1px solid rgba(239,68,68,0.3)" }
+                    : { background: "rgba(245,158,11,0.12)", color: "#fbbf24", border: "1px solid rgba(245,158,11,0.3)" }
+                }
+              >
+                <span>⏳</span>
+                <span>Offer expires in {formatRemaining(remainingMs)}</span>
+              </div>
+            )}
+
             <div className="flex items-baseline gap-1.5 mb-4 mt-2">
               <span style={{ fontSize: 32, fontWeight: 800, color: "#6366f1", letterSpacing: "-0.03em" }}>
                 ${basePrice.toFixed(2)}
@@ -167,6 +216,46 @@ export function PayClient({
         </div>
 
         <div style={{ textAlign: "center", marginTop: 20, fontSize: 11, color: "#484f58" }}>
+          Powered by ppvs.io · Telegram PPV platform
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Expired screen — the urgency timer ran out ──────────────────────────────
+
+function ExpiredScreen({ recipient }: { recipient: string | null }) {
+  return (
+    <div className="min-h-screen flex items-center justify-center px-3 sm:px-4 bg-[#0d1117] py-6 sm:py-10">
+      <div
+        className="pointer-events-none fixed inset-0 z-0"
+        style={{ background: "radial-gradient(ellipse 70% 50% at 50% 0%, rgba(239,68,68,0.06) 0%, transparent 70%)" }}
+      />
+      <div className="relative z-10 w-full max-w-[460px]">
+        <div className="flex items-center justify-center gap-2 mb-6">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#6366f1] to-[#4f46e5] flex items-center justify-center text-white font-bold text-[15px]">
+            P
+          </div>
+          <span style={{ fontSize: 18, fontWeight: 700, color: "#e6edf3", letterSpacing: "-0.02em" }}>
+            ppvs<span style={{ color: "#6366f1" }}>.io</span>
+          </span>
+        </div>
+
+        <div className="bg-[#161b22] border border-[#30363d] rounded-[20px] overflow-hidden p-7 sm:p-8 text-center">
+          <div className="text-[60px] leading-none mb-4">⏳</div>
+          <h1 className="text-[24px] sm:text-[26px] font-bold leading-tight mb-2" style={{ color: "#e6edf3", letterSpacing: "-0.02em" }}>
+            This offer has expired
+          </h1>
+          <p className="text-[14px] mb-1" style={{ color: "#9ca3af" }}>
+            The unlock window for this content has closed, so it can no longer be purchased.
+          </p>
+          <p className="text-[13px] mt-4" style={{ color: "#6b7280" }}>
+            {recipient ? "Message the model on Telegram if you'd still like it 💬" : "Reach out on Telegram if you'd still like it 💬"}
+          </p>
+        </div>
+
+        <div style={{ textAlign: "center", marginTop: 18, fontSize: 11, color: "#484f58" }}>
           Powered by ppvs.io · Telegram PPV platform
         </div>
       </div>

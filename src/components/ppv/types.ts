@@ -29,6 +29,9 @@ export type PpvGroup = {
   model_id: string;
   name: string;
   created_at: string;
+  /** When set, the whole group can be sold as one unlock at this price
+   *  ("bundle"). Null = no bundle offer (items sold individually). */
+  bundle_price?: number | null;
   tags: PpvTag[];
   items: PpvItem[];
 };

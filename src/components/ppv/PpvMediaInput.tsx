@@ -1,30 +1,22 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
-import { Upload, X } from "lucide-react";
+import { Upload, X, Music } from "lucide-react";
+import { validatePpvFile, ppvMediaKind, PPV_ACCEPT, type PpvMediaKind } from "@/lib/ppv-storage";
 
 type Props = {
   initialUrl?: string | null;
   onFileChange: (file: File | null) => void;
 };
 
-/** Best-effort: derive media kind from MIME, falling back to extension
- *  for URLs/blobs the browser hasn't tagged. */
-function isVideo(srcOrFile: string | File): boolean {
-  if (typeof srcOrFile === "string") {
-    const u = srcOrFile.toLowerCase().split("?")[0];
-    return /\.(mp4|mov|webm|m4v|mkv)$/.test(u);
-  }
-  return srcOrFile.type.startsWith("video/");
-}
-
 export function PpvMediaInput({ initialUrl, onFileChange }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<string | null>(initialUrl ?? null);
-  const [previewIsVideo, setPreviewIsVideo] = useState<boolean>(
-    initialUrl ? isVideo(initialUrl) : false,
+  const [kind, setKind] = useState<PpvMediaKind | null>(
+    initialUrl ? ppvMediaKind(initialUrl) ?? "image" : null,
   );
   const [dragOver, setDragOver] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     return () => {
@@ -36,12 +28,21 @@ export function PpvMediaInput({ initialUrl, onFileChange }: Props) {
     if (preview && preview.startsWith("blob:")) URL.revokeObjectURL(preview);
     if (!file) {
       setPreview(initialUrl ?? null);
-      setPreviewIsVideo(initialUrl ? isVideo(initialUrl) : false);
+      setKind(initialUrl ? ppvMediaKind(initialUrl) ?? "image" : null);
+      setError("");
       onFileChange(null);
       return;
     }
+    // Refuse anything Telegram can't display inline (e.g. .jfif, .heic).
+    const valid = validatePpvFile(file);
+    if (!valid.ok) {
+      setError(valid.error);
+      onFileChange(null);
+      return;
+    }
+    setError("");
     setPreview(URL.createObjectURL(file));
-    setPreviewIsVideo(isVideo(file));
+    setKind(valid.kind);
     onFileChange(file);
   }
 
@@ -57,10 +58,10 @@ export function PpvMediaInput({ initialUrl, onFileChange }: Props) {
       <input
         ref={inputRef}
         type="file"
-        // Both pictures and clips. `uploadPpvMedia` keeps videos verbatim
-        // and captures a blurred poster frame as the preview — no FFmpeg
-        // step needed.
-        accept="image/*,video/*"
+        // Only Telegram-displayable formats — images, clips, and audio. The
+        // real gatekeeper is validatePpvFile() in handleFile (accept is just
+        // a UI hint the OS file picker can ignore).
+        accept={PPV_ACCEPT}
         className="hidden"
         onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
       />
@@ -75,7 +76,7 @@ export function PpvMediaInput({ initialUrl, onFileChange }: Props) {
       >
         {preview ? (
           <>
-            {previewIsVideo ? (
+            {kind === "video" ? (
               <video
                 src={preview}
                 muted
@@ -84,13 +85,23 @@ export function PpvMediaInput({ initialUrl, onFileChange }: Props) {
                 autoPlay
                 className="absolute inset-0 w-full h-full object-cover bg-black"
               />
+            ) : kind === "audio" ? (
+              <div
+                className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-[#1f2937] to-[#111827] px-4"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="w-14 h-14 rounded-full bg-[#6366f1]/20 flex items-center justify-center">
+                  <Music className="w-7 h-7 text-[#6366f1]" />
+                </div>
+                <audio src={preview} controls className="w-full max-w-[280px]" />
+              </div>
             ) : (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={preview} alt="" className="absolute inset-0 w-full h-full object-cover" />
             )}
             <button
               onClick={(e) => { e.stopPropagation(); handleFile(null); }}
-              className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center transition-colors"
+              className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center transition-colors z-10"
             >
               <X className="w-4 h-4" />
             </button>
@@ -98,11 +109,12 @@ export function PpvMediaInput({ initialUrl, onFileChange }: Props) {
         ) : (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-[#6b7280]">
             <Upload className="w-8 h-8" />
-            <span className="text-[13px] font-medium">Click or drop image or video</span>
-            <span className="text-[11px] text-[#4b5563]">JPG, PNG, WebP · MP4, MOV, WebM</span>
+            <span className="text-[13px] font-medium">Click or drop image, video or audio</span>
+            <span className="text-[11px] text-[#4b5563]">JPG · PNG · WebP · GIF · MP4 · MOV · MP3 · M4A</span>
           </div>
         )}
       </div>
+      {error && <p className="text-[12px] text-red-400 mt-2">{error}</p>}
     </div>
   );
 }

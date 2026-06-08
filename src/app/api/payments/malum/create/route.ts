@@ -29,6 +29,7 @@ type SendRow = {
   status: string;
   caption: string | null;
   malum_txn: string | null;
+  expires_at: string | null;
 };
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -54,7 +55,7 @@ export async function POST(req: NextRequest) {
     const admin = createAdminSupabaseClient();
     const { data: sendRaw, error: sendErr } = await admin
       .from("ppv_sends")
-      .select("id, code, total_price, status, caption, malum_txn")
+      .select("id, code, total_price, status, caption, malum_txn, expires_at")
       .eq("code", code)
       .maybeSingle();
     if (sendErr) return Response.json({ error: `DB: ${sendErr.message}` }, { status: 500 });
@@ -63,6 +64,11 @@ export async function POST(req: NextRequest) {
 
     if (send.status === "paid" || send.status === "delivered") {
       return Response.json({ error: "This order is already paid" }, { status: 409 });
+    }
+
+    // Urgency timer: refuse to open a checkout for an expired offer.
+    if (send.expires_at && Date.now() > new Date(send.expires_at).getTime()) {
+      return Response.json({ error: "This offer has expired." }, { status: 410 });
     }
 
     // The chatter's price is what the agency expects to receive ($5 = $5

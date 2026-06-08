@@ -27,6 +27,8 @@ type SendBody = {
   ppvIds: string[];
   /** Chatter-supplied price. 0 → free send (originals straight to TG). */
   totalPrice?: number;
+  /** Urgency timer: hours until the pay link expires. 0/undefined = never. */
+  expiresInHours?: number;
 };
 
 type PpvRow = {
@@ -55,6 +57,9 @@ export async function POST(req: NextRequest) {
     const rawPrice = typeof raw?.totalPrice === "number" ? raw.totalPrice : 0;
     const chatterPrice =
       Number.isFinite(rawPrice) && rawPrice > 0 ? Math.round(rawPrice * 100) / 100 : 0;
+    // Urgency timer. Clamp 0 < hours ≤ 720 (30 days); anything else = no expiry.
+    const rawHours = typeof raw?.expiresInHours === "number" ? raw.expiresInHours : 0;
+    const expiresInHours = Number.isFinite(rawHours) && rawHours > 0 ? Math.min(rawHours, 720) : 0;
     if (!modelId || !peerId || ppvIds.length === 0 || ppvIds.length > 50) {
       return Response.json({ error: "modelId, peerId and ppvIds (1–50) required" }, { status: 400 });
     }
@@ -89,6 +94,12 @@ export async function POST(req: NextRequest) {
     const totalPrice = chatterPrice;
     const isFreeSend = totalPrice <= 0;
 
+    // Only paid sends get an expiry — a free send has no pay link to expire.
+    const expiresAt =
+      !isFreeSend && expiresInHours > 0
+        ? new Date(Date.now() + expiresInHours * 3_600_000).toISOString()
+        : null;
+
     // Generate a unique code. UNIQUE constraint will reject collisions; retry
     // a few times. With 8 chars from a 33-char alphabet, collisions are
     // astronomically rare but we handle them anyway.
@@ -108,6 +119,7 @@ export async function POST(req: NextRequest) {
           caption: body.caption ?? null,
           total_price: totalPrice,
           status: "pending",
+          expires_at: expiresAt,
         })
         .select("id")
         .single();

@@ -76,10 +76,13 @@ export default function MassDmPage() {
   );
   const [preset, setPreset] = useState<PresetKey>("normal");
   const [dailyLimit, setDailyLimit] = useState<number | undefined>(200);
+  const [isAb, setIsAb] = useState(false);
+  const [messageB, setMessageB] = useState("Hey {first_name} 🔥 got something special just for you today…");
 
   const [activeCampaign, setActiveCampaign] = useState<Campaign | null>(null);
   const [recentSent, setRecentSent] = useState<RecentSent[]>([]);
   const [recentFailed, setRecentFailed] = useState<RecentFailed[]>([]);
+  const [abStats, setAbStats] = useState<{ a: { sent: number; replied: number }; b: { sent: number; replied: number } } | null>(null);
   const [history, setHistory] = useState<Campaign[]>([]);
   const [err, setErr] = useState<string>("");
   // Locks the Send button from the moment it's clicked until create+start
@@ -167,10 +170,12 @@ export default function MassDmPage() {
         campaign: Campaign;
         recentSent: RecentSent[];
         recentFailed: RecentFailed[];
+        ab?: typeof abStats;
       };
       setActiveCampaign(j.campaign);
       setRecentSent(j.recentSent ?? []);
       setRecentFailed(j.recentFailed ?? []);
+      setAbStats(j.ab ?? null);
       if (["completed", "cancelled", "failed", "paused"].includes(j.campaign.status)) {
         clearInterval(iv);
         void loadHistory();
@@ -210,6 +215,8 @@ export default function MassDmPage() {
         body: JSON.stringify({
           modelId,
           message,
+          messageB: isAb ? messageB : undefined,
+          isAb,
           filters,
           jitterMinMs: p.min,
           jitterMaxMs: p.max,
@@ -498,12 +505,22 @@ export default function MassDmPage() {
 
           {/* Message */}
           <div className="mt-4">
-            <label className="text-[11px] text-[#9ca3af] block mb-1">
-              Message — supports{" "}
-              <code className="text-[#6366f1]">{"{first_name}"}</code>,{" "}
-              <code className="text-[#6366f1]">{"{name}"}</code>,{" "}
-              <code className="text-[#6366f1]">{"{username}"}</code>
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[11px] text-[#9ca3af]">
+                Message {isAb && <span className="text-[#6366f1]">(Variant A)</span>} — supports{" "}
+                <code className="text-[#6366f1]">{"{first_name}"}</code>
+              </label>
+              <label className="flex items-center gap-1.5 text-[11px] text-[#9ca3af] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isAb}
+                  onChange={(e) => setIsAb(e.target.checked)}
+                  disabled={isComposeDisabled}
+                  className="accent-[#6366f1]"
+                />
+                A/B test
+              </label>
+            </div>
             <textarea
               className={input + " font-mono"}
               rows={4}
@@ -515,6 +532,25 @@ export default function MassDmPage() {
             <div className="text-[10px] text-[#6b7280] mt-1 text-right">
               {message.length}/4096
             </div>
+
+            {isAb && (
+              <div className="mt-3">
+                <label className="text-[11px] text-[#9ca3af] block mb-1">
+                  <span className="text-[#6366f1]">Variant B</span> — sent to a random 50% of recipients
+                </label>
+                <textarea
+                  className={input + " font-mono"}
+                  rows={4}
+                  value={messageB}
+                  onChange={(e) => setMessageB(e.target.value)}
+                  maxLength={4096}
+                  disabled={isComposeDisabled}
+                />
+                <div className="text-[10px] text-[#6b7280] mt-1">
+                  Winner is the variant with the higher reply rate (fan messages back within 48h).
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Daily cap + Send */}
@@ -571,6 +607,29 @@ export default function MassDmPage() {
                   )}
                 </div>
               </div>
+
+              {abStats && (abStats.a.sent > 0 || abStats.b.sent > 0) && (() => {
+                const rate = (v: { sent: number; replied: number }) =>
+                  v.sent > 0 ? (v.replied / v.sent) * 100 : 0;
+                const ra = rate(abStats.a);
+                const rb = rate(abStats.b);
+                const winner = ra === rb ? null : ra > rb ? "A" : "B";
+                const cell = (label: string, v: { sent: number; replied: number }, win: boolean) => (
+                  <div className={`flex-1 rounded-lg p-3 border ${win ? "border-emerald-500/50 bg-emerald-500/5" : "border-[#2a2d35] bg-[#0f131a]"}`}>
+                    <div className="text-[10px] uppercase tracking-wider text-[#9ca3af] flex items-center gap-1.5">
+                      Variant {label} {win && <span className="text-emerald-400">· winner 🏆</span>}
+                    </div>
+                    <div className="text-[18px] font-bold text-white mt-1">{rate(v).toFixed(1)}%</div>
+                    <div className="text-[11px] text-[#6b7280]">{v.replied} replied / {v.sent} sent</div>
+                  </div>
+                );
+                return (
+                  <div className="flex gap-2">
+                    {cell("A", abStats.a, winner === "A")}
+                    {cell("B", abStats.b, winner === "B")}
+                  </div>
+                );
+              })()}
 
               {recentSent.length > 0 && (
                 <div className="bg-[#0f131a] border border-[#2a2d35] rounded-lg p-3">

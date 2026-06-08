@@ -50,9 +50,35 @@ export async function GET(
       .limit(8),
   ]);
 
+  // A/B breakdown: sent + replied per variant (best-effort; columns are
+  // optional). responded_at is stamped by the incoming-message hook.
+  let ab: { a: { sent: number; replied: number }; b: { sent: number; replied: number } } | null = null;
+  if ((camp as { is_ab?: boolean }).is_ab) {
+    const cnt = async (variant: string, replied: boolean) => {
+      let q = admin
+        .from("mass_dm_recipients")
+        .select("id", { count: "exact", head: true })
+        .eq("campaign_id", id)
+        .eq("variant", variant)
+        .eq("status", "sent");
+      if (replied) q = q.not("responded_at", "is", null);
+      const r = await q;
+      return r.count ?? 0;
+    };
+    try {
+      const [aSent, aRep, bSent, bRep] = await Promise.all([
+        cnt("a", false), cnt("a", true), cnt("b", false), cnt("b", true),
+      ]);
+      ab = { a: { sent: aSent, replied: aRep }, b: { sent: bSent, replied: bRep } };
+    } catch {
+      ab = null;
+    }
+  }
+
   return Response.json({
     campaign,
     recentSent: sentRes.data ?? [],
     recentFailed: failedRes.data ?? [],
+    ab,
   });
 }

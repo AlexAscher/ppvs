@@ -150,7 +150,13 @@ export function subscribeActivityEvents(modelId: string, client: TelegramClient)
     try {
       if (evt.message.out) return; // outgoing — that's us
       const senderId = evt.message.senderId?.toString();
-      if (senderId) bump(modelId, senderId, "message");
+      if (senderId) {
+        bump(modelId, senderId, "message");
+        // Timezone histogram + Mass DM reply tracking (fire-and-forget).
+        void import("@/lib/fan-activity").then((m) =>
+          m.recordIncomingMessage(modelId, senderId),
+        );
+      }
     } catch {
       /* ignore */
     }

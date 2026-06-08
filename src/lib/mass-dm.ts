@@ -159,6 +159,8 @@ async function runCampaignInner(admin: SupabaseClient, campaignId: string) {
     jitter_max_ms: number;
     status: string;
     daily_limit?: number | null;
+    is_ab?: boolean | null;
+    message_b?: string | null;
   };
   const campaign = campRaw as CampaignRow | null;
   if (!campaign) return;
@@ -252,7 +254,7 @@ async function runCampaignInner(admin: SupabaseClient, campaignId: string) {
 
     const { data: nextRaw } = await admin
       .from("mass_dm_recipients")
-      .select("id, peer_id, peer_access_hash, peer_username, first_name")
+      .select("*")
       .eq("campaign_id", campaignId)
       .eq("status", "pending")
       .order("ordinal", { ascending: true })
@@ -264,6 +266,7 @@ async function runCampaignInner(admin: SupabaseClient, campaignId: string) {
       peer_access_hash: string | null;
       peer_username: string | null;
       first_name: string | null;
+      variant?: string | null;
     };
     const recipient = nextRaw as NextRow | null;
     if (!recipient) {
@@ -275,7 +278,12 @@ async function runCampaignInner(admin: SupabaseClient, campaignId: string) {
       return;
     }
 
-    const text = renderTemplate(campaign.message, {
+    // A/B: variant 'b' recipients get message_b, everyone else message.
+    const template =
+      campaign.is_ab && recipient.variant === "b" && campaign.message_b
+        ? campaign.message_b
+        : campaign.message;
+    const text = renderTemplate(template, {
       peer_id: recipient.peer_id,
       telegram_username: recipient.peer_username,
       telegram_name: recipient.first_name,

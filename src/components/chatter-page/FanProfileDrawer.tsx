@@ -89,6 +89,7 @@ export function FanProfileDrawer({
   const [notes, setNotes] = useState<FanNoteRow[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [activeWindow, setActiveWindow] = useState<string | null>(null);
 
   useEffect(() => {
     // React 19 strict effects: defer initial state resets to next tick so
@@ -113,10 +114,17 @@ export function FanProfileDrawer({
         histUrl.searchParams.set("peerId", peerId);
         const notesUrl = new URL(`/api/fans/${modelId}/notes`, window.location.origin);
         notesUrl.searchParams.set("peerId", peerId);
-        const [histRes, notesRes] = await Promise.all([
+        const tzUrl = new URL(`/api/fans/${modelId}/timezone`, window.location.origin);
+        tzUrl.searchParams.set("peerId", peerId);
+        const [histRes, notesRes, tzRes] = await Promise.all([
           fetch(histUrl.toString()),
           fetch(notesUrl.toString()),
+          fetch(tzUrl.toString()),
         ]);
+        if (tzRes.ok) {
+          const tz = (await tzRes.json()) as { label?: string | null };
+          if (!cancelled) setActiveWindow(tz.label ?? null);
+        }
         if (cancelled) return;
         if (histRes.ok) {
           const data = await histRes.json();
@@ -192,6 +200,11 @@ export function FanProfileDrawer({
                 <Calendar className="w-3 h-3" />
                 Last seen {formatDate(fan?.last_seen_at ?? null)}
               </div>
+              {activeWindow && (
+                <div className="text-[10px] text-[#6b7280] mt-0.5 flex items-center gap-1">
+                  🕒 Most active {activeWindow}
+                </div>
+              )}
             </div>
           </div>
 

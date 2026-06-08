@@ -20,6 +20,8 @@ export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => null)) as {
     modelId?: string;
     message?: string;
+    messageB?: string;
+    isAb?: boolean;
     filters?: Filters;
     jitterMinMs?: number;
     jitterMaxMs?: number;
@@ -64,6 +66,7 @@ export async function POST(req: NextRequest) {
   // Insert campaign first so we have the FK target. daily_limit is in a
   // separate column added by 20260610_mass_dm_daily_limit.sql; if the
   // migration hasn't run yet, retry the insert without it.
+  const isAb = !!body.isAb && !!body.messageB?.trim();
   const baseRow = {
     agency_user_id: agencyUserId,
     model_id: body.modelId,
@@ -74,17 +77,29 @@ export async function POST(req: NextRequest) {
     jitter_max_ms: jitterMax,
     total_recipients: fans.length,
     status: "pending",
+    ...(isAb ? { is_ab: true, message_b: body.messageB } : {}),
   };
   let campaignRes = await admin
     .from("mass_dm_campaigns")
     .insert({ ...baseRow, daily_limit: dailyLimit })
     .select("id")
     .single();
-  if (campaignRes.error && /daily_limit/.test(campaignRes.error.message)) {
-    // Column not present yet — fall back so the feature still works.
+  if (campaignRes.error && /daily_limit|is_ab|message_b/.test(campaignRes.error.message)) {
+    // Optional columns not present yet — fall back to the core row.
+    const coreRow = {
+      agency_user_id: agencyUserId,
+      model_id: body.modelId,
+      started_by: user.id,
+      message: body.message,
+      filters: body.filters ?? {},
+      jitter_min_ms: jitterMin,
+      jitter_max_ms: jitterMax,
+      total_recipients: fans.length,
+      status: "pending",
+    };
     campaignRes = await admin
       .from("mass_dm_campaigns")
-      .insert(baseRow)
+      .insert(coreRow)
       .select("id")
       .single();
   }
@@ -94,16 +109,30 @@ export async function POST(req: NextRequest) {
   const campaignId = (campaignRes.data as { id: string }).id;
 
   // Insert recipients in chunks (Supabase default insert payload limit).
+  // A/B: deterministic 50/50 split by ordinal parity.
   const CHUNK = 500;
   for (let i = 0; i < fans.length; i += CHUNK) {
-    const chunk = fans.slice(i, i + CHUNK).map((f, idx) => ({
-      campaign_id: campaignId,
-      peer_id: f.peer_id,
-      peer_username: f.telegram_username,
-      first_name: (f.telegram_name ?? "").split(" ")[0] || null,
-      ordinal: i + idx,
-    }));
-    const { error: rErr } = await admin.from("mass_dm_recipients").insert(chunk);
+    const chunk = fans.slice(i, i + CHUNK).map((f, idx) => {
+      const ordinal = i + idx;
+      return {
+        campaign_id: campaignId,
+        peer_id: f.peer_id,
+        peer_username: f.telegram_username,
+        first_name: (f.telegram_name ?? "").split(" ")[0] || null,
+        ordinal,
+        ...(isAb ? { variant: ordinal % 2 === 0 ? "a" : "b" } : {}),
+      };
+    });
+    let { error: rErr } = await admin.from("mass_dm_recipients").insert(chunk);
+    if (rErr && /variant/.test(rErr.message)) {
+      // variant column missing — retry without it.
+      const stripped = chunk.map((row) => {
+        const copy: Record<string, unknown> = { ...row };
+        delete copy.variant;
+        return copy;
+      });
+      ({ error: rErr } = await admin.from("mass_dm_recipients").insert(stripped));
+    }
     if (rErr) {
       // Best-effort cleanup so we don't leave half-created campaigns.
       await admin.from("mass_dm_campaigns").delete().eq("id", campaignId);

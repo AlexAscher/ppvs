@@ -35,6 +35,8 @@ export function PPVsTab() {
   // Bulk operations on standalone PPVs.
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkModal, setBulkModal] = useState<"delete" | "caption" | null>(null);
+  const [captionDraft, setCaptionDraft] = useState("");
   const toggleSel = useCallback((id: string) => {
     setSelectedIds((cur) => {
       const n = new Set(cur);
@@ -152,27 +154,26 @@ export function PPVsTab() {
     setPpvForm(null);
   }
 
-  async function bulkDelete() {
+  async function doBulkDelete() {
     const ids = [...selectedIds];
     if (ids.length === 0) return;
-    if (!confirm(`Delete ${ids.length} PPV${ids.length > 1 ? "s" : ""}? This can't be undone.`)) return;
     await supabase.from("ppvs").delete().in("id", ids);
     setStandalonePpvs((prev) => prev.filter((p) => !selectedIds.has(p.id)));
     setSelectedIds(new Set());
     setSelectMode(false);
+    setBulkModal(null);
   }
 
-  async function bulkSetCaption() {
+  async function doBulkSetCaption(caption: string) {
     const ids = [...selectedIds];
     if (ids.length === 0) return;
-    const caption = prompt(`Set caption/description for ${ids.length} selected PPV(s):`);
-    if (caption === null) return;
     await supabase.from("ppvs").update({ description: caption }).in("id", ids);
     setStandalonePpvs((prev) =>
       prev.map((p) => (selectedIds.has(p.id) ? { ...p, description: caption } : p)),
     );
     setSelectedIds(new Set());
     setSelectMode(false);
+    setBulkModal(null);
   }
 
   function handleGroupSaved(saved: PpvGroup) {
@@ -346,7 +347,12 @@ export function PPVsTab() {
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                   {filteredStandalone.map((p) => (
-                    <div key={p.id} className="relative">
+                    <div
+                      key={p.id}
+                      className={`relative h-full rounded-lg ${
+                        selectMode && selectedIds.has(p.id) ? "ring-2 ring-[#6366f1]" : ""
+                      }`}
+                    >
                       {selectMode && (
                         <button
                           onClick={() => toggleSel(p.id)}
@@ -359,16 +365,12 @@ export function PPVsTab() {
                           {selectedIds.has(p.id) && "✓"}
                         </button>
                       )}
-                      <div
-                        className={selectMode && selectedIds.has(p.id) ? "ring-2 ring-[#6366f1] rounded-lg" : ""}
-                      >
-                        <PpvCard
-                          ppv={p}
-                          onClick={() =>
-                            selectMode ? toggleSel(p.id) : setPpvForm({ kind: "edit", ppv: p })
-                          }
-                        />
-                      </div>
+                      <PpvCard
+                        ppv={p}
+                        onClick={() =>
+                          selectMode ? toggleSel(p.id) : setPpvForm({ kind: "edit", ppv: p })
+                        }
+                      />
                     </div>
                   ))}
                 </div>
@@ -379,15 +381,49 @@ export function PPVsTab() {
             {selectMode && selectedIds.size > 0 && (
               <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-[#1f2937] border border-[#374151] rounded-xl shadow-2xl px-4 py-2.5">
                 <span className="text-[12px] text-white font-medium">{selectedIds.size} selected</span>
-                <button onClick={bulkSetCaption} className="text-[12px] px-3 py-1.5 rounded-lg bg-[#374151] text-white hover:bg-[#454c5a]">
+                <button onClick={() => { setCaptionDraft(""); setBulkModal("caption"); }} className="text-[12px] px-3 py-1.5 rounded-lg bg-[#374151] text-white hover:bg-[#454c5a]">
                   Set caption
                 </button>
-                <button onClick={bulkDelete} className="text-[12px] px-3 py-1.5 rounded-lg bg-red-600 text-white hover:bg-red-700">
+                <button onClick={() => setBulkModal("delete")} className="text-[12px] px-3 py-1.5 rounded-lg bg-red-600 text-white hover:bg-red-700">
                   Delete
                 </button>
                 <button onClick={() => setSelectedIds(new Set())} className="text-[12px] text-[#9ca3af] hover:text-white">
                   Clear
                 </button>
+              </div>
+            )}
+
+            {/* Bulk action modal (styled, replaces native confirm/prompt) */}
+            {bulkModal && (
+              <div className="fixed inset-0 z-[90] bg-black/60 flex items-center justify-center p-4" onClick={() => setBulkModal(null)}>
+                <div className="bg-[#161a22] border border-[#2a2d35] rounded-xl shadow-2xl w-full max-w-[420px] p-5" onClick={(e) => e.stopPropagation()}>
+                  {bulkModal === "delete" ? (
+                    <>
+                      <h3 className="text-[16px] font-semibold text-white mb-2">Delete {selectedIds.size} PPV{selectedIds.size > 1 ? "s" : ""}?</h3>
+                      <p className="text-[13px] text-[#9ca3af] mb-5">This permanently removes them from the vault. This can&apos;t be undone.</p>
+                      <div className="flex justify-end gap-2">
+                        <button onClick={() => setBulkModal(null)} className="px-4 py-2 rounded-lg text-[12px] bg-[#1f2937] border border-[#374151] text-white hover:bg-[#252b36]">Cancel</button>
+                        <button onClick={doBulkDelete} className="px-4 py-2 rounded-lg text-[12px] bg-red-600 text-white hover:bg-red-700 font-semibold">Delete</button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <h3 className="text-[16px] font-semibold text-white mb-2">Set caption for {selectedIds.size} PPV{selectedIds.size > 1 ? "s" : ""}</h3>
+                      <textarea
+                        autoFocus
+                        value={captionDraft}
+                        onChange={(e) => setCaptionDraft(e.target.value)}
+                        placeholder="Caption / description…"
+                        rows={3}
+                        className="w-full px-3 py-2 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1] resize-none mb-4"
+                      />
+                      <div className="flex justify-end gap-2">
+                        <button onClick={() => setBulkModal(null)} className="px-4 py-2 rounded-lg text-[12px] bg-[#1f2937] border border-[#374151] text-white hover:bg-[#252b36]">Cancel</button>
+                        <button onClick={() => doBulkSetCaption(captionDraft)} className="px-4 py-2 rounded-lg text-[12px] bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white hover:from-[#5558e3] hover:to-[#4338ca] font-semibold">Apply</button>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             )}
 
@@ -453,7 +489,7 @@ function PpvCard({ ppv, onClick }: { ppv: PpvItem; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="group text-left bg-[#161a22] border border-[#2a2d35] rounded-lg overflow-hidden hover:border-[#6366f1]/50 transition-all"
+      className="group text-left bg-[#161a22] border border-[#2a2d35] rounded-lg overflow-hidden hover:border-[#6366f1]/50 transition-all w-full h-full flex flex-col"
     >
       <div className="relative aspect-[4/3] bg-[#1f2937] flex items-center justify-center overflow-hidden">
         {ppv.media_url && (

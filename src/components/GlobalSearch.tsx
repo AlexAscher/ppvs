@@ -95,7 +95,7 @@ export function GlobalSearch() {
           </Section>
           <Section title="Mass DMs" show={res.campaigns.length > 0}>
             {res.campaigns.map((c) => (
-              <Row key={`c-${c.id}`} title={c.message.slice(0, 60)} sub={new Date(c.created_at).toLocaleDateString()} />
+              <Row key={`c-${c.id}`} title={c.message.slice(0, 60)} sub={new Date(c.created_at).toLocaleDateString("en-US")} />
             ))}
           </Section>
           <Section title="Groups" show={res.groups.length > 0}>

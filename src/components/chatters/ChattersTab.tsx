@@ -193,7 +193,7 @@ export function ChattersTab() {
                     </div>
                     <div className="min-w-0">
                       <div className="text-[14px] font-medium text-white truncate">{c.chatter_email}</div>
-                      <div className="text-[11px] text-[#6b7280]">Joined {new Date(c.joined_at).toLocaleDateString()}</div>
+                      <div className="text-[11px] text-[#6b7280]">Joined {new Date(c.joined_at).toLocaleDateString("en-US")}</div>
                     </div>
                   </div>
                   <div className="flex items-center" onClick={(e) => e.stopPropagation()}>

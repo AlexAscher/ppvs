@@ -14,7 +14,6 @@ import {
 } from "lucide-react";
 import type { DashboardStats } from "@/app/api/dashboard/stats/route";
 import { agencyNet } from "@/lib/platform";
-import { GlobalSearch } from "@/components/GlobalSearch";
 
 // ─────────────────────────────────────────────
 // AGENCY DASHBOARD
@@ -119,10 +118,6 @@ function AgencySidebar({
         <span className="text-[12px] px-2 py-0.5 bg-[#6366f1]/10 text-[#6366f1] rounded-full font-medium">Agency</span>
       </div>
 
-      <div className="px-3 pt-3">
-        <GlobalSearch />
-      </div>
-
       <div className="flex-1 py-4 px-3">
         <div className="space-y-1">
           {menuItems.map((item) => (
@@ -204,7 +199,7 @@ function AgencySidebar({
 function fmtMoney(n: number): string {
   if (!Number.isFinite(n)) return "$0";
   if (n >= 10000) return `$${(n / 1000).toFixed(1)}k`;
-  return `$${n.toLocaleString(undefined, { maximumFractionDigits: n < 100 ? 2 : 0 })}`;
+  return `$${n.toLocaleString("en-US", { maximumFractionDigits: n < 100 ? 2 : 0 })}`;
 }
 
 function initials(name: string): string {
@@ -227,7 +222,7 @@ function formatRelative(ts: number): string {
   if (h < 24) return `${h}h ago`;
   const d = Math.floor(h / 24);
   if (d < 30) return `${d}d ago`;
-  return new Date(ts).toLocaleDateString();
+  return new Date(ts).toLocaleDateString("en-US");
 }
 
 type ChartPeriod = "1d" | "7d" | "30d" | "all";
@@ -1016,7 +1011,7 @@ function ModelsTab() {
                   </button>
                 </div>
                 <div className="flex items-center text-[15px] font-bold text-[#6366f1]">
-                  ${model.earnings.toLocaleString()}
+                  ${model.earnings.toFixed(2)}
                 </div>
               </div>
             ))}
@@ -1149,7 +1144,7 @@ function WalletTab() {
   }
 
   const money = (n: number | null) =>
-    n == null ? "…" : `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+    n == null ? "…" : `$${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
   const statusCls = (s: string) =>
     s === "paid"
       ? "bg-emerald-500/15 text-emerald-400"
@@ -1336,10 +1331,10 @@ function WalletTab() {
                 <div key={p.id} className="flex items-center justify-between p-3 bg-[#1f2937]/30 rounded-lg">
                   <div className="min-w-0">
                     <div className="text-[14px] font-semibold text-white">
-                      ${Number(p.amount).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                      ${Number(p.amount).toLocaleString("en-US", { maximumFractionDigits: 2 })}
                     </div>
                     <div className="text-[11px] text-[#6b7280] truncate">
-                      {p.address || "—"} · {new Date(p.created_at).toLocaleDateString()}
+                      {p.address || "—"} · {new Date(p.created_at).toLocaleDateString("en-US")}
                     </div>
                   </div>
                   <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${statusCls(p.status)}`}>

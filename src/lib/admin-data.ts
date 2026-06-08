@@ -104,7 +104,7 @@ export function makeChartBuckets(days: number): { date: string; ts: number; valu
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(todayStart - i * 86_400_000);
     buckets.push({
-      date: d.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+      date: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
       ts: d.getTime(),
       value: 0,
     });
@@ -174,7 +174,7 @@ export function buildChartBuckets(period: ChartPeriod, earliestTs?: number): Cha
       const t = todayStart - i * DAY_MS;
       const d = new Date(t);
       buckets.push({
-        date: d.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+        date: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
         ts: t,
         value: 0,
       });
@@ -191,7 +191,7 @@ export function buildChartBuckets(period: ChartPeriod, earliestTs?: number): Cha
   for (let t = first; t <= last; t += WEEK_MS) {
     const d = new Date(t);
     buckets.push({
-      date: d.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+      date: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
       ts: t,
       value: 0,
     });

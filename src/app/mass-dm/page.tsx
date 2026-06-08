@@ -682,7 +682,7 @@ export default function MassDmPage() {
                 >
                   <div className="min-w-0">
                     <div className="text-[11px] text-[#6b7280] mb-0.5">
-                      {new Date(c.created_at).toLocaleString()}
+                      {new Date(c.created_at).toLocaleString("en-US")}
                     </div>
                     <div className="text-[12px] text-white truncate max-w-[500px]">{c.message}</div>
                   </div>

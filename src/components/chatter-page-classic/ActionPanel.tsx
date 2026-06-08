@@ -6,7 +6,7 @@ import type { FanNote } from "@/lib/fan-types";
 
 function formatNoteDate(iso: string): string {
   const d = new Date(iso);
-  return d.toLocaleString(undefined, {
+  return d.toLocaleString("en-US", {
     month: "short",
     day: "2-digit",
     hour: "2-digit",

@@ -84,7 +84,7 @@ export function ChatterStatsModal({ chatter, models, onClose, onReassigned, onDe
             <div>
               <div className="text-[16px] font-semibold text-white">{chatter.chatter_email}</div>
               <div className="text-[12px] text-[#9ca3af]">
-                Joined {new Date(chatter.joined_at).toLocaleDateString()}
+                Joined {new Date(chatter.joined_at).toLocaleDateString("en-US")}
               </div>
             </div>
           </div>

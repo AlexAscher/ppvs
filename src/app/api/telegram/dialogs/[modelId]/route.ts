@@ -32,15 +32,15 @@ function formatLastSeen(unix: number): string {
   const d = new Date(unix * 1000);
   const now = new Date();
   const sameDay = d.toDateString() === now.toDateString();
-  const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const time = d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
   if (sameDay) return `last seen today at ${time}`;
   const diffDays = Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
   if (diffDays === 1) return `last seen yesterday at ${time}`;
   if (diffDays < 7) {
-    const weekday = d.toLocaleDateString([], { weekday: "long" });
+    const weekday = d.toLocaleDateString("en-US", { weekday: "long" });
     return `last seen ${weekday} at ${time}`;
   }
-  return `last seen ${d.toLocaleDateString()}`;
+  return `last seen ${d.toLocaleDateString("en-US")}`;
 }
 
 function getUserStatus(status: Api.TypeUserStatus | undefined): string | null {

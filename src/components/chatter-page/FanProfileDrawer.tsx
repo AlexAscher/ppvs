@@ -52,7 +52,7 @@ interface Props {
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
-  return d.toLocaleString(undefined, {
+  return d.toLocaleString("en-US", {
     year: "numeric",
     month: "short",
     day: "2-digit",

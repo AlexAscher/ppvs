@@ -1,7 +1,6 @@
 "use client";
 
 import { Send, Lock, RefreshCw } from "lucide-react";
-import { GlobalSearch } from "@/components/GlobalSearch";
 
 interface TopbarProps {
   displayName: string;
@@ -36,11 +35,6 @@ export function Topbar({ displayName, onLogout, onReload, reloading }: TopbarPro
         <div className="text-[13px] font-semibold">
           chatter<span className="text-[#6366f1]">.ppvs.io</span>
         </div>
-      </div>
-
-      {/* Global search — fan notes, PPV names, Mass DM history, groups */}
-      <div className="hidden md:block w-[280px]">
-        <GlobalSearch />
       </div>
 
       <div className="flex items-center gap-3">

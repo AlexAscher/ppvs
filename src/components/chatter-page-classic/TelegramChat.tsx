@@ -1040,18 +1040,18 @@ export function TelegramChat({
               }
             }}
             placeholder="Type a message..."
-            className="flex-1 px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1]"
+            className="flex-1 min-w-0 px-3 md:px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1]"
           />
           <button
             type="button"
             onClick={onOpenQuickReply}
-            className="w-10 h-10 flex items-center justify-center rounded-lg bg-[#1f2937] text-[#9ca3af] hover:text-white hover:bg-[#374151] transition-colors"
+            className="w-9 h-9 md:w-10 md:h-10 shrink-0 flex items-center justify-center rounded-lg bg-[#1f2937] text-[#9ca3af] hover:text-white hover:bg-[#374151] transition-colors"
             aria-label="Quick replies"
             title="Quick replies"
           >
             <Zap className="w-5 h-5" />
           </button>
-          <div className="relative">
+          <div className="relative shrink-0">
             <button
               type="button"
               onMouseDown={(e) => {
@@ -1059,7 +1059,7 @@ export function TelegramChat({
                 e.stopPropagation();
                 setShowEmoji((v) => !v);
               }}
-              className={`w-10 h-10 flex items-center justify-center rounded-lg transition-colors ${
+              className={`w-9 h-9 md:w-10 md:h-10 shrink-0 flex items-center justify-center rounded-lg transition-colors ${
                 showEmoji
                   ? "bg-[#374151] text-[#6366f1]"
                   : "bg-[#1f2937] text-[#9ca3af] hover:text-white hover:bg-[#374151]"
@@ -1073,7 +1073,7 @@ export function TelegramChat({
           <button
             onClick={onSend}
             disabled={sending || !inputText.trim() || !selected}
-            className={`px-5 py-2.5 text-white rounded-lg font-semibold text-[13px] transition-all shadow-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${
+            className={`px-3.5 md:px-5 py-2.5 text-white rounded-lg font-semibold text-[13px] transition-all shadow-lg flex items-center gap-1.5 md:gap-2 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed ${
               editing
                 ? "bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 shadow-amber-500/20"
                 : "bg-gradient-to-r from-[#6366f1] to-[#4f46e5] hover:from-[#5558e3] hover:to-[#4338ca] shadow-[#6366f1]/20"
@@ -1081,13 +1081,13 @@ export function TelegramChat({
           >
             {editing ? (
               <>
-                <Check className="w-4 h-4" />
-                Save
+                <Check className="w-4 h-4 shrink-0" />
+                <span className="hidden sm:inline">Save</span>
               </>
             ) : (
               <>
-                <Send className="w-4 h-4" />
-                Send
+                <Send className="w-4 h-4 shrink-0" />
+                <span className="hidden sm:inline">Send</span>
               </>
             )}
           </button>

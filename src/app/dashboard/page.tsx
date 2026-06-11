@@ -7,7 +7,6 @@ import { ChattersTab } from "@/components/chatters/ChattersTab";
 import { ChatterDashboardLayout } from "@/components/chatters/ChatterDashboardLayout";
 import { SettingsTab } from "@/components/settings/SettingsTab";
 import { InboxTab } from "@/components/inbox/InboxTab";
-import { FeedPanel } from "@/components/feed/FeedPanel";
 import { createClient } from "@/lib/supabase";
 import {
   MessageSquare,
@@ -21,12 +20,11 @@ import { agencyNet } from "@/lib/platform";
 // AGENCY DASHBOARD
 // ─────────────────────────────────────────────
 
-type AgencyTab = "dashboard" | "inbox" | "feed" | "ppvs" | "models" | "chatters" | "wallet" | "settings";
+type AgencyTab = "dashboard" | "inbox" | "ppvs" | "models" | "chatters" | "wallet" | "settings";
 
 const menuItems = [
   { id: "dashboard" as AgencyTab, label: "Dashboard", emoji: "📊" },
   { id: "inbox" as AgencyTab, label: "Inbox", emoji: "📥" },
-  { id: "feed" as AgencyTab, label: "Feed", emoji: "📰" },
   { id: "ppvs" as AgencyTab, label: "PPVs", emoji: "🔒" },
   { id: "models" as AgencyTab, label: "Creators", emoji: "👤" },
   { id: "chatters" as AgencyTab, label: "Chatters", emoji: "💬" },
@@ -482,18 +480,18 @@ function DashboardTab() {
               onClick={() => setReloadKey((k) => k + 1)}
               className="px-3 py-1 rounded-md bg-red-500/20 hover:bg-red-500/30 font-medium shrink-0"
             >
-              Обновить
+              Refresh
             </button>
           </div>
         )}
         {stats?.partial && (
           <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-[#f59e0b]/10 border border-[#f59e0b]/30 rounded-lg text-[12px] text-[#f59e0b]">
-            <span>⚠ Часть данных не догрузилась (медленная сеть до Supabase) — цифры могут быть занижены.</span>
+            <span>⚠ Some data didn&apos;t finish loading (slow connection to the database) — figures may be understated.</span>
             <button
               onClick={() => setReloadKey((k) => k + 1)}
               className="px-3 py-1 rounded-md bg-[#f59e0b]/20 hover:bg-[#f59e0b]/30 font-medium shrink-0"
             >
-              Обновить
+              Refresh
             </button>
           </div>
         )}
@@ -937,12 +935,23 @@ function ModelsTab() {
             </div>
             <div className="flex-1">
               <h3 className="text-[16px] font-semibold text-white mb-2">How to Connect Telegram via API ✈️</h3>
-              <div className="text-[13px] text-[#d1d5db] space-y-2">
-                <p><strong>Step 1:</strong> Go to <a href="https://my.telegram.org" target="_blank" rel="noopener noreferrer" className="text-[#6366f1] hover:underline">my.telegram.org</a> and log in with your phone number</p>
-                <p><strong>Step 2:</strong> Navigate to &quot;API Development Tools&quot; and create a new application</p>
-                <p><strong>Step 3:</strong> Copy your <span className="text-[#6366f1] font-medium">API ID</span> and <span className="text-[#6366f1] font-medium">API Hash</span></p>
-                <p><strong>Step 4:</strong> Click &quot;Add Creator&quot;, enter the credentials and the creator&apos;s phone number</p>
-                <p><strong>Step 5:</strong> Enter the code Telegram sends — and you&apos;re connected</p>
+              <div className="text-[13px] text-[#d1d5db] space-y-2.5">
+                <p><strong>Step 1.</strong> On a phone or computer, open <a href="https://my.telegram.org" target="_blank" rel="noopener noreferrer" className="text-[#6366f1] hover:underline">my.telegram.org</a> and log in with the <span className="text-white">creator&apos;s</span> phone number. Telegram sends the login code into the Telegram app itself (not by SMS).</p>
+                <p><strong>Step 2.</strong> Open <span className="text-white font-medium">&quot;API development tools&quot;</span>.</p>
+                <div>
+                  <p><strong>Step 3.</strong> If no application exists yet, fill the <span className="text-white font-medium">&quot;Create new application&quot;</span> form:</p>
+                  <ul className="mt-1.5 ml-1 space-y-1 text-[#9ca3af]">
+                    <li>• <span className="text-white">App title</span> — any name (e.g. the creator&apos;s name).</li>
+                    <li>• <span className="text-white">Short name</span> — 5–32 letters/digits (e.g. <code className="text-[#6366f1]">ppvsapp</code>).</li>
+                    <li>• <span className="text-white">URL</span> — optional, leave blank (or put <code className="text-[#6366f1]">https://t.me</code>).</li>
+                    <li>• <span className="text-white">Platform</span> — choose <span className="text-[#6366f1] font-semibold">Desktop</span>.</li>
+                    <li>• <span className="text-white">Description</span> — optional, leave blank.</li>
+                  </ul>
+                  <p className="mt-1.5">Then click <span className="text-white font-medium">&quot;Create application&quot;</span>.</p>
+                </div>
+                <p><strong>Step 4.</strong> Copy the <span className="text-[#6366f1] font-medium">api_id</span> (a number) and <span className="text-[#6366f1] font-medium">api_hash</span> (a long letters+digits string). Keep them private — they control the account.</p>
+                <p><strong>Step 5.</strong> Back here, click <span className="text-white font-medium">&quot;Add Creator&quot;</span> and paste the api_id, api_hash and the creator&apos;s phone number.</p>
+                <p><strong>Step 6.</strong> Enter the login code Telegram sends (plus the 2-step password if the account has one) — and you&apos;re connected ✅</p>
               </div>
             </div>
           </div>
@@ -960,7 +969,9 @@ function ModelsTab() {
             </div>
           </div>
         ) : (
-          <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg overflow-x-auto">
+          <>
+          {/* Desktop table (md+) */}
+          <div className="hidden md:block bg-[#161a22] border border-[#2a2d35] rounded-lg overflow-x-auto">
             <div className="min-w-[560px]">
             <div className="grid grid-cols-4 gap-4 p-4 border-b border-[#2a2d35] bg-[#1f2937]/30">
               <div className="text-[11px] text-[#9ca3af] uppercase tracking-wider font-semibold">Creator</div>
@@ -1021,6 +1032,63 @@ function ModelsTab() {
             ))}
             </div>
           </div>
+
+          {/* Mobile cards (phones) — stacked so nothing is cut off */}
+          <div className="md:hidden space-y-3">
+            {models.map((model) => (
+              <div key={model.id} className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-4">
+                <div className="flex items-center gap-3">
+                  <div className="relative w-11 h-11 rounded-full shrink-0 overflow-hidden bg-gradient-to-br from-[#6366f1] to-[#4f46e5]">
+                    <span className="absolute inset-0 flex items-center justify-center text-white font-semibold text-[14px]">
+                      {model.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
+                    </span>
+                    {model.avatar_url && (
+                      <img
+                        src={model.avatar_url}
+                        alt={model.name}
+                        className="absolute inset-0 w-full h-full object-cover"
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                      />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[15px] font-semibold text-white truncate">{model.name}</div>
+                    <div className="text-[12px] text-[#9ca3af] truncate">{model.username ? `@${model.username}` : "—"}</div>
+                  </div>
+                  <button
+                    onClick={() => handleRefresh(model.id)}
+                    disabled={refreshingId === model.id}
+                    title="Refresh name & avatar from Telegram"
+                    className="p-1.5 text-[#6b7280] hover:text-white hover:bg-[#2a2d35] rounded-lg transition-colors disabled:opacity-50 shrink-0"
+                  >
+                    <span className={`inline-block ${refreshingId === model.id ? "animate-spin" : ""}`}>↻</span>
+                  </button>
+                </div>
+                <div className="flex items-center justify-between mt-3 pt-3 border-t border-[#2a2d35] gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {model.session_status === "expired" ? (
+                      <>
+                        <span className="px-2.5 py-1 bg-[#ef4444]/15 text-[#ef4444] rounded-full text-[11px] font-semibold">session expired</span>
+                        <button
+                          onClick={() => openModal(model.id)}
+                          className="px-2.5 py-1 bg-[#6366f1] hover:bg-[#5558e3] text-white rounded-full text-[11px] font-semibold"
+                        >
+                          Reconnect
+                        </button>
+                      </>
+                    ) : (
+                      <span className="px-2.5 py-1 bg-[#10b981]/20 text-[#10b981] rounded-full text-[11px] font-semibold">connected</span>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] text-[#6b7280] uppercase tracking-wider">Earnings</div>
+                    <div className="text-[15px] font-bold text-[#6366f1]">${model.earnings.toFixed(2)}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          </>
         )}
       </div>
     </div>
@@ -1354,24 +1422,6 @@ function WalletTab() {
   );
 }
 
-function FeedTab() {
-  // The agency-side wrapper around the shared FeedPanel — same component is
-  // reused on the chatter dashboard (read-only there).
-  return (
-    <div className="flex-1 bg-[#0d1117] overflow-y-auto p-4 md:p-6">
-      <div className="max-w-[820px] mx-auto space-y-5">
-        <div>
-          <h1 className="text-[24px] font-bold text-white mb-1">Agency Feed 📰</h1>
-          <p className="text-[14px] text-[#9ca3af]">
-            Internal announcements for your chatters. Stays on the platform — no Telegram involved.
-          </p>
-        </div>
-        <FeedPanel />
-      </div>
-    </div>
-  );
-}
-
 function AgencyDashboard() {
   const [activeTab, setActiveTab] = useState<AgencyTab>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -1406,7 +1456,6 @@ function AgencyDashboard() {
         <div className="flex-1 flex min-h-0 overflow-hidden">
           {activeTab === "dashboard" && <DashboardTab />}
           {activeTab === "inbox" && <InboxTab />}
-          {activeTab === "feed" && <FeedTab />}
           {activeTab === "ppvs" && <PPVsTab />}
           {activeTab === "models" && <ModelsTab />}
           {activeTab === "chatters" && <ChattersTab />}

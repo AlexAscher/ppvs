@@ -2,26 +2,28 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { MessageSquare, LogOut, DollarSign, Mail, Check, X } from "lucide-react";
+import { MessageSquare, LogOut, DollarSign, Mail, Check, X, Menu } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { Invitation, ChatterModel } from "./types";
 import { SettingsTab } from "@/components/settings/SettingsTab";
-import { FeedPanel } from "@/components/feed/FeedPanel";
 
-type ChatterTab = "dashboard" | "feed" | "settings";
+type ChatterTab = "dashboard" | "settings";
 
 const menuItems = [
   { id: "dashboard" as ChatterTab, label: "Dashboard", emoji: "📊" },
-  { id: "feed" as ChatterTab, label: "Agency Feed", emoji: "📰" },
   { id: "settings" as ChatterTab, label: "Settings", emoji: "⚙️" },
 ];
 
 function ChatterSidebar({
   activeTab,
   onTabChange,
+  mobileOpen = false,
+  onClose,
 }: {
   activeTab: ChatterTab;
   onTabChange: (t: ChatterTab) => void;
+  mobileOpen?: boolean;
+  onClose?: () => void;
 }) {
   const router = useRouter();
   const supabase = createClient();
@@ -59,7 +61,15 @@ function ChatterSidebar({
   }
 
   return (
-    <div className="w-[240px] bg-[#161a22] border-r border-[#2a2d35] flex flex-col shrink-0">
+    <>
+      {mobileOpen && (
+        <div className="fixed inset-0 z-30 bg-black/50 md:hidden" onClick={onClose} aria-hidden />
+      )}
+      <div
+        className={`w-[240px] bg-[#161a22] border-r border-[#2a2d35] flex flex-col shrink-0 z-40 fixed inset-y-0 left-0 transition-transform duration-200 md:static md:translate-x-0 ${
+          mobileOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
       <div className="h-[52px] border-b border-[#2a2d35] px-5 flex items-center gap-2">
         <div className="w-8 h-8 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-lg flex items-center justify-center">
           <span className="text-white font-bold text-[14px]">P</span>
@@ -126,7 +136,8 @@ function ChatterSidebar({
           </div>
         </button>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
 
@@ -269,7 +280,7 @@ function ChatterDashboardTab() {
   ];
 
   return (
-    <div className="flex-1 bg-[#0d1117] overflow-y-auto p-6">
+    <div className="flex-1 bg-[#0d1117] overflow-y-auto p-4 md:p-6">
       <div className="max-w-[1400px] mx-auto space-y-6">
         <div>
           <h1 className="text-[24px] font-bold text-white mb-1">Dashboard 📊</h1>
@@ -312,7 +323,7 @@ function ChatterDashboardTab() {
           </div>
         ) : null}
 
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {stats.map((stat, i) => (
             <div key={i} className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-4 hover:border-[#374151] transition-colors">
               <div className="flex items-center justify-between mb-2">
@@ -325,8 +336,8 @@ function ChatterDashboardTab() {
           ))}
         </div>
 
-        <div className="grid grid-cols-3 gap-6">
-          <div className="col-span-2 bg-[#161a22] border border-[#2a2d35] rounded-lg p-5 flex flex-col">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="md:col-span-2 bg-[#161a22] border border-[#2a2d35] rounded-lg p-5 flex flex-col">
             <h2 className="text-[16px] font-semibold text-white mb-4">Recent Activities 🔔</h2>
             <div className="flex-1 flex items-center justify-center py-10 text-[#6b7280] text-[13px]">
               No recent activity yet
@@ -344,28 +355,42 @@ function ChatterDashboardTab() {
   );
 }
 
-function ChatterFeedTab() {
-  return (
-    <div className="flex-1 bg-[#0d1117] overflow-y-auto p-6">
-      <div className="max-w-[820px] mx-auto space-y-5">
-        <div>
-          <h1 className="text-[24px] font-bold text-white mb-1">Agency Feed 📰</h1>
-          <p className="text-[14px] text-[#9ca3af]">Latest announcements from your agency.</p>
-        </div>
-        <FeedPanel />
-      </div>
-    </div>
-  );
-}
-
 export function ChatterDashboardLayout() {
   const [activeTab, setActiveTab] = useState<ChatterTab>("dashboard");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  function selectTab(t: ChatterTab) {
+    setActiveTab(t);
+    setSidebarOpen(false); // close the drawer after picking on mobile
+  }
+
   return (
     <div className="h-screen w-screen flex bg-[#0d1117] text-white overflow-hidden" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif' }}>
-      <ChatterSidebar activeTab={activeTab} onTabChange={setActiveTab} />
-      {activeTab === "dashboard" && <ChatterDashboardTab />}
-      {activeTab === "feed" && <ChatterFeedTab />}
-      {activeTab === "settings" && <SettingsTab role="chatter" />}
+      <ChatterSidebar
+        activeTab={activeTab}
+        onTabChange={selectTab}
+        mobileOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
+        {/* Mobile top bar with hamburger — hidden on md+ */}
+        <div className="md:hidden h-[52px] shrink-0 bg-[#161a22] border-b border-[#2a2d35] flex items-center gap-3 px-4">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Open menu"
+            className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-[#1f2937] text-white"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+          <span className="text-[15px] font-semibold">
+            ppvs<span className="text-[#6366f1]">.io</span>
+          </span>
+        </div>
+        <div className="flex-1 flex min-h-0 overflow-hidden">
+          {activeTab === "dashboard" && <ChatterDashboardTab />}
+          {activeTab === "settings" && <SettingsTab role="chatter" />}
+        </div>
+      </div>
     </div>
   );
 }

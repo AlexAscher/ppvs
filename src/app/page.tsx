@@ -551,7 +551,9 @@ export default function Home() {
         dangerouslySetInnerHTML={{
           __html: `
             .lp-root { overflow-x: hidden; }
-            @media (max-width: 760px) {
+            /* Tablet + phone: collapse every multi-column mock to one column.
+               900px catches portrait iPad (768) and most tablets. */
+            @media (max-width: 900px) {
               .lp-wrap { padding-left: 18px !important; padding-right: 18px !important; }
               .lp-navlinks { display: none !important; }
               .lp-hero { padding-top: 52px !important; padding-bottom: 44px !important; }

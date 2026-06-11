@@ -294,7 +294,7 @@ export default function MassDmPage() {
 
   return (
     <div className="chatter-root min-h-screen bg-[#0d1117] text-white">
-      <Topbar displayName={displayName} onLogout={logout} />
+      <Topbar displayName={displayName} onLogout={logout} onBack={() => router.push("/dashboard")} />
       <div className="max-w-[1100px] mx-auto p-5 md:p-6 space-y-5">
         <div>
           <h1 className="text-[22px] md:text-[24px] font-bold text-white mb-1">

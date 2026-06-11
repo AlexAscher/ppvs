@@ -123,9 +123,9 @@ export function ChattersTab() {
   }
 
   return (
-    <div className="flex-1 bg-[#0d1117] overflow-y-auto p-6">
+    <div className="flex-1 bg-[#0d1117] overflow-y-auto p-4 md:p-6">
       <div className="max-w-[1400px] mx-auto space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
             <h1 className="text-[24px] font-bold text-white mb-1">Chatters 💬</h1>
             <p className="text-[14px] text-[#9ca3af]">Invite and manage your team of chatters</p>
@@ -193,7 +193,10 @@ export function ChattersTab() {
             </div>
           </div>
         ) : (
-          <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg overflow-visible">
+          <>
+          {/* Desktop table (md+) */}
+          <div className="hidden md:block bg-[#161a22] border border-[#2a2d35] rounded-lg overflow-x-auto">
+            <div className="min-w-[640px]">
             <div className="grid grid-cols-[1fr_240px_120px] gap-4 px-4 py-3 border-b border-[#2a2d35] bg-[#1f2937]/30 rounded-t-lg">
               <div className="text-[11px] text-[#9ca3af] uppercase tracking-wider font-semibold">Chatter</div>
               <div className="text-[11px] text-[#9ca3af] uppercase tracking-wider font-semibold">Creator</div>
@@ -278,7 +281,83 @@ export function ChattersTab() {
                 </div>
               );
             })}
+            </div>
           </div>
+
+          {/* Mobile cards (phones) — stacked so nothing is cut off */}
+          <div className="md:hidden space-y-3">
+            {chatters.map((c) => {
+              const initials = c.chatter_email
+                .split(/[\s@.]+/)
+                .filter(Boolean)
+                .slice(0, 2)
+                .map((p) => p[0])
+                .join("")
+                .toUpperCase();
+              const p = presenceLabel(c.chatter_id);
+              return (
+                <div key={c.id} className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-4">
+                  <div className="flex items-center gap-3 cursor-pointer" onClick={() => setSelectedChatter(c)}>
+                    <div className="relative shrink-0">
+                      <div className="w-10 h-10 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-full flex items-center justify-center text-white font-semibold text-[13px]">
+                        {initials}
+                      </div>
+                      <span
+                        className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[#161a22]"
+                        style={{ backgroundColor: p.online ? "#10b981" : "#6b7280" }}
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[14px] font-medium text-white truncate">{c.chatter_email}</div>
+                      <div className="text-[11px]">
+                        <span className={p.online ? "text-emerald-400" : "text-[#6b7280]"}>{p.text}</span>
+                        <span className="text-[#6b7280]"> · joined {new Date(c.joined_at).toLocaleDateString("en-US")}</span>
+                      </div>
+                    </div>
+                    <span className="px-2.5 py-1 bg-[#10b981]/20 text-[#10b981] rounded-full text-[11px] font-semibold shrink-0">active</span>
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-[#2a2d35]" onClick={(e) => e.stopPropagation()}>
+                    <div className="text-[10px] text-[#6b7280] uppercase tracking-wider mb-1.5">Assigned creator</div>
+                    <div className="relative">
+                      <button
+                        onClick={() => setOpenDropdownId(openDropdownId === `m-${c.id}` ? null : `m-${c.id}`)}
+                        className="w-full px-3 py-2 bg-[#1f2937] border border-[#374151] rounded-lg text-[12px] text-white hover:border-[#4b5563] transition-colors flex items-center justify-between gap-2"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          {c.model?.avatar_url ? (
+                            <img src={c.model.avatar_url} alt={c.model.name} className="w-5 h-5 rounded-full object-cover shrink-0" />
+                          ) : (
+                            <div className="w-5 h-5 rounded-full bg-gradient-to-br from-[#6366f1] to-[#4f46e5] shrink-0" />
+                          )}
+                          <span className="truncate">{c.model?.name ?? "—"}</span>
+                        </div>
+                        <ChevronDown className="w-3.5 h-3.5 text-[#6b7280] shrink-0" />
+                      </button>
+                      {openDropdownId === `m-${c.id}` && (
+                        <div className="absolute top-full left-0 right-0 mt-1 bg-[#1f2937] border border-[#374151] rounded-lg shadow-xl overflow-hidden z-20 max-h-[220px] overflow-y-auto">
+                          {models.map((m) => (
+                            <button
+                              key={m.id}
+                              onClick={() => handleReassign(c.id, m.id)}
+                              className={`w-full px-3 py-2 text-left text-[12px] hover:bg-[#374151] transition-colors flex items-center gap-2 ${c.model_id === m.id ? "bg-[#374151] text-[#6366f1]" : "text-white"}`}
+                            >
+                              {m.avatar_url ? (
+                                <img src={m.avatar_url} alt={m.name} className="w-5 h-5 rounded-full object-cover shrink-0" />
+                              ) : (
+                                <div className="w-5 h-5 rounded-full bg-gradient-to-br from-[#6366f1] to-[#4f46e5] shrink-0" />
+                              )}
+                              <span className="truncate">{m.name}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          </>
         )}
       </div>
 

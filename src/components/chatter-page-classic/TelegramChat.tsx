@@ -750,7 +750,7 @@ export function TelegramChat({
             type="button"
             onClick={() => selected && onOpenFanProfile()}
             disabled={!selected}
-            className="flex items-center gap-3 hover:opacity-80 transition-opacity disabled:cursor-not-allowed"
+            className="flex items-center gap-3 hover:opacity-80 transition-opacity disabled:cursor-not-allowed min-w-0 flex-1"
             title={selected ? "Open fan profile" : ""}
           >
             {selected ? (
@@ -758,8 +758,8 @@ export function TelegramChat({
             ) : (
               <div className="w-10 h-10 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-full flex-shrink-0" />
             )}
-            <div className="text-left">
-              <div className="text-[14px] font-semibold text-white">
+            <div className="text-left min-w-0">
+              <div className="text-[14px] font-semibold text-white truncate">
                 {selected ? `@${selected.username}` : ""}
               </div>
               <div
@@ -773,9 +773,10 @@ export function TelegramChat({
               </div>
             </div>
           </button>
-          <div className="flex items-center gap-2">
-            {/* Per-fan emoji tags. Active tag = colored ring; click toggles. */}
-            <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Per-fan emoji tags. Active tag = colored ring; click toggles.
+                Hidden on mobile (tap the avatar → fan profile to tag there). */}
+            <div className="hidden md:flex items-center gap-1">
               {FAN_TAGS.map((t) => {
                 const active = fanTags.includes(t);
                 return (
@@ -796,15 +797,16 @@ export function TelegramChat({
                 );
               })}
             </div>
-            <div className="px-3 py-1.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[11px] text-[#9ca3af]">
-              Total spent: <span className="text-[#6366f1] font-bold">{totalSpent}</span>
+            <div className="px-2.5 md:px-3 py-1.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[11px] text-[#9ca3af] whitespace-nowrap">
+              <span className="hidden sm:inline">Total spent: </span>
+              <span className="text-[#6366f1] font-bold">{totalSpent}</span>
             </div>
 
           </div>
         </div>
 
         {/* Messages Area — p-5 space-y-3 from design */}
-        <div ref={messagesRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-5 space-y-3">
+        <div ref={messagesRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-3 md:p-5 space-y-3">
           {chunks.map((chunk) => {
             if (chunk.kind === "album") {
               const first = chunk.msgs[0];
@@ -1025,7 +1027,7 @@ export function TelegramChat({
         )}
 
         {/* Input Area — h-[64px] from design */}
-        <div className="h-[64px] bg-[#161a22] border-t border-[#2a2d35] px-5 flex items-center gap-3 relative">
+        <div className="h-[64px] bg-[#161a22] border-t border-[#2a2d35] px-3 md:px-5 flex items-center gap-2 md:gap-3 relative">
           <input
             ref={inputRef}
             type="text"

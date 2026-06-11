@@ -257,12 +257,12 @@ function ErrorBanner({ msg }: { msg: string }) {
 function PartialBanner({ onRetry }: { onRetry: () => void }) {
   return (
     <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-[#f59e0b]/10 border border-[#f59e0b]/30 rounded-lg text-[12px] text-[#f59e0b]">
-      <span>⚠ Часть данных не догрузилась (медленная сеть) — цифры могут быть занижены.</span>
+      <span>⚠ Some data didn&apos;t finish loading (slow connection) — figures may be understated.</span>
       <button
         onClick={onRetry}
         className="px-3 py-1 rounded-md bg-[#f59e0b]/20 hover:bg-[#f59e0b]/30 font-medium shrink-0"
       >
-        Обновить
+        Refresh
       </button>
     </div>
   );
@@ -774,22 +774,22 @@ function SettingsView() {
   async function save() {
     setMsg(null);
     if (pw.length < 8) {
-      setMsg({ ok: false, text: "Минимум 8 символов" });
+      setMsg({ ok: false, text: "Minimum 8 characters" });
       return;
     }
     if (pw !== pw2) {
-      setMsg({ ok: false, text: "Пароли не совпадают" });
+      setMsg({ ok: false, text: "Passwords don't match" });
       return;
     }
     setBusy(true);
     try {
       const { error } = await createClient().auth.updateUser({ password: pw });
       if (error) throw error;
-      setMsg({ ok: true, text: "Пароль обновлён ✓" });
+      setMsg({ ok: true, text: "Password updated ✓" });
       setPw("");
       setPw2("");
     } catch (e: unknown) {
-      setMsg({ ok: false, text: e instanceof Error ? e.message : "Ошибка" });
+      setMsg({ ok: false, text: e instanceof Error ? e.message : "Error" });
     } finally {
       setBusy(false);
     }
@@ -800,33 +800,33 @@ function SettingsView() {
       <div className="max-w-[560px] mx-auto space-y-6">
         <div>
           <h1 className="text-[24px] font-bold text-white mb-1">Settings ⚙️</h1>
-          <p className="text-[14px] text-[#9ca3af]">Аккаунт администратора</p>
+          <p className="text-[14px] text-[#9ca3af]">Administrator account</p>
         </div>
 
-        <Panel title="Аккаунт">
+        <Panel title="Account">
           <div className="text-[11px] text-[#9ca3af] uppercase tracking-wider mb-1">Email</div>
           <div className="text-[14px] text-white">{email || "…"}</div>
         </Panel>
 
-        <Panel title="Смена пароля 🔒">
+        <Panel title="Change password 🔒">
           <div className="space-y-3">
             <div>
-              <label className="block text-[12px] text-[#9ca3af] mb-1.5">Новый пароль</label>
+              <label className="block text-[12px] text-[#9ca3af] mb-1.5">New password</label>
               <input
                 type="password"
                 value={pw}
                 onChange={(e) => setPw(e.target.value)}
-                placeholder="Минимум 8 символов"
+                placeholder="Minimum 8 characters"
                 className="w-full bg-[#1f2937] border border-[#374151] rounded-lg px-3.5 py-2.5 text-[14px] text-white placeholder:text-[#6b7280] outline-none focus:border-[#6366f1]"
               />
             </div>
             <div>
-              <label className="block text-[12px] text-[#9ca3af] mb-1.5">Повтори пароль</label>
+              <label className="block text-[12px] text-[#9ca3af] mb-1.5">Repeat password</label>
               <input
                 type="password"
                 value={pw2}
                 onChange={(e) => setPw2(e.target.value)}
-                placeholder="Ещё раз"
+                placeholder="Again"
                 className="w-full bg-[#1f2937] border border-[#374151] rounded-lg px-3.5 py-2.5 text-[14px] text-white placeholder:text-[#6b7280] outline-none focus:border-[#6366f1]"
               />
             </div>
@@ -836,7 +836,7 @@ function SettingsView() {
               disabled={busy || !pw || !pw2}
               className="px-4 py-2.5 rounded-lg text-[13px] font-semibold bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white disabled:opacity-50"
             >
-              {busy ? "Сохранение…" : "Обновить пароль"}
+              {busy ? "Saving…" : "Update password"}
             </button>
           </div>
         </Panel>

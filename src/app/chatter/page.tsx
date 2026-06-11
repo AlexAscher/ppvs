@@ -1495,13 +1495,14 @@ export default function ChatterPage() {
 
   return (
     <div
-      className="chatter-root h-screen w-screen flex flex-col bg-[#0d1117] text-white overflow-hidden"
+      className="chatter-root h-[100dvh] w-full flex flex-col bg-[#0d1117] text-white overflow-hidden"
       style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif' }}
     >
       <Topbar
         displayName={displayName}
         sales="$0"
         onLogout={handleLogout}
+        onBack={() => router.push("/dashboard")}
         reloading={reloading}
         onReload={async () => {
           if (reloading) return;

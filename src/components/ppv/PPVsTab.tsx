@@ -246,7 +246,7 @@ export function PPVsTab() {
 
   if (!selectedModelId && models.length === 0) {
     return (
-      <div className="flex-1 bg-[#0d1117] overflow-y-auto p-6">
+      <div className="flex-1 bg-[#0d1117] overflow-y-auto p-4 md:p-6">
         <div className="max-w-[1400px] mx-auto space-y-6">
           <div>
             <h1 className="text-[24px] font-bold text-white mb-1">PPVs 🔒</h1>
@@ -265,14 +265,14 @@ export function PPVsTab() {
   }
 
   return (
-    <div className="flex-1 bg-[#0d1117] overflow-y-auto p-6">
+    <div className="flex-1 bg-[#0d1117] overflow-y-auto p-4 md:p-6">
       <div className="max-w-[1400px] mx-auto space-y-6">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
           <div>
             <h1 className="text-[24px] font-bold text-white mb-1">PPVs 🔒</h1>
             <p className="text-[14px] text-[#9ca3af]">Manage your pay-per-view content</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 md:gap-3 flex-wrap">
             <div className="relative">
               <button
                 onClick={() => setShowModelDropdown(!showModelDropdown)}

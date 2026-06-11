@@ -49,30 +49,31 @@ export function Topbar({ displayName, onLogout, onReload, reloading, onBack }: T
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 md:gap-3 shrink-0">
         {onReload && (
           <button
             onClick={onReload}
             disabled={reloading}
             title="Refresh dialogs & messages"
             aria-label="Reload"
-            className="w-8 h-8 flex items-center justify-center rounded-full bg-[#1f2937]/40 border border-[#374151]/50 text-[#9ca3af] hover:text-white hover:bg-[#1f2937] transition-colors disabled:opacity-50"
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-[#1f2937]/40 border border-[#374151]/50 text-[#9ca3af] hover:text-white hover:bg-[#1f2937] transition-colors disabled:opacity-50 shrink-0"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${reloading ? "animate-spin" : ""}`} />
           </button>
         )}
-        <div className="flex items-center gap-2 px-4 py-1.5 bg-[#1f2937]/40 border border-[#374151]/50 rounded-full">
-          <span className="text-[12px] font-medium text-[#d1d5db]">{displayName}</span>
+        {/* Name plate is the first thing to drop on phones — context (which
+            creator) is already shown by the model selector bar below. */}
+        <div className="hidden md:flex items-center gap-2 px-4 py-1.5 bg-[#1f2937]/40 border border-[#374151]/50 rounded-full max-w-[180px]">
+          <span className="text-[12px] font-medium text-[#d1d5db] truncate">{displayName}</span>
           <span className="text-[14px]">✍️</span>
         </div>
+        <button
+          onClick={onLogout}
+          className="text-[11px] text-[#6b7280] hover:text-[#9ca3af] transition-colors shrink-0"
+        >
+          Logout
+        </button>
       </div>
-
-      <button
-        onClick={onLogout}
-        className="text-[11px] text-[#6b7280] hover:text-[#9ca3af] transition-colors"
-      >
-        Logout
-      </button>
     </div>
   );
 }

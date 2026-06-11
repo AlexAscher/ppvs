@@ -18,7 +18,7 @@ interface ModelSelectorBarProps {
  */
 export function ModelSelectorBar({ models, selectedModel, onModelSelect }: ModelSelectorBarProps) {
   return (
-    <div className="h-[42px] bg-[#1a1d24] border-b border-[#2a2d35] flex items-center px-5 gap-2 overflow-x-auto">
+    <div className="h-[42px] bg-[#1a1d24] border-b border-[#2a2d35] flex items-center px-3 md:px-5 gap-2 overflow-x-auto">
       {models.map((model) => (
         <button
           key={model.id}

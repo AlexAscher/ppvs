@@ -195,6 +195,17 @@ export async function withTelegramClient<T>(
   fn: (client: TelegramClient) => Promise<T>,
   timeoutMs: number = DEFAULT_OPERATION_TIMEOUT_MS,
 ): Promise<T> {
+  // Known-dead session (already flagged expired): don't reconnect or invoke.
+  // Hammering a dead key just spams Telegram with AUTH_KEY_* errors (and can
+  // destabilize connections for the whole process). Fail fast; the UI shows
+  // the "session expired → Reconnect" prompt. A successful re-auth calls
+  // clearExpiredFlag() so polling resumes.
+  if (expiredMarked.has(modelId)) {
+    const stale = pool.get(modelId);
+    if (stale) evictBroken(modelId, stale);
+    throw new Error("SESSION_EXPIRED: reconnect this creator");
+  }
+
   let client: TelegramClient;
   try {
     client = await connectOrGetClient(modelId, sessionString, apiId, apiHash);

@@ -1,5 +1,8 @@
 export function buildTelegramClientOptions() {
-  const base = { connectionRetries: 1, timeout: 15 };
+  // The VPS↔Telegram link flaps (connections drop right after connect), so a
+  // single attempt often times out — especially the login handshake. Give
+  // connects a few retries and a slightly longer request timeout.
+  const base = { connectionRetries: 3, timeout: 20 };
   if (process.env.TELEGRAM_PROXY_IP) {
     return {
       ...base,

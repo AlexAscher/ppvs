@@ -1609,7 +1609,7 @@ export default function ChatterPage() {
         <div
           className={`${
             mobileView === "actions" ? "flex w-full" : "hidden"
-          } md:contents`}
+          } xl:contents`}
         >
         <ActionPanel
           activeTab={activeTab}
@@ -1656,8 +1656,9 @@ export default function ChatterPage() {
         </div>
       </div>
 
-      {/* Mobile bottom nav — switches the single visible panel. Hidden md+. */}
-      <div className="md:hidden shrink-0 h-[54px] bg-[#161a22] border-t border-[#2a2d35] flex items-stretch">
+      {/* Mobile + tablet bottom nav — switches the single visible panel.
+          Hidden only on desktop (>=xl) where all 3 panels show side by side. */}
+      <div className="xl:hidden shrink-0 h-[54px] bg-[#161a22] border-t border-[#2a2d35] flex items-stretch">
         {([
           { key: "list", label: "Chats", icon: "💬" },
           { key: "chat", label: "Chat", icon: "✉️" },

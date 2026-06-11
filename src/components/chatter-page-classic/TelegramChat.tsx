@@ -598,16 +598,16 @@ export function TelegramChat({
 
   return (
     <div
-      className={`flex-1 bg-[#0d1117] ${
-        mobileView === "actions" ? "hidden md:flex" : "flex"
+      className={`flex-1 min-w-0 bg-[#0d1117] ${
+        mobileView === "actions" ? "hidden xl:flex" : "flex"
       }`}
     >
-      {/* Chat List Sidebar — w-[280px] from design. Full-width on mobile,
-          hidden unless the list view is active. */}
+      {/* Chat List Sidebar — w-[280px] from design. Full-width on mobile/tablet
+          (single-panel + bottom nav), fixed 280px only on desktop (>=xl). */}
       <div
         className={`${
           mobileView === "list" ? "flex" : "hidden"
-        } md:flex w-full md:w-[280px] bg-[#161a22] border-r border-[#2a2d35] flex-col`}
+        } xl:flex w-full xl:w-[280px] min-w-0 bg-[#161a22] border-r border-[#2a2d35] flex-col`}
       >
         <div className="p-3 border-b border-[#2a2d35]">
           <div className="relative">
@@ -729,11 +729,11 @@ export function TelegramChat({
         </div>
       </div>
 
-      {/* Chat Area — full-width on mobile, shown only in chat view */}
+      {/* Chat Area — full-width on mobile/tablet, shown only in chat view */}
       <div
         className={`${
           mobileView === "chat" ? "flex" : "hidden"
-        } md:flex flex-1 flex-col`}
+        } xl:flex flex-1 min-w-0 flex-col`}
       >
         {/* Chat Header — h-[56px] from design */}
         <div className="h-[56px] bg-[#161a22] border-b border-[#2a2d35] px-3 md:px-5 flex items-center justify-between">
@@ -742,7 +742,7 @@ export function TelegramChat({
             type="button"
             onClick={onMobileBack}
             aria-label="Back to chats"
-            className="md:hidden w-9 h-9 mr-1 flex items-center justify-center rounded-lg hover:bg-[#1f2937] text-white flex-shrink-0"
+            className="xl:hidden w-9 h-9 mr-1 flex items-center justify-center rounded-lg hover:bg-[#1f2937] text-white flex-shrink-0"
           >
             <ChevronLeft className="w-5 h-5" />
           </button>

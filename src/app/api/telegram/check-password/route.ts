@@ -12,23 +12,25 @@ import {
 } from "@/lib/telegram-avatar";
 import { evictTelegramClient, clearExpiredFlag } from "@/lib/telegram-pool";
 import { encrypt } from "@/lib/crypto";
+import { buildTelegramClientOptions } from "@/lib/telegram-client";
 
-function buildClientOptions() {
-  const base = { connectionRetries: 0, timeout: 15 };
-  if (process.env.TELEGRAM_PROXY_IP) {
-    return {
-      ...base,
-      useWSS: false,
-      proxy: {
-        ip: process.env.TELEGRAM_PROXY_IP,
-        port: Number(process.env.TELEGRAM_PROXY_PORT ?? 1080),
-        socksType: 5 as const,
-        username: process.env.TELEGRAM_PROXY_USER,
-        password: process.env.TELEGRAM_PROXY_PASS,
-      },
-    };
-  }
-  return { ...base, useWSS: true };
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`${label} timed out`)), ms);
+    p.then(
+      (v) => { clearTimeout(t); resolve(v); },
+      (e) => { clearTimeout(t); reject(e); },
+    );
+  });
+}
+
+/** Turn raw gramJS/MTProto errors into something the agency can act on. */
+function friendlyPasswordError(msg: string): string {
+  if (/PASSWORD_HASH_INVALID/i.test(msg)) return "Wrong cloud password — try again.";
+  const flood = msg.match(/FLOOD_WAIT_(\d+)/i);
+  if (flood) return `Telegram rate-limited this — wait ${flood[1]}s and try again.`;
+  if (/TIMEOUT|timed out/i.test(msg)) return "Telegram didn't respond in time. Try again in a moment.";
+  return msg || "Failed to check password";
 }
 
 export async function POST(request: NextRequest) {
@@ -40,10 +42,15 @@ export async function POST(request: NextRequest) {
       session,
       Number(apiId),
       apiHash,
-      buildClientOptions(),
+      buildTelegramClientOptions(),
     );
 
-    await tg.connect();
+    try {
+      await withTimeout(tg.connect(), 25_000, "connect");
+    } catch (e) {
+      try { await tg.disconnect(); } catch {}
+      throw e instanceof Error ? e : new Error("Couldn't reach Telegram to sign in.");
+    }
 
     let me,
       finalSession,
@@ -139,8 +146,8 @@ export async function POST(request: NextRequest) {
 
     return Response.json({ model: inserted });
   } catch (err: unknown) {
-    const message =
-      err instanceof Error ? err.message : "Failed to check password";
-    return Response.json({ error: message }, { status: 400 });
+    const raw = err instanceof Error ? err.message : "Failed to check password";
+    console.error("[telegram/check-password] error:", raw);
+    return Response.json({ error: friendlyPasswordError(raw) }, { status: 400 });
   }
 }

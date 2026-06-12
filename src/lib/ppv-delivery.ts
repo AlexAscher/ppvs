@@ -397,29 +397,23 @@ export async function sendBlurredPreviewWithLink(
   //   <chatter caption>
   //
   //   🔒 Locked content — N items
-  //   🔓 Unlock for $X.XX
-  //   👉 <raw URL>
+  //   🔓 Unlock for $X.XX     ← hyperlink (TextUrl entity)
   //
-  // We include the URL as plain text (not just a TextUrl entity) because
-  // gramJS drops formattingEntities on multi-file albums (SendMultiMedia
-  // only honours entities on the first InputMedia, and even that's flaky).
-  // Telegram auto-detects URLs in plain text → still clickable, no entity
-  // needed. For single-file sends we also add the TextUrl entity on the
-  // "🔓 Unlock" line as a bonus (it lights up the line as a hyperlink).
+  // For multi-file sends we used to drop the entity (gramJS strips
+  // formattingEntities when tg.sendFile is called with a file array). Now
+  // multi-file goes through messages.SendMultiMedia directly (see below)
+  // which DOES preserve entities on the first InputSingleMedia's caption.
   const cleanCaption = caption.trim();
   const lockedLine = `🔒 Locked content — ${items.length} item${items.length === 1 ? "" : "s"}`;
   const priceFmt = totalPrice.toFixed(2);
   const unlockLabel = `🔓 Unlock for $${priceFmt}`;
-  const urlLine = `👉 ${payUrl}`;
 
   // Compose the plain text. Empty caption → drop the leading two newlines.
   const captionBlock = cleanCaption ? `${cleanCaption}\n\n` : "";
-  const messageCaption = `${captionBlock}${lockedLine}\n${unlockLabel}\n${urlLine}`;
+  const messageCaption = `${captionBlock}${lockedLine}\n${unlockLabel}`;
 
   // Compute the byte offset of the unlock label in UTF-16 code units (TG
-  // entity offsets are in UTF-16). Only used for single-file sends and the
-  // text-only fallback path — album SendMultiMedia ignores these anyway,
-  // hence the plain-text URL line above.
+  // entity offsets are in UTF-16 — JS string `.length` already is).
   function buildUnlockEntity(): Api.MessageEntityTextUrl {
     const offset = captionBlock.length + lockedLine.length + 1; // +1 = "\n"
     return new Api.MessageEntityTextUrl({
@@ -458,20 +452,32 @@ export async function sendBlurredPreviewWithLink(
 
     try {
       await withRetry(`upload preview chunk ${Math.floor(i / TG_ALBUM_LIMIT) + 1}`, async () => {
-        // formattingEntities applies only when we actually carry the caption.
-        const entities = includeCaption ? formattingEntities : undefined;
+        const entities = includeCaption ? formattingEntities : [];
         if (chunk.length === 1) {
+          // Single-file path — tg.sendFile handles entities correctly here.
           await tg.sendFile(peer, {
             file: chunk[0],
             caption: chunkCaption,
-            formattingEntities: entities,
+            formattingEntities: includeCaption ? formattingEntities : undefined,
           });
         } else {
-          await tg.sendFile(peer, {
-            file: chunk,
-            caption: chunkCaption,
-            formattingEntities: entities,
+          // Multi-file path — go through messages.SendMultiMedia directly
+          // so the TextUrl entity on "🔓 Unlock for $X" actually reaches
+          // the fan. tg.sendFile with a file array internally goes through
+          // the same RPC but gramJS strips formattingEntities along the
+          // way, leaving the link text as plain unstyled text.
+          const uploaded = await mapWithConcurrency(chunk, DOWNLOAD_CONCURRENCY, async (f) => {
+            return tg.uploadFile({ file: f, workers: 1 });
           });
+          const singles = uploaded.map((inputFile, idx) =>
+            new Api.InputSingleMedia({
+              media: new Api.InputMediaUploadedPhoto({ file: inputFile }),
+              message: idx === 0 ? chunkCaption : "",
+              entities: idx === 0 ? entities : [],
+              randomId: generateRandomLong(),
+            }),
+          );
+          await tg.invoke(new Api.messages.SendMultiMedia({ peer, multiMedia: singles }));
         }
       });
       anyDelivered = true;
@@ -571,9 +577,16 @@ export async function sendOriginalsAlbum(
   // path below. `pendingUpload` collects everything that still needs the
   // bytes path. Skipped entirely when forceAlbum is true so all items go
   // out as one album.
+  //
+  // ALSO skipped for multi-item deliveries — the cached fast-path uses
+  // messages.SendMedia which sends each item as a SEPARATE message. For
+  // a 2+ item PPV the chatter (and fan) expect ONE album, not N messages.
+  // Trade-off: repeat multi-item deliveries pay the re-download/upload
+  // cost. For single-item PPVs the cache still kicks in and is instant.
   const pendingUpload: OriginalItem[] = [];
+  const forceUploadForAlbum = forceAlbum || filtered.length > 1;
   for (const it of filtered) {
-    if (forceAlbum) {
+    if (forceUploadForAlbum) {
       pendingUpload.push(it);
       continue;
     }

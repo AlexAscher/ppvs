@@ -842,12 +842,19 @@ export function TelegramChat({
                             {m.media &&
                             (m.media.type === "photo" || m.media.type === "video") ? (
                               <>
+                                {/* No CSS blur here — the thumb bytes themselves
+                                    already reflect whether the message is a
+                                    "locked preview" (pre-blurred JPEG uploaded
+                                    by the send path) or an unblurred original
+                                    (after-payment delivery / free send). The
+                                    chatter should see what was actually sent;
+                                    adding a CSS blur on top made unblurred
+                                    originals look locked. */}
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img
                                   src={m.media.thumbDataUrl ?? ""}
                                   alt=""
                                   className="w-full h-full object-cover"
-                                  style={{ filter: "blur(5px)", transform: "scale(1.1)" }}
                                 />
                                 {m.media.type === "video" && (
                                   <div className="absolute inset-0 flex items-center justify-center">

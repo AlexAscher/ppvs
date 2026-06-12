@@ -18,6 +18,9 @@ export function ChattersTab() {
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   // Presence: chatter_id -> last_seen ISO. Polled every 30s.
   const [presence, setPresence] = useState<Record<string, string>>({});
+  // Earnings: chatter_id -> { net, sales }. Loaded once on mount + refreshed
+  // every 60s so a fresh sale shows up in the list without a manual reload.
+  const [earnings, setEarnings] = useState<Record<string, { net: number; sales: number }>>({});
 
   useEffect(() => {
     const loadPresence = () => {
@@ -28,6 +31,20 @@ export function ChattersTab() {
     };
     loadPresence();
     const iv = setInterval(loadPresence, 30_000);
+    return () => clearInterval(iv);
+  }, []);
+
+  useEffect(() => {
+    const loadEarnings = () => {
+      void fetch("/api/chatters/stats")
+        .then((r) => (r.ok ? r.json() : { stats: {} }))
+        .then((d: { stats?: Record<string, { net: number; sales: number }> }) =>
+          setEarnings(d.stats ?? {}),
+        )
+        .catch(() => {});
+    };
+    loadEarnings();
+    const iv = setInterval(loadEarnings, 60_000);
     return () => clearInterval(iv);
   }, []);
 
@@ -197,10 +214,11 @@ export function ChattersTab() {
           {/* Desktop table (md+) */}
           <div className="hidden md:block bg-[#161a22] border border-[#2a2d35] rounded-lg overflow-x-auto">
             <div className="min-w-[640px]">
-            <div className="grid grid-cols-[1fr_240px_120px] gap-4 px-4 py-3 border-b border-[#2a2d35] bg-[#1f2937]/30 rounded-t-lg">
+            <div className="grid grid-cols-[1fr_240px_120px_140px] gap-4 px-4 py-3 border-b border-[#2a2d35] bg-[#1f2937]/30 rounded-t-lg">
               <div className="text-[11px] text-[#9ca3af] uppercase tracking-wider font-semibold">Chatter</div>
               <div className="text-[11px] text-[#9ca3af] uppercase tracking-wider font-semibold">Creator</div>
               <div className="text-[11px] text-[#9ca3af] uppercase tracking-wider font-semibold">Status</div>
+              <div className="text-[11px] text-[#9ca3af] uppercase tracking-wider font-semibold text-right">Earnings</div>
             </div>
             {chatters.map((c) => {
               const initials = c.chatter_email
@@ -213,7 +231,7 @@ export function ChattersTab() {
               return (
                 <div
                   key={c.id}
-                  className="grid grid-cols-[1fr_240px_120px] gap-4 px-4 py-3 border-b border-[#2a2d35] last:border-b-0 hover:bg-[#1f2937]/20 transition-colors cursor-pointer"
+                  className="grid grid-cols-[1fr_240px_120px_140px] gap-4 px-4 py-3 border-b border-[#2a2d35] last:border-b-0 hover:bg-[#1f2937]/20 transition-colors cursor-pointer"
                   onClick={() => setSelectedChatter(c)}
                 >
                   <div className="flex items-center gap-3 min-w-0">
@@ -278,6 +296,14 @@ export function ChattersTab() {
                   <div className="flex items-center">
                     <span className="px-2.5 py-1 bg-[#10b981]/20 text-[#10b981] rounded-full text-[11px] font-semibold">active</span>
                   </div>
+                  <div className="flex flex-col items-end justify-center text-right">
+                    <span className="text-[15px] font-bold text-[#6366f1]">
+                      ${(earnings[c.chatter_id]?.net ?? 0).toFixed(2)}
+                    </span>
+                    <span className="text-[10px] text-[#6b7280]">
+                      {earnings[c.chatter_id]?.sales ?? 0} sales
+                    </span>
+                  </div>
                 </div>
               );
             })}
@@ -316,6 +342,19 @@ export function ChattersTab() {
                     </div>
                     <span className="px-2.5 py-1 bg-[#10b981]/20 text-[#10b981] rounded-full text-[11px] font-semibold shrink-0">active</span>
                   </div>
+                  <div className="mt-3 pt-3 border-t border-[#2a2d35] flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[10px] text-[#6b7280] uppercase tracking-wider">Earnings</div>
+                      <div className="text-[15px] font-bold text-[#6366f1]">
+                        ${(earnings[c.chatter_id]?.net ?? 0).toFixed(2)}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[10px] text-[#6b7280] uppercase tracking-wider">Sales</div>
+                      <div className="text-[15px] font-bold text-white">{earnings[c.chatter_id]?.sales ?? 0}</div>
+                    </div>
+                  </div>
+
                   <div className="mt-3 pt-3 border-t border-[#2a2d35]" onClick={(e) => e.stopPropagation()}>
                     <div className="text-[10px] text-[#6b7280] uppercase tracking-wider mb-1.5">Assigned creator</div>
                     <div className="relative">

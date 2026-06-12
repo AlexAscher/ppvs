@@ -212,10 +212,28 @@ function InvitationCard({
   );
 }
 
+type ChatterStatsPayload = {
+  netToday: number;
+  netWeek: number;
+  netMonth: number;
+  netAllTime: number;
+  payingFans: number;
+  avgOrder: number;
+  ppvsOpened: number;
+  conversion: number;
+};
+
+function fmtMoney(n: number): string {
+  if (!Number.isFinite(n)) return "$0";
+  if (n >= 10000) return `$${(n / 1000).toFixed(1)}k`;
+  return `$${n.toLocaleString("en-US", { maximumFractionDigits: n < 100 ? 2 : 0 })}`;
+}
+
 function ChatterDashboardTab() {
   const supabase = createClient();
   const [agency, setAgency] = useState<AgencyInfo | null>(null);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [stats, setStats] = useState<ChatterStatsPayload | null>(null);
 
   const load = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -268,16 +286,48 @@ function ChatterDashboardTab() {
 
   useEffect(() => { load(); }, [load]);
 
-  const stats = [
-    { label: "Net Total Today", value: "$0", emoji: "💵" },
-    { label: "Net Total This Week", value: "$0", emoji: "📈" },
-    { label: "Net Total This Month", value: "$0", emoji: "💰" },
-    { label: "Net Total All Time", value: "$0", emoji: "🏆" },
-    { label: "Conversion Rate", value: "—", emoji: "🎯" },
-    { label: "PPVs Opened", value: "0", emoji: "👁️" },
-    { label: "Avg Order Value", value: "$0", emoji: "🛒" },
-    { label: "Paying Fans", value: "0", emoji: "👥" },
-  ];
+  // Pull headline numbers from the new /api/chatter/stats endpoint. Refresh
+  // every 60s while the tab is open so a fresh sale shows up quickly.
+  useEffect(() => {
+    let cancelled = false;
+    async function loadStats() {
+      try {
+        const r = await fetch("/api/chatter/stats");
+        if (!r.ok) return;
+        const data = (await r.json()) as ChatterStatsPayload;
+        if (!cancelled) setStats(data);
+      } catch { /* best-effort */ }
+    }
+    void loadStats();
+    const iv = setInterval(loadStats, 60_000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, []);
+
+  const statCards = stats
+    ? [
+        { label: "Net Total Today", value: fmtMoney(stats.netToday), emoji: "💵" },
+        { label: "Net Total This Week", value: fmtMoney(stats.netWeek), emoji: "📈" },
+        { label: "Net Total This Month", value: fmtMoney(stats.netMonth), emoji: "💰" },
+        { label: "Net Total All Time", value: fmtMoney(stats.netAllTime), emoji: "🏆" },
+        {
+          label: "Conversion Rate",
+          value: stats.conversion > 0 ? `${(stats.conversion * 100).toFixed(1)}%` : "—",
+          emoji: "🎯",
+        },
+        { label: "PPVs Opened", value: String(stats.ppvsOpened), emoji: "👁️" },
+        { label: "Avg Order Value", value: fmtMoney(stats.avgOrder), emoji: "🛒" },
+        { label: "Paying Fans", value: String(stats.payingFans), emoji: "👥" },
+      ]
+    : [
+        { label: "Net Total Today", value: "…", emoji: "💵" },
+        { label: "Net Total This Week", value: "…", emoji: "📈" },
+        { label: "Net Total This Month", value: "…", emoji: "💰" },
+        { label: "Net Total All Time", value: "…", emoji: "🏆" },
+        { label: "Conversion Rate", value: "…", emoji: "🎯" },
+        { label: "PPVs Opened", value: "…", emoji: "👁️" },
+        { label: "Avg Order Value", value: "…", emoji: "🛒" },
+        { label: "Paying Fans", value: "…", emoji: "👥" },
+      ];
 
   return (
     <div className="flex-1 bg-[#0d1117] overflow-y-auto p-4 md:p-6">
@@ -324,7 +374,7 @@ function ChatterDashboardTab() {
         ) : null}
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {stats.map((stat, i) => (
+          {statCards.map((stat, i) => (
             <div key={i} className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-4 hover:border-[#374151] transition-colors">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[20px]">{stat.emoji}</span>

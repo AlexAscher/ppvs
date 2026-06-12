@@ -5,6 +5,7 @@ import { withTelegramClient } from "@/lib/telegram-pool";
 import { sendOriginalsAlbum } from "@/lib/ppv-delivery";
 import { withTimeout } from "@/lib/with-timeout";
 import { consume, getClientIp, tooManyRequests } from "@/lib/rate-limit";
+import { sendSalesAlert } from "@/lib/sales-alerts";
 
 export const maxDuration = 300;
 
@@ -30,6 +31,9 @@ type ModelRow = {
   session_string: string;
   api_id: number;
   api_hash: string;
+  // Needed to fire Sales Alerts via the agency's bound bot chat.
+  agency_user_id: string;
+  name: string | null;
 };
 
 type ItemRowRaw = {
@@ -177,6 +181,42 @@ export async function POST(req: NextRequest) {
         console.error("[ppv/deliver] mark-paid timed out");
       }
 
+      // Fire the Sales Alert in the background. The Malum webhook already
+      // calls sendSalesAlert when it processes a real payment, but Malum is
+      // currently disabled (the /pay button hits /api/ppv/deliver directly
+      // to short-circuit the gateway). Without this hook, PPV sales never
+      // trigger a notification while tips do — confusing for the agency.
+      // We need the model's agency_user_id (loaded a few lines down for
+      // the Telegram push), so we fetch a thin lookup here too.
+      after(async () => {
+        try {
+          const { data: m } = await admin
+            .from("models")
+            .select("agency_user_id, name")
+            .eq("id", send.model_id)
+            .maybeSingle();
+          const agencyUserId = (m as { agency_user_id?: string } | null)?.agency_user_id;
+          if (!agencyUserId) return;
+          // Pick the first item's name as the alert label — good enough
+          // for a one-line bot message.
+          const firstItem = joined[0];
+          sendSalesAlert({
+            type: "ppv",
+            agencyUserId,
+            modelId: send.model_id,
+            modelName: (m as { name?: string } | null)?.name ?? undefined,
+            fanDisplay: send.peer_username ? `@${send.peer_username}` : `Fan ${send.peer_id.slice(-4)}`,
+            amount: Number(send.total_price ?? 0),
+            itemName: firstItem?.name ?? "PPV",
+          });
+        } catch (e) {
+          console.error(
+            "[ppv/deliver] sales alert failed:",
+            e instanceof Error ? e.message : e,
+          );
+        }
+      });
+
       // fans.total_spent increment moved to the background after() block —
       // it's not needed for the web reveal and was adding 2 round-trips to
       // the fan's critical path.
@@ -214,7 +254,7 @@ export async function POST(req: NextRequest) {
     if (!alreadyDelivered && items.length > 0) {
       const { data: modelRow, error: modelErr } = await admin
         .from("models")
-        .select("session_string, api_id, api_hash")
+        .select("session_string, api_id, api_hash, agency_user_id, name")
         .eq("id", send.model_id)
         .single();
 
@@ -227,7 +267,10 @@ export async function POST(req: NextRequest) {
           modelId: send.model_id,
           peerId: send.peer_id,
           accessHash: send.peer_access_hash,
-          caption: send.caption ?? "",
+          // No caption on the unblurred delivery. The chatter's caption
+          // already went out with the locked preview message; repeating it
+          // on the unlocked album makes the fan see the same text twice.
+          caption: "",
           session_string: model.session_string,
           api_id: model.api_id,
           api_hash: model.api_hash,

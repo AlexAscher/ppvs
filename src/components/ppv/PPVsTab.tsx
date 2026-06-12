@@ -359,7 +359,7 @@ export function PPVsTab() {
 
         {tags.length > 0 && (
           <div className="flex flex-wrap gap-2 items-center">
-            <span className="text-[11px] text-[#6b7280] uppercase tracking-wider">Filter:</span>
+            <span className="text-[11px] text-[#6b7280] uppercase tracking-wider">Filter by tag:</span>
             <button
               onClick={() => setActiveTagFilter(null)}
               className={`px-3 py-1 rounded-full text-[12px] font-medium transition-all ${

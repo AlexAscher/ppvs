@@ -393,29 +393,29 @@ export async function sendBlurredPreviewWithLink(
     return buildLockedPlaceholder(i, isVideo);
   });
 
-  // Build the caption. Layout:
-  //   <chatter caption>
+  // Build the caption. Layout (PayAndView-style):
+  //   <chatter caption>          ← only if non-empty, single \n separator
+  //   Unlock for $X.XX ↗ (URL)   ← the ↗ label is the hyperlink, URL is
+  //                                also visible in parens as plain text.
   //
-  //   🔒 Locked content — N items
-  //   🔓 Unlock for $X.XX     ← hyperlink (TextUrl entity)
-  //
-  // For multi-file sends we used to drop the entity (gramJS strips
-  // formattingEntities when tg.sendFile is called with a file array). Now
-  // multi-file goes through messages.SendMultiMedia directly (see below)
-  // which DOES preserve entities on the first InputSingleMedia's caption.
+  // The hyperlink (TextUrl entity) covers ONLY the "Unlock for $X.XX ↗"
+  // portion — Telegram renders it as colored/underlined link text. The URL
+  // string after it is plain, but Telegram also auto-detects it as a link
+  // (so even on clients that drop the entity, the URL is still clickable).
+  // We do not include a separate "🔒 Locked content — N items" line —
+  // the album itself shows there are N items.
   const cleanCaption = caption.trim();
-  const lockedLine = `🔒 Locked content — ${items.length} item${items.length === 1 ? "" : "s"}`;
   const priceFmt = totalPrice.toFixed(2);
-  const unlockLabel = `🔓 Unlock for $${priceFmt}`;
+  const unlockLabel = `Unlock for $${priceFmt} ↗`;
+  // captionBlock: empty caption → no leading text. With caption → caption
+  // + single \n separator (per user spec: "после Caption один enter").
+  const captionBlock = cleanCaption ? `${cleanCaption}\n` : "";
+  const messageCaption = `${captionBlock}${unlockLabel} (${payUrl})`;
 
-  // Compose the plain text. Empty caption → drop the leading two newlines.
-  const captionBlock = cleanCaption ? `${cleanCaption}\n\n` : "";
-  const messageCaption = `${captionBlock}${lockedLine}\n${unlockLabel}`;
-
-  // Compute the byte offset of the unlock label in UTF-16 code units (TG
-  // entity offsets are in UTF-16 — JS string `.length` already is).
+  // Compute the UTF-16 offset of unlockLabel within messageCaption.
+  // JS string `.length` is already in UTF-16 code units.
   function buildUnlockEntity(): Api.MessageEntityTextUrl {
-    const offset = captionBlock.length + lockedLine.length + 1; // +1 = "\n"
+    const offset = captionBlock.length;
     return new Api.MessageEntityTextUrl({
       offset,
       length: unlockLabel.length,

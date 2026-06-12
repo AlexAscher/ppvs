@@ -426,11 +426,10 @@ export function ActionPanel({
                   </div>
                 )}
 
-                {pricingHint && (
-                  <div className="text-[10px] text-[#9ca3af] bg-[#1f2937]/40 border border-[#2a2d35] rounded-md px-2.5 py-1.5">
-                    💡 {pricingHint}
-                  </div>
-                )}
+                {/* Pricing hint (avg / most common / top) removed per user
+                    request — was visually noisy and the chatter rarely
+                    referenced it. The data still lives in /api/ppv/pricing-stats
+                    so we can resurrect it later if needed. */}
 
                 <button
                   onClick={onSendPpv}

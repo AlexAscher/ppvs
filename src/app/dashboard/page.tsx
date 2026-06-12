@@ -48,6 +48,10 @@ function AgencySidebar({
   const [showLogout, setShowLogout] = useState(false);
   const [userEmail, setUserEmail] = useState("");
   const [userInitials, setUserInitials] = useState("AO");
+  // Display name shown above the email in the sidebar account block.
+  // Prefer the agency_name they typed at signup; fall back to their
+  // display name; final fallback "Agency Owner".
+  const [accountDisplay, setAccountDisplay] = useState("Agency Owner");
   const [isAdmin, setIsAdmin] = useState(false);
   const popupRef = useRef<HTMLDivElement>(null);
 
@@ -69,8 +73,14 @@ function AgencySidebar({
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return;
       setUserEmail(user.email ?? "");
-      const name = (user.user_metadata?.full_name as string) || user.email || "";
-      const parts = name.split(/[\s@.]+/).filter(Boolean);
+      const agencyName = (user.user_metadata?.agency_name as string | undefined)?.trim();
+      const fullName = (user.user_metadata?.full_name as string | undefined)?.trim();
+      // Prefer agency name (typed at signup), fall back to display name.
+      if (agencyName) setAccountDisplay(agencyName);
+      else if (fullName) setAccountDisplay(fullName);
+      // Initials reflect whichever name we ended up showing.
+      const source = agencyName || fullName || user.email || "";
+      const parts = source.split(/[\s@.]+/).filter(Boolean);
       if (parts.length >= 2) {
         setUserInitials((parts[0][0] + parts[1][0]).toUpperCase());
       } else if (parts.length === 1) {
@@ -188,7 +198,7 @@ function AgencySidebar({
             {userInitials}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-[13px] font-medium text-white truncate">Agency Owner</div>
+            <div className="text-[13px] font-medium text-white truncate">{accountDisplay}</div>
             <div className="text-[11px] text-[#6b7280] truncate">{userEmail || "admin@ppvs.io"}</div>
           </div>
         </button>

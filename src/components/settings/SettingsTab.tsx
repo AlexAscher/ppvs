@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase";
 import { AutoRepliesSection } from "./AutoRepliesSection";
 import { SalesAlertsSection } from "./SalesAlertsSection";
-import { PayoutSection } from "./PayoutSection";
 import { EcoModeSection } from "./EcoModeSection";
 
 /**
@@ -165,11 +164,9 @@ export function SettingsTab({ role }: { role: "agency" | "chatter" }) {
         {/* Sales Alerts — agency only */}
         {role === "agency" && <SalesAlertsSection />}
 
-        {/* Payout & Splits — agency only */}
-        {role === "agency" && <PayoutSection />}
-
-        {/* Eco Mode — agency only */}
-        {role === "agency" && <EcoModeSection />}
+        {/* Eco Mode — available to BOTH agency and chatter so a chatter can
+            dial down polling on a flaky uplink without waiting on the agency. */}
+        <EcoModeSection />
 
         {/* Auto Replies — agency only */}
         {role === "agency" && <AutoRepliesSection />}

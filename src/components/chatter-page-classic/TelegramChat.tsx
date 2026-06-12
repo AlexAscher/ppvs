@@ -166,10 +166,10 @@ function MediaBubble({
   onOpen: () => void;
   isChatter: boolean;
 }) {
-  // Progressive loading: stripped thumb shows instantly, ~800px HQ preview
-  // from /api/telegram/media?quality=thumb fades in over it. Lightbox keeps
-  // the full original.
-  const [hqLoaded, setHqLoaded] = useState(false);
+  // (Previously: stripped thumb + progressive HQ load. Now: clean "Tap to
+  // open" placeholder for photo/video — user feedback was that compressed
+  // Telegram thumbs looked bad. The lightbox still serves the full original
+  // on tap, so no quality is lost — only the inline preview is replaced.)
 
   if (media.type === "sticker") {
     const size = 128;
@@ -223,56 +223,37 @@ function MediaBubble({
     );
   }
   if (media.type === "photo" || media.type === "video") {
+    // Placeholder tile (per user request: don't render Telegram's compressed
+    // thumb in chat — it looks bad. Show a clean card with type + "Tap to
+    // open". Clicking lifts the original into the Lightbox via onOpen, no
+    // bytes downloaded until then.)
     const aspect = media.width && media.height ? media.width / media.height : 1;
     const w = 240;
     const h = Math.round(w / Math.max(0.6, Math.min(1.8, aspect)));
-    const hqUrl = `${media.fullUrl}&quality=thumb`;
+    const isVideo = media.type === "video";
     return (
       <button
         type="button"
         onClick={onOpen}
-        className="block relative rounded-lg overflow-hidden border border-[#2a2d35] hover:opacity-90 transition-opacity"
+        className={`block relative rounded-lg overflow-hidden border transition-all hover:scale-[1.01] hover:border-[#6366f1]/40 ${
+          isChatter
+            ? "border-white/15 bg-gradient-to-br from-[#5558e3]/30 to-[#4338ca]/20"
+            : "border-[#2a2d35] bg-gradient-to-br from-[#1f2937] to-[#0d1117]"
+        }`}
         style={{ width: w, height: h }}
       >
-        {media.thumbDataUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={media.thumbDataUrl}
-            alt=""
-            className="absolute inset-0 w-full h-full object-cover"
-            style={{
-              filter: hqLoaded ? "none" : "blur(8px)",
-              transition: "filter 0.3s",
-            }}
-            draggable={false}
-          />
-        ) : (
-          <div className="absolute inset-0 w-full h-full bg-gradient-to-br from-[#1f2937] to-[#111827]" />
-        )}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={hqUrl}
-          alt=""
-          className="absolute inset-0 w-full h-full object-cover transition-opacity duration-300"
-          style={{ opacity: hqLoaded ? 1 : 0 }}
-          onLoad={() => setHqLoaded(true)}
-          onError={() => { /* keep stripped thumb if HQ fails */ }}
-          draggable={false}
-        />
-        {media.type === "video" && (
-          <>
-            <div className="absolute inset-0 flex items-center justify-center z-10">
-              <div className="w-12 h-12 rounded-full bg-black/55 border border-white/15 flex items-center justify-center">
-                <Play className="w-5 h-5 text-white" fill="white" />
-              </div>
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5">
+          <div className="text-[44px] leading-none">{isVideo ? "🎬" : "🖼️"}</div>
+          <div className="text-[12px] font-semibold text-white/90">
+            {isVideo ? "Video" : "Photo"}
+          </div>
+          <div className="text-[10px] text-white/55">Tap to open</div>
+          {isVideo && media.durationSec ? (
+            <div className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-black/60 text-white text-[10px] font-medium">
+              {formatDuration(media.durationSec)}
             </div>
-            {media.durationSec ? (
-              <div className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded bg-black/65 text-white text-[10px] font-medium z-10">
-                {formatDuration(media.durationSec)}
-              </div>
-            ) : null}
-          </>
-        )}
+          ) : null}
+        </div>
       </button>
     );
   }
@@ -841,29 +822,21 @@ export function TelegramChat({
                           >
                             {m.media &&
                             (m.media.type === "photo" || m.media.type === "video") ? (
-                              <>
-                                {/* No CSS blur here — the thumb bytes themselves
-                                    already reflect whether the message is a
-                                    "locked preview" (pre-blurred JPEG uploaded
-                                    by the send path) or an unblurred original
-                                    (after-payment delivery / free send). The
-                                    chatter should see what was actually sent;
-                                    adding a CSS blur on top made unblurred
-                                    originals look locked. */}
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                  src={m.media.thumbDataUrl ?? ""}
-                                  alt=""
-                                  className="w-full h-full object-cover"
-                                />
-                                {m.media.type === "video" && (
-                                  <div className="absolute inset-0 flex items-center justify-center">
-                                    <div className="w-7 h-7 rounded-full bg-black/55 flex items-center justify-center">
-                                      <Play className="w-3.5 h-3.5 text-white" fill="white" />
-                                    </div>
-                                  </div>
-                                )}
-                              </>
+                              // Clean placeholder tile per user request — TG
+                              // thumbs are tiny + compressed and look bad in
+                              // the chat. The original loads on tap (lightbox).
+                              <div className={`w-full h-full flex flex-col items-center justify-center gap-0.5 ${
+                                first.isChatter
+                                  ? "bg-gradient-to-br from-[#5558e3]/35 to-[#4338ca]/20"
+                                  : "bg-gradient-to-br from-[#1f2937] to-[#0d1117]"
+                              }`}>
+                                <div className="text-[26px] leading-none">
+                                  {m.media.type === "video" ? "🎬" : "🖼️"}
+                                </div>
+                                <div className="text-[9px] font-semibold text-white/85 uppercase tracking-wider">
+                                  {m.media.type === "video" ? "Video" : "Photo"}
+                                </div>
+                              </div>
                             ) : (
                               <div className="w-full h-full flex items-center justify-center text-[22px]">🔒</div>
                             )}

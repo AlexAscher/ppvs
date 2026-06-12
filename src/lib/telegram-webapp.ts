@@ -17,7 +17,14 @@ import crypto from "node:crypto";
  *   computed === supplied_hash → trusted
  */
 
-const BOT_TOKEN_ENV = "TELEGRAM_BOT_TOKEN";
+// We deliberately split the Mini App bot from the alert bot — they're two
+// different Telegram bots with two different tokens. The Mini App lives on
+// the "pay" bot (the username fans see in t.me/<bot>/pay links), while the
+// alert bot DMs the agency about sales. They could be the same bot, but we
+// support keeping them separate so each one's username/branding is purpose-
+// built. Fall back to TELEGRAM_BOT_TOKEN for backward-compat with older
+// single-bot setups where only one var was ever set.
+const BOT_TOKEN_ENV = "TELEGRAM_PAY_BOT_TOKEN";
 
 export type VerifiedInitData = {
   /** Raw decoded payload — minus the hash. */
@@ -52,7 +59,10 @@ export function verifyInitData(
   initData: string,
   opts: { maxAgeSeconds?: number } = {},
 ): VerifiedInitData {
-  const botToken = process.env[BOT_TOKEN_ENV];
+  // Prefer the dedicated pay-bot token; fall back to TELEGRAM_BOT_TOKEN for
+  // backward-compat (some early deploys set just the one).
+  const botToken =
+    process.env[BOT_TOKEN_ENV] || process.env.TELEGRAM_BOT_TOKEN;
   if (!botToken) {
     throw new InitDataInvalidError(
       `${BOT_TOKEN_ENV} not set — Mini App auth is disabled`,

@@ -393,26 +393,33 @@ export async function sendBlurredPreviewWithLink(
     return buildLockedPlaceholder(i, isVideo);
   });
 
-  // Build the caption with a TextUrl entity for the "🔓 Unlock for $X ↗"
-  // line so it shows up as a clickable hyperlink in TG rather than a raw URL.
-  // Layout (one newline after caption, blank line before unlock):
+  // Build the caption. Layout:
   //   <chatter caption>
   //
   //   🔒 Locked content — N items
-  //   🔓 Unlock for $X.XX ↗      ← clickable
+  //   🔓 Unlock for $X.XX
+  //   👉 <raw URL>
+  //
+  // We include the URL as plain text (not just a TextUrl entity) because
+  // gramJS drops formattingEntities on multi-file albums (SendMultiMedia
+  // only honours entities on the first InputMedia, and even that's flaky).
+  // Telegram auto-detects URLs in plain text → still clickable, no entity
+  // needed. For single-file sends we also add the TextUrl entity on the
+  // "🔓 Unlock" line as a bonus (it lights up the line as a hyperlink).
   const cleanCaption = caption.trim();
   const lockedLine = `🔒 Locked content — ${items.length} item${items.length === 1 ? "" : "s"}`;
   const priceFmt = totalPrice.toFixed(2);
-  const unlockLabel = `🔓 Unlock for $${priceFmt} ↗`;
+  const unlockLabel = `🔓 Unlock for $${priceFmt}`;
+  const urlLine = `👉 ${payUrl}`;
 
   // Compose the plain text. Empty caption → drop the leading two newlines.
   const captionBlock = cleanCaption ? `${cleanCaption}\n\n` : "";
-  const messageCaption = `${captionBlock}${lockedLine}\n${unlockLabel}`;
+  const messageCaption = `${captionBlock}${lockedLine}\n${unlockLabel}\n${urlLine}`;
 
   // Compute the byte offset of the unlock label in UTF-16 code units (TG
-  // entity offsets are in UTF-16). Used by both album-caption and text-only
-  // fallback. We keep the entity construction in a small helper so both paths
-  // produce identical output.
+  // entity offsets are in UTF-16). Only used for single-file sends and the
+  // text-only fallback path — album SendMultiMedia ignores these anyway,
+  // hence the plain-text URL line above.
   function buildUnlockEntity(): Api.MessageEntityTextUrl {
     const offset = captionBlock.length + lockedLine.length + 1; // +1 = "\n"
     return new Api.MessageEntityTextUrl({

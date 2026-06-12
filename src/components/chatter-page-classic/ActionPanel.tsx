@@ -168,7 +168,7 @@ export function ActionPanel({
   }
 
   return (
-    <div className="w-full xl:w-[340px] xl:shrink-0 bg-[#161a22] border-l border-[#2a2d35] flex flex-col">
+    <div className="w-full xl:w-[30%] xl:shrink-0 bg-[#161a22] border-l border-[#2a2d35] flex flex-col">
       {/* Tabs — h-[44px] text-[10px] exactly per Create_prompt_design. */}
       <div className="h-[44px] border-b border-[#2a2d35] flex">
         {(["ppv", "tips", "notes", "stats"] as Tab[]).map((tab) => (

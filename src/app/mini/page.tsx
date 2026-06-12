@@ -253,6 +253,32 @@ export default function MiniAppPage() {
           </div>
         )}
 
+        {/* Price breakdown — show ONLY for PPV (tips have no platform fee
+            so basePrice === total there, would just be visual noise). The
+            fan sees one chatter-set base price + 10% service fee + total
+            so the difference between the chat caption price ($15) and the
+            checkout total ($16.50) is no longer mysterious. */}
+        {boot.kind === "ppv" && boot.total > boot.basePrice && (
+          <div className="bg-[#161b22] border border-[#30363d] rounded-xl px-4 py-3 mb-4 space-y-2">
+            <div className="flex items-center justify-between text-[13px]">
+              <span className="text-[#9ca3af]">Content</span>
+              <span className="text-white font-medium">${boot.basePrice.toFixed(2)}</span>
+            </div>
+            <div className="flex items-center justify-between text-[13px]">
+              <span className="text-[#9ca3af]">Service fee (10%)</span>
+              <span className="text-white font-medium">
+                ${(boot.total - boot.basePrice).toFixed(2)}
+              </span>
+            </div>
+            <div className="border-t border-[#30363d] pt-2 mt-1 flex items-center justify-between">
+              <span className="text-[14px] font-semibold text-white">Total</span>
+              <span className="text-[18px] font-bold text-[#6366f1]">
+                ${boot.total.toFixed(2)}
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* Pay button */}
         <button
           onClick={handlePay}

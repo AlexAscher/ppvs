@@ -466,12 +466,44 @@ export async function sendBlurredPreviewWithLink(
           // the fan. tg.sendFile with a file array internally goes through
           // the same RPC but gramJS strips formattingEntities along the
           // way, leaving the link text as plain unstyled text.
+          //
+          // The MTProto dance for an album is two-step:
+          //   1. messages.UploadMedia(InputMediaUploadedPhoto) — registers
+          //      the freshly uploaded bytes with Telegram and returns a
+          //      Photo with id/access_hash/file_reference.
+          //   2. messages.SendMultiMedia([InputSingleMedia(InputMediaPhoto)])
+          //      — uses those references to send the album.
+          // Skipping step 1 and passing InputMediaUploadedPhoto straight to
+          // SendMultiMedia gives MEDIA_INVALID. (That's what bit us earlier.)
           const uploaded = await mapWithConcurrency(chunk, DOWNLOAD_CONCURRENCY, async (f) => {
             return tg.uploadFile({ file: f, workers: 1 });
           });
-          const singles = uploaded.map((inputFile, idx) =>
+          const photoMedias = await Promise.all(
+            uploaded.map(async (inputFile) => {
+              const reg = await tg.invoke(
+                new Api.messages.UploadMedia({
+                  peer,
+                  media: new Api.InputMediaUploadedPhoto({ file: inputFile }),
+                }),
+              );
+              if (
+                !(reg instanceof Api.MessageMediaPhoto) ||
+                !(reg.photo instanceof Api.Photo)
+              ) {
+                throw new Error("UploadMedia returned non-photo result");
+              }
+              return new Api.InputMediaPhoto({
+                id: new Api.InputPhoto({
+                  id: reg.photo.id,
+                  accessHash: reg.photo.accessHash,
+                  fileReference: reg.photo.fileReference,
+                }),
+              });
+            }),
+          );
+          const singles = photoMedias.map((media, idx) =>
             new Api.InputSingleMedia({
-              media: new Api.InputMediaUploadedPhoto({ file: inputFile }),
+              media,
               message: idx === 0 ? chunkCaption : "",
               entities: idx === 0 ? entities : [],
               randomId: generateRandomLong(),

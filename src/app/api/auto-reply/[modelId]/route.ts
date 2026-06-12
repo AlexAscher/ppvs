@@ -27,9 +27,11 @@ export async function GET(
     if ("errorResponse" in auth) return auth.errorResponse;
 
     const admin = createAdminSupabaseClient();
+    // Tolerate the delay column being missing on older schemas (migration
+    // 20260615 may not have been run yet) by selecting *, then defaulting.
     const { data, error } = await admin
       .from("models")
-      .select("auto_reply_enabled, auto_reply_text, auto_reply_media_url, auto_reply_media_type")
+      .select("*")
       .eq("id", modelId)
       .maybeSingle();
     if (error) return Response.json({ error: error.message }, { status: 500 });
@@ -39,12 +41,14 @@ export async function GET(
       auto_reply_text?: string | null;
       auto_reply_media_url?: string | null;
       auto_reply_media_type?: string | null;
+      auto_reply_delay_sec?: number | null;
     };
     return Response.json({
       enabled: row.auto_reply_enabled ?? false,
       text: row.auto_reply_text ?? "",
       mediaUrl: row.auto_reply_media_url ?? null,
       mediaType: row.auto_reply_media_type ?? null,
+      delaySec: row.auto_reply_delay_sec ?? 0,
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : "Failed";
@@ -57,6 +61,7 @@ type UpsertBody = {
   text?: string;
   mediaUrl?: string | null;
   mediaType?: "photo" | "video" | null;
+  delaySec?: number;
 };
 
 export async function POST(
@@ -84,6 +89,12 @@ export async function POST(
         body.mediaType === "photo" || body.mediaType === "video"
           ? body.mediaType
           : null;
+    }
+    if (typeof body.delaySec === "number" && Number.isFinite(body.delaySec)) {
+      // Clamp delay to 0..3600 (1 hour). Anything past that is almost
+      // certainly a UI mistake — and the in-process setTimeout we use to
+      // honour it doesn't survive process restarts.
+      patch.auto_reply_delay_sec = Math.max(0, Math.min(3600, Math.round(body.delaySec)));
     }
 
     if (Object.keys(patch).length === 0) {

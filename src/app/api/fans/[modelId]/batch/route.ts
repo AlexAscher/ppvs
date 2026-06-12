@@ -33,20 +33,26 @@ export async function GET(
     const admin = createAdminSupabaseClient();
     const { data, error } = await admin
       .from("fans")
-      .select("peer_id, tags")
+      .select("peer_id, tags, total_spent")
       .eq("model_id", modelId)
       .in("peer_id", peerIds);
 
     if (error) return Response.json({ error: error.message }, { status: 500 });
 
     const tags: Record<string, string[]> = {};
-    for (const row of (data ?? []) as { peer_id: string; tags: string[] | null }[]) {
+    const spent: Record<string, number> = {};
+    type Row = { peer_id: string; tags: string[] | null; total_spent: number | string | null };
+    for (const row of (data ?? []) as Row[]) {
       if (row.tags && row.tags.length > 0) {
         tags[row.peer_id] = row.tags;
       }
+      const n = Number(row.total_spent ?? 0);
+      if (Number.isFinite(n) && n > 0) {
+        spent[row.peer_id] = n;
+      }
     }
 
-    return Response.json({ tags });
+    return Response.json({ tags, spent });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : "Failed";
     return Response.json({ error: message }, { status: 500 });

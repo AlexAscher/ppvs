@@ -204,6 +204,9 @@ export default function ChatterPage() {
   // Fan emoji tags for the entire chat list — loaded in batch after dialogs
   // arrive. Keyed by peerId so TelegramChat can render them without N fetches.
   const [fanTagsByPeer, setFanTagsByPeer] = useState<Record<string, string[]>>({});
+  // Total spent per fan (dollars). Same batch endpoint → renders as a
+  // little "$X" badge under each fan's avatar in the chat list.
+  const [fanSpentByPeer, setFanSpentByPeer] = useState<Record<string, number>>({});
 
   // Fan Groups: the agency's group library + which groups each peer is in,
   // plus the active dialog-list filter (null = All).
@@ -446,6 +449,7 @@ export default function ChatterPage() {
       // Defer setState per React 19 strict-effects convention.
       const tid = setTimeout(() => {
         setFanTagsByPeer({});
+        setFanSpentByPeer({});
         fanTagsFetchKey.current = "";
       }, 0);
       return () => clearTimeout(tid);
@@ -462,8 +466,9 @@ export default function ChatterPage() {
     const model = selectedModelId;
     void fetch(`/api/fans/${model}/batch?peerIds=${peerIds}`)
       .then((r) => r.json())
-      .then((data: { tags?: Record<string, string[]> }) => {
+      .then((data: { tags?: Record<string, string[]>; spent?: Record<string, number> }) => {
         if (data.tags) setFanTagsByPeer(data.tags);
+        if (data.spent) setFanSpentByPeer(data.spent);
       })
       .catch(() => { /* best-effort */ });
 
@@ -1355,8 +1360,9 @@ export default function ChatterPage() {
       avatar: initialsFromTitle(d.title),
       status: d.status,
       tags: fanTagsByPeer[d.id] ?? [],
+      spent: fanSpentByPeer[d.id] ?? 0,
     }));
-  }, [currentDialogs, search, fanTagsByPeer, activeGroupId, groupIdsByPeer]);
+  }, [currentDialogs, search, fanTagsByPeer, fanSpentByPeer, activeGroupId, groupIdsByPeer]);
 
   const chatMessages = useMemo(
     (): ChatMessage[] =>

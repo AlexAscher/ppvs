@@ -39,13 +39,16 @@ type ModelConfig = {
   auto_reply_text: string | null;
   auto_reply_media_url: string | null;
   auto_reply_media_type: string | null;
+  auto_reply_delay_sec: number | null;
 };
 
 async function loadModelConfig(modelId: string): Promise<ModelConfig | null> {
   const admin = createAdminSupabaseClient();
+  // select * so the optional auto_reply_delay_sec column comes through on
+  // newer schemas without breaking on older ones.
   const { data } = await admin
     .from("models")
-    .select("auto_reply_enabled, auto_reply_text, auto_reply_media_url, auto_reply_media_type")
+    .select("*")
     .eq("id", modelId)
     .maybeSingle();
   return (data as ModelConfig | null) ?? null;
@@ -154,6 +157,15 @@ export function subscribeAutoReplyEvents(modelId: string, client: TelegramClient
         // Mark FIRST so a second incoming from the same fan during our
         // gramJS send doesn't trigger a duplicate auto-reply.
         await markFanReplied(modelId, senderId);
+        // Optional delay (Instant / 1 min / 5 min, agency-configurable).
+        // Lives in-process via setTimeout — won't survive a process restart,
+        // which is acceptable for a "human typing" delay (the cap in the
+        // API is 1h precisely so a reply lost to a deploy is no worse than
+        // a normally-snappy auto-reply that never fired).
+        const delaySec = Number(config.auto_reply_delay_sec ?? 0);
+        if (delaySec > 0) {
+          await new Promise((res) => setTimeout(res, delaySec * 1000));
+        }
         await sendAutoReply(client, senderId, config);
       } catch (e: unknown) {
         console.error(

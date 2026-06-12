@@ -24,7 +24,16 @@ type Config = {
   text: string;
   mediaUrl: string | null;
   mediaType: "photo" | "video" | null;
+  /** Delay in seconds before the auto-reply fires after the fan's first
+   *  message. 0 = instant; presets are 0 / 60 / 300. */
+  delaySec: number;
 };
+
+const DELAY_PRESETS = [
+  { value: 0, label: "Instant" },
+  { value: 60, label: "1 min" },
+  { value: 300, label: "5 min" },
+] as const;
 
 function inferMediaType(file: File): "photo" | "video" | null {
   if (file.type.startsWith("image/")) return "photo";
@@ -45,6 +54,7 @@ export function AutoRepliesSection() {
     text: "",
     mediaUrl: null,
     mediaType: null,
+    delaySec: 0,
   });
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -85,6 +95,7 @@ export function AutoRepliesSection() {
           text: data.text ?? "",
           mediaUrl: data.mediaUrl ?? null,
           mediaType: data.mediaType ?? null,
+          delaySec: Number(data.delaySec ?? 0),
         });
         setMsg("");
       } catch (e: unknown) {
@@ -145,6 +156,7 @@ export function AutoRepliesSection() {
           text: config.text,
           mediaUrl: config.mediaUrl,
           mediaType: config.mediaType,
+          delaySec: config.delaySec,
         }),
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
@@ -239,6 +251,35 @@ export function AutoRepliesSection() {
               />
             </div>
           </label>
+
+          {/* Send delay — how long to wait before firing the auto-reply
+              after the fan's first message. Mimics a human typing pause. */}
+          <div>
+            <label className={label}>Send delay</label>
+            <div className="flex flex-wrap gap-2">
+              {DELAY_PRESETS.map((preset) => {
+                const active = config.delaySec === preset.value;
+                return (
+                  <button
+                    key={preset.value}
+                    type="button"
+                    onClick={() => setConfig((c) => ({ ...c, delaySec: preset.value }))}
+                    className={`px-3.5 py-2 rounded-lg text-[12px] font-medium border transition-all ${
+                      active
+                        ? "bg-[#6366f1] border-[#6366f1] text-white"
+                        : "bg-[#1f2937] border-[#374151] text-[#9ca3af] hover:text-white"
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-[#6b7280] mt-1.5">
+              How long to wait after the fan&apos;s first message before the
+              auto-reply fires.
+            </p>
+          </div>
 
           {/* Message text */}
           <div>

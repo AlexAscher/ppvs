@@ -87,6 +87,9 @@ export interface ChatListItem {
   status?: string | null;
   /** Fan emoji tags (🔴💵💰⭐👑) shown next to username in the list. */
   tags?: string[];
+  /** Total spent by this fan ($). Renders as a little badge under the
+   *  avatar in the dialog list (0 = no badge). */
+  spent?: number;
 }
 
 interface TelegramChatProps {
@@ -683,7 +686,19 @@ export function TelegramChat({
                 selectedChat === chat.id ? "bg-[#1f2937]" : ""
               }`}
             >
-              <FanAvatar modelId={modelId} peerId={chat.id} initials={chat.avatar} size={44} />
+              <div className="relative shrink-0">
+                <FanAvatar modelId={modelId} peerId={chat.id} initials={chat.avatar} size={44} />
+                {/* Spent badge — overlays the bottom of the avatar (PayAndView
+                    style). Only shown when the fan has actually paid something. */}
+                {!!chat.spent && chat.spent > 0 && (
+                  <span
+                    className="absolute -bottom-1 left-1/2 -translate-x-1/2 px-1.5 py-px rounded-full bg-[#6366f1] text-white text-[9px] font-bold leading-tight whitespace-nowrap shadow-md border border-[#0d1117]"
+                    title={`Total spent: $${chat.spent.toFixed(2)}`}
+                  >
+                    ${chat.spent >= 1000 ? `${(chat.spent / 1000).toFixed(1)}k` : Math.round(chat.spent)}
+                  </span>
+                )}
+              </div>
               <div className="flex-1 min-w-0 text-left">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-[13px] font-medium text-white truncate">@{chat.username}</span>

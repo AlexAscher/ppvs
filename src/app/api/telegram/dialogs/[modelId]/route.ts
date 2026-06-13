@@ -3,6 +3,7 @@ import { Api } from "telegram";
 import { authorizeModelAccess } from "@/lib/telegram-authorize";
 import { withTelegramClient } from "@/lib/telegram-pool";
 import { createAdminSupabaseClient } from "@/lib/supabase-server";
+import { recordFanRead } from "@/lib/fan-activity";
 
 // Throttle the background fan-capture: dialogs are polled every ~10s while a
 // chatter is viewing, but we only need to persist usernames occasionally.
@@ -10,9 +11,16 @@ import { createAdminSupabaseClient } from "@/lib/supabase-server";
 // everyone who messaged within a minute of appearing.
 declare global {
   var __ppvs_fan_capture_ts__: Map<string, number> | undefined;
+  /** Per-(model,peer) last-seen `readOutboxMaxId`. When the new value is
+   *  higher than the cached one, the fan just read more of our outgoing
+   *  messages → bump fans.last_read_at via recordFanRead(). */
+  var __ppvs_last_outbox_max__: Map<string, number> | undefined;
 }
 const fanCaptureTs: Map<string, number> = globalThis.__ppvs_fan_capture_ts__ ?? new Map();
 globalThis.__ppvs_fan_capture_ts__ = fanCaptureTs;
+const lastOutboxMax: Map<string, number> =
+  globalThis.__ppvs_last_outbox_max__ ?? new Map();
+globalThis.__ppvs_last_outbox_max__ = lastOutboxMax;
 const FAN_CAPTURE_THROTTLE_MS = 60_000;
 
 export type DialogItem = {
@@ -128,6 +136,22 @@ export async function GET(
         return items;
       },
     );
+
+    // Detect "fan just read more of our outgoing messages" per dialog.
+    // Telegram surfaces this via the dialog's `readOutboxMaxId` — when the
+    // value advances we know the fan opened the chat AFTER our last send.
+    // Bumps fans.last_read_at via recordFanRead (fire-and-forget, capped
+    // per-process by in-memory map). Skips dialogs we've never seen so
+    // initial app boot doesn't bump everyone to "just read now".
+    for (const d of result) {
+      if (d.type !== "user" || !d.readOutboxMaxId || d.readOutboxMaxId <= 0) continue;
+      const key = `${modelId}:${d.id}`;
+      const prev = lastOutboxMax.get(key);
+      if (prev !== undefined && d.readOutboxMaxId > prev) {
+        recordFanRead(modelId, d.id);
+      }
+      lastOutboxMax.set(key, d.readOutboxMaxId);
+    }
 
     // Background: persist every fan (user dialog) so the admin panel has a
     // full record of who messaged each model — even fans nobody opened. Runs

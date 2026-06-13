@@ -297,12 +297,31 @@ export default function ChatterPage() {
         "User";
       setDisplayName(name);
       // Hydrate the quick-emoji bar from this user's metadata. First-time
-      // users with no saved list get a sensible default seeded.
+      // users with no saved list get the spicy default set (matches the
+      // PayAndView competitor bar so the chatter doesn't have to set it
+      // up from scratch). Users on the OLD 6-item seed get auto-upgraded
+      // to the new 16-item set so the bar matches the screenshot the
+      // agency expects.
+      const NEW_DEFAULT = [
+        "😍", "😈", "🍆", "🍑", "🥵", "💋",
+        "🥰", "🤤", "💕", "👅", "😘", "💦",
+        "😊", "🍓", "💘", "🥺",
+      ];
+      const OLD_DEFAULT = ["😍", "❤️", "🔥", "💋", "💦", "🍑"];
       const saved = user.user_metadata?.quick_emojis;
-      if (Array.isArray(saved)) {
+      const looksLikeOldSeed =
+        Array.isArray(saved) &&
+        saved.length === OLD_DEFAULT.length &&
+        saved.every((e, i) => e === OLD_DEFAULT[i]);
+      if (Array.isArray(saved) && !looksLikeOldSeed) {
         setQuickEmojis(saved as string[]);
       } else {
-        setQuickEmojis(["😍", "❤️", "🔥", "💋", "💦", "🍑"]);
+        setQuickEmojis(NEW_DEFAULT);
+        // Persist the new default into user_metadata so the upgrade isn't
+        // re-run on every login.
+        if (looksLikeOldSeed) {
+          void supabase.auth.updateUser({ data: { quick_emojis: NEW_DEFAULT } });
+        }
       }
 
       if (r === "agency") {

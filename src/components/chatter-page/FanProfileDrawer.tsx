@@ -325,9 +325,11 @@ export function FanProfileDrawer({
             <div className="grid grid-cols-2 gap-2">
               <input
                 type="date"
+                lang="en"
                 value={birthdate ?? ""}
                 onChange={(e) => setBirthdate(e.target.value)}
                 placeholder="Birthdate"
+                title="Birthdate (YYYY-MM-DD)"
                 className="px-3 py-2 bg-[#1f2937]/60 border border-[#374151] rounded-md text-[12px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1]"
               />
               <input

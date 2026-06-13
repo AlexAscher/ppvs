@@ -6,12 +6,11 @@ import { Search, X } from "lucide-react";
 type Results = {
   fans: { peerId: string; modelName: string; name: string; snippet: string }[];
   ppvs: { id: string; name: string; modelName: string }[];
-  campaigns: { id: string; message: string; created_at: string }[];
   groups: { id: string; name: string; color: string }[];
   labels: { id: string; name: string; color: string }[];
 };
 
-const EMPTY: Results = { fans: [], ppvs: [], campaigns: [], groups: [], labels: [] };
+const EMPTY: Results = { fans: [], ppvs: [], groups: [], labels: [] };
 
 /**
  * Agency-wide search box. Debounced query to /api/search, results grouped
@@ -51,7 +50,7 @@ export function GlobalSearch() {
   }, []);
 
   const total =
-    res.fans.length + res.ppvs.length + res.campaigns.length + res.groups.length + res.labels.length;
+    res.fans.length + res.ppvs.length + res.groups.length + res.labels.length;
 
   return (
     <div className="relative" ref={boxRef}>
@@ -91,11 +90,6 @@ export function GlobalSearch() {
           <Section title="PPV items" show={res.ppvs.length > 0}>
             {res.ppvs.map((p) => (
               <Row key={`p-${p.id}`} title={p.name} sub={p.modelName} />
-            ))}
-          </Section>
-          <Section title="Mass DMs" show={res.campaigns.length > 0}>
-            {res.campaigns.map((c) => (
-              <Row key={`c-${c.id}`} title={c.message.slice(0, 60)} sub={new Date(c.created_at).toLocaleDateString("en-US")} />
             ))}
           </Section>
           <Section title="Groups" show={res.groups.length > 0}>

@@ -158,14 +158,6 @@ function AgencySidebar({
           <span className="text-[13px] font-medium">Go to Chatter</span>
         </button>
 
-        <button
-          onClick={() => router.push("/mass-dm")}
-          className="w-full px-4 py-2.5 rounded-lg flex items-center gap-3 text-[#9ca3af] hover:bg-[#1f2937] hover:text-white transition-all"
-        >
-          <span className="text-[16px] leading-none">💌</span>
-          <span className="text-[13px] font-medium">Mass DMs</span>
-        </button>
-
         {isAdmin && (
           <button
             onClick={() => router.push("/admin")}

@@ -9,7 +9,7 @@ import { createSupabaseServerClient, createAdminSupabaseClient } from "@/lib/sup
  * (simple + index-friendly enough at this scale). Each category is
  * best-effort and capped so the dropdown stays snappy.
  *
- * Response: { fans, ppvs, campaigns, groups, labels }
+ * Response: { fans, ppvs, groups, labels }
  */
 export async function GET(req: NextRequest) {
   const ssr = await createSupabaseServerClient();
@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
   if (!user) return Response.json({ error: "Not authenticated" }, { status: 401 });
 
   const q = (new URL(req.url).searchParams.get("q") ?? "").trim();
-  if (q.length < 2) return Response.json({ fans: [], ppvs: [], campaigns: [], groups: [], labels: [] });
+  if (q.length < 2) return Response.json({ fans: [], ppvs: [], groups: [], labels: [] });
   const like = `%${q.replace(/[%_]/g, "")}%`;
 
   const admin = createAdminSupabaseClient();
@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const [fans, ppvs, campaigns, groups, labels] = await Promise.all([
+  const [fans, ppvs, groups, labels] = await Promise.all([
     modelIds.length
       ? safe(
           admin
@@ -59,15 +59,6 @@ export async function GET(req: NextRequest) {
             .limit(10),
         )
       : Promise.resolve([]),
-    safe(
-      admin
-        .from("mass_dm_campaigns")
-        .select("id, message, created_at, sent_count, total_recipients")
-        .eq("agency_user_id", user.id)
-        .ilike("message", like)
-        .order("created_at", { ascending: false })
-        .limit(10),
-    ),
     safe(
       admin
         .from("fan_groups")
@@ -102,7 +93,6 @@ export async function GET(req: NextRequest) {
       name: p.name,
       modelName: nameByModel.get(p.model_id) ?? "Creator",
     })),
-    campaigns,
     groups,
     labels,
   });

@@ -702,6 +702,9 @@ function AgencyDetail({ agencyId, onBack }: { agencyId: string; onBack: () => vo
           </Panel>
         </div>
 
+        {/* Vault moderation queue scoped to this agency */}
+        <AgencyVaultPanel agencyId={agencyId} />
+
         {/* Payouts */}
         <Panel title="Payouts 💸">
           {(data?.payouts ?? []).length === 0 ? (
@@ -954,3 +957,279 @@ export function AdminClient() {
     </div>
   );
 }
+
+// ─── Vault moderation panel (inside the agency drill-down) ──────────────────
+
+type AdminPpv = {
+  id: string;
+  name: string;
+  description: string | null;
+  media_url: string | null;
+  preview_url: string | null;
+  created_at: string;
+  review_status: "pending" | "approved" | "rejected";
+  review_notes: string | null;
+  reviewed_at: string | null;
+  agency: { id: string; name: string | null; email: string | null };
+  model: { id: string; name: string };
+  group: { id: string; name: string } | null;
+};
+
+type ReviewStatusFilter = "all" | "pending" | "approved" | "rejected";
+
+function AgencyVaultPanel({ agencyId }: { agencyId: string }) {
+  const [items, setItems] = useState<AdminPpv[] | null>(null);
+  const [filter, setFilter] = useState<ReviewStatusFilter>("pending");
+  const [openPpv, setOpenPpv] = useState<AdminPpv | null>(null);
+  const [err, setErr] = useState("");
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const qs = new URLSearchParams({ agencyId });
+        if (filter !== "all") qs.set("status", filter);
+        const res = await fetch(`/api/admin/ppvs?${qs.toString()}`);
+        const j = (await res.json()) as { items?: AdminPpv[]; error?: string };
+        if (cancelled) return;
+        if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
+        setItems(j.items ?? []);
+        setErr("");
+      } catch (e: unknown) {
+        if (!cancelled) setErr(e instanceof Error ? e.message : "Failed to load");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [agencyId, filter, reloadKey]);
+
+  async function flipStatus(id: string, status: "approved" | "rejected" | "pending", notes?: string) {
+    setBusyId(id);
+    try {
+      const res = await fetch(`/api/admin/ppvs/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status, notes }),
+      });
+      const j = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
+      // Reload the panel + close the lightbox so the new status shows.
+      setReloadKey((k) => k + 1);
+      setOpenPpv(null);
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Update failed");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  const counts = (items ?? []).reduce(
+    (acc, p) => {
+      acc[p.review_status] = (acc[p.review_status] ?? 0) + 1;
+      return acc;
+    },
+    {} as Record<string, number>,
+  );
+
+  return (
+    <Panel
+      title={`Vault 🔒 — ${(items ?? []).length} item${(items ?? []).length === 1 ? "" : "s"}`}
+      right={
+        <div className="flex bg-[#0d1117] border border-[#2a2d35] rounded-lg p-0.5 text-[12px]">
+          {(["pending", "approved", "rejected", "all"] as ReviewStatusFilter[]).map((f) => (
+            <button
+              key={f}
+              type="button"
+              onClick={() => setFilter(f)}
+              className={`px-3 py-1 rounded-md transition-colors capitalize ${
+                filter === f ? "bg-[#6366f1] text-white" : "text-[#9ca3af] hover:text-white"
+              }`}
+            >
+              {f}
+              {f !== "all" && counts[f] != null ? ` (${counts[f]})` : ""}
+            </button>
+          ))}
+        </div>
+      }
+    >
+      {err && <ErrorBanner msg={err} />}
+
+      {items === null ? (
+        <div className="py-6 text-center text-[13px] text-[#6b7280]">Loading…</div>
+      ) : items.length === 0 ? (
+        <div className="py-6 text-center text-[13px] text-[#6b7280]">
+          No PPVs match this filter for this agency.
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+          {items.map((p) => {
+            const isVideo = !!p.media_url && /\.(mp4|mov|webm|m4v|mkv)(\?|$)/i.test(p.media_url);
+            return (
+              <button
+                key={p.id}
+                onClick={() => setOpenPpv(p)}
+                className="relative aspect-square rounded-lg overflow-hidden border border-[#2a2d35] hover:border-[#6366f1]/60 transition-colors bg-[#1f2937] text-left"
+              >
+                {p.media_url ? (
+                  isVideo ? (
+                    <video src={p.media_url} muted className="absolute inset-0 w-full h-full object-cover" />
+                  ) : (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={p.media_url} alt={p.name} className="absolute inset-0 w-full h-full object-cover" />
+                  )
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center text-[#374151] text-[24px]">📦</div>
+                )}
+                <div
+                  className={`absolute top-1.5 right-1.5 px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                    p.review_status === "pending"
+                      ? "bg-[#f59e0b] text-black"
+                      : p.review_status === "rejected"
+                        ? "bg-[#ef4444] text-white"
+                        : "bg-[#10b981] text-white"
+                  }`}
+                >
+                  {p.review_status === "pending" ? "⏳" : p.review_status === "rejected" ? "✕" : "✓"}
+                </div>
+                <div className="absolute bottom-0 inset-x-0 p-2 bg-gradient-to-t from-black/85 to-transparent">
+                  <div className="text-[11px] font-semibold text-white truncate">{p.name}</div>
+                  <div className="text-[9px] text-[#9ca3af] truncate">{p.model.name}</div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {openPpv && (
+        <AdminPpvLightbox
+          ppv={openPpv}
+          busy={busyId === openPpv.id}
+          onClose={() => setOpenPpv(null)}
+          onFlip={(s, notes) => flipStatus(openPpv.id, s, notes)}
+        />
+      )}
+    </Panel>
+  );
+}
+
+function AdminPpvLightbox({
+  ppv,
+  busy,
+  onClose,
+  onFlip,
+}: {
+  ppv: AdminPpv;
+  busy: boolean;
+  onClose: () => void;
+  onFlip: (status: "approved" | "rejected" | "pending", notes?: string) => void;
+}) {
+  const [notes, setNotes] = useState<string>(ppv.review_notes ?? "");
+  const isVideo = !!ppv.media_url && /\.(mp4|mov|webm|m4v|mkv)(\?|$)/i.test(ppv.media_url);
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-[#161a22] border border-[#2a2d35] rounded-xl shadow-2xl w-full max-w-[820px] max-h-[92vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3 p-4 border-b border-[#2a2d35]">
+          <div className="min-w-0">
+            <div className="text-[15px] font-semibold text-white truncate">{ppv.name}</div>
+            <div className="text-[11px] text-[#9ca3af] truncate">
+              {ppv.agency.name || ppv.agency.email || "Agency"} · {ppv.model.name}
+              {ppv.group ? ` · ${ppv.group.name}` : ""} · uploaded {fmtDate(ppv.created_at)}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-[#9ca3af] hover:text-white shrink-0"
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="p-4 space-y-4">
+          <div className="relative w-full bg-black rounded-lg overflow-hidden" style={{ aspectRatio: "16/10" }}>
+            {ppv.media_url ? (
+              isVideo ? (
+                <video src={ppv.media_url} controls autoPlay muted className="w-full h-full object-contain" />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={ppv.media_url} alt={ppv.name} className="w-full h-full object-contain" />
+              )
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center text-[#374151] text-[40px]">📦</div>
+            )}
+          </div>
+
+          {ppv.description && (
+            <div className="text-[12px] text-[#d1d5db] whitespace-pre-wrap">{ppv.description}</div>
+          )}
+
+          <div>
+            <label className="block text-[12px] text-[#9ca3af] mb-1.5">Notes (visible to admin only)</label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={3}
+              maxLength={2000}
+              placeholder="Optional reason / context …"
+              className="w-full px-3 py-2 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] text-white placeholder:text-[#6b7280] resize-none focus:outline-none focus:border-[#6366f1]"
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[11px] text-[#6b7280] mr-2">
+              Current status:{" "}
+              <span
+                className={
+                  ppv.review_status === "pending"
+                    ? "text-[#f59e0b]"
+                    : ppv.review_status === "rejected"
+                      ? "text-[#ef4444]"
+                      : "text-[#10b981]"
+                }
+              >
+                {ppv.review_status}
+              </span>
+            </span>
+            <button
+              type="button"
+              onClick={() => onFlip("approved", notes)}
+              disabled={busy || ppv.review_status === "approved"}
+              className="px-4 py-2 rounded-lg text-[12px] font-semibold bg-[#10b981] text-white hover:bg-[#0d8d68] disabled:opacity-50"
+            >
+              {busy ? "…" : "✓ Approve"}
+            </button>
+            <button
+              type="button"
+              onClick={() => onFlip("rejected", notes)}
+              disabled={busy || ppv.review_status === "rejected"}
+              className="px-4 py-2 rounded-lg text-[12px] font-semibold bg-[#ef4444] text-white hover:bg-[#c53030] disabled:opacity-50"
+            >
+              {busy ? "…" : "✕ Reject"}
+            </button>
+            {ppv.review_status !== "pending" && (
+              <button
+                type="button"
+                onClick={() => onFlip("pending", notes)}
+                disabled={busy}
+                className="px-4 py-2 rounded-lg text-[12px] font-semibold bg-[#1f2937] border border-[#374151] text-white hover:bg-[#374151] disabled:opacity-50"
+              >
+                Reset to pending
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+

@@ -36,8 +36,11 @@ export function PPVsTab() {
   // Bulk operations on standalone PPVs.
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkModal, setBulkModal] = useState<"delete" | "caption" | null>(null);
+  const [bulkModal, setBulkModal] = useState<"delete" | "caption" | "group" | null>(null);
   const [captionDraft, setCaptionDraft] = useState("");
+  // Selected target group id for the "Move to group" bulk action — null
+  // means move OUT of any group back to the standalone list.
+  const [bulkGroupChoice, setBulkGroupChoice] = useState<string | null>(null);
 
   // Bulk upload: pick many files → each becomes a PPV named after the file.
   // bulkInputRef is the *standalone* (group_id = null) trigger. Per-group
@@ -253,6 +256,49 @@ export function PPVsTab() {
     setSelectedIds(new Set());
     setSelectMode(false);
     setBulkModal(null);
+  }
+
+  async function doBulkMoveToGroup(targetGroupId: string | null) {
+    if (selectedIds.size === 0) return;
+    const ids = new Set(selectedIds);
+    await supabase
+      .from("ppvs")
+      .update({ group_id: targetGroupId })
+      .in("id", [...ids]);
+    // Compute the moved items from a single snapshot of current state so
+    // React strict-mode double-invocation can't double-count. Then update
+    // standalone + groups in one shot each.
+    const allItems = [
+      ...standalonePpvs,
+      ...groups.flatMap((g) => g.items),
+    ];
+    const moved: PpvItem[] = allItems
+      .filter((it) => ids.has(it.id))
+      .map((it) => ({ ...it, group_id: targetGroupId }));
+    setStandalonePpvs((prev) => {
+      const stay = prev.filter((p) => !ids.has(p.id));
+      if (targetGroupId === null) {
+        const stayIds = new Set(stay.map((s) => s.id));
+        const movedIn = moved.filter((m) => !stayIds.has(m.id));
+        return [...movedIn, ...stay];
+      }
+      return stay;
+    });
+    setGroups((prev) =>
+      prev.map((g) => {
+        const stay = g.items.filter((it) => !ids.has(it.id));
+        if (g.id === targetGroupId) {
+          const stayIds = new Set(stay.map((s) => s.id));
+          const movedIn = moved.filter((m) => !stayIds.has(m.id));
+          return { ...g, items: [...movedIn, ...stay] };
+        }
+        return { ...g, items: stay };
+      }),
+    );
+    setSelectedIds(new Set());
+    setSelectMode(false);
+    setBulkModal(null);
+    setBulkGroupChoice(null);
   }
 
   async function doBulkSetCaption(caption: string) {
@@ -505,10 +551,18 @@ export function PPVsTab() {
 
             {/* Bulk action bar */}
             {selectMode && selectedIds.size > 0 && (
-              <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-[#1f2937] border border-[#374151] rounded-xl shadow-2xl px-4 py-2.5">
+              <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-[#1f2937] border border-[#374151] rounded-xl shadow-2xl px-4 py-2.5 max-w-[95vw] flex-wrap">
                 <span className="text-[12px] text-white font-medium">{selectedIds.size} selected</span>
                 <button onClick={() => { setCaptionDraft(""); setBulkModal("caption"); }} className="text-[12px] px-3 py-1.5 rounded-lg bg-[#374151] text-white hover:bg-[#454c5a]">
                   Set caption
+                </button>
+                <button
+                  onClick={() => { setBulkGroupChoice(null); setBulkModal("group"); }}
+                  disabled={groups.length === 0}
+                  title={groups.length === 0 ? "Create a group first" : "Move to group"}
+                  className="text-[12px] px-3 py-1.5 rounded-lg bg-[#374151] text-white hover:bg-[#454c5a] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                >
+                  <Folder className="w-3.5 h-3.5" />Move to group
                 </button>
                 <button onClick={() => setBulkModal("delete")} className="text-[12px] px-3 py-1.5 rounded-lg bg-red-600 text-white hover:bg-red-700">
                   Delete
@@ -532,7 +586,7 @@ export function PPVsTab() {
                         <button onClick={doBulkDelete} className="px-4 py-2 rounded-lg text-[12px] bg-red-600 text-white hover:bg-red-700 font-semibold">Delete</button>
                       </div>
                     </>
-                  ) : (
+                  ) : bulkModal === "caption" ? (
                     <>
                       <h3 className="text-[16px] font-semibold text-white mb-2">Set caption for {selectedIds.size} PPV{selectedIds.size > 1 ? "s" : ""}</h3>
                       <textarea
@@ -546,6 +600,49 @@ export function PPVsTab() {
                       <div className="flex justify-end gap-2">
                         <button onClick={() => setBulkModal(null)} className="px-4 py-2 rounded-lg text-[12px] bg-[#1f2937] border border-[#374151] text-white hover:bg-[#252b36]">Cancel</button>
                         <button onClick={() => doBulkSetCaption(captionDraft)} className="px-4 py-2 rounded-lg text-[12px] bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white hover:from-[#5558e3] hover:to-[#4338ca] font-semibold">Apply</button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <h3 className="text-[16px] font-semibold text-white mb-1">Move {selectedIds.size} PPV{selectedIds.size > 1 ? "s" : ""} to group</h3>
+                      <p className="text-[12px] text-[#9ca3af] mb-3">Pick a target group, or remove them from any group.</p>
+                      <div className="max-h-[260px] overflow-y-auto -mx-1 px-1 space-y-1 mb-4">
+                        <button
+                          onClick={() => setBulkGroupChoice(null)}
+                          className={`w-full text-left px-3 py-2 rounded-lg text-[13px] border transition-all ${
+                            bulkGroupChoice === null
+                              ? "bg-[#6366f1]/15 border-[#6366f1] text-white"
+                              : "bg-[#1f2937] border-[#374151] text-[#d1d5db] hover:bg-[#252b36]"
+                          }`}
+                        >
+                          <span className="inline-flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-[#6b7280]" />
+                            No group (standalone)
+                          </span>
+                        </button>
+                        {groups.map((g) => (
+                          <button
+                            key={g.id}
+                            onClick={() => setBulkGroupChoice(g.id)}
+                            className={`w-full text-left px-3 py-2 rounded-lg text-[13px] border transition-all ${
+                              bulkGroupChoice === g.id
+                                ? "bg-[#6366f1]/15 border-[#6366f1] text-white"
+                                : "bg-[#1f2937] border-[#374151] text-[#d1d5db] hover:bg-[#252b36]"
+                            }`}
+                          >
+                            <span className="inline-flex items-center gap-2">
+                              <Folder className="w-3.5 h-3.5 text-[#a5a8ff]" />
+                              <span className="truncate">{g.name}</span>
+                              <span className="ml-auto text-[10px] text-[#6b7280]">
+                                {g.items.length} item{g.items.length === 1 ? "" : "s"}
+                              </span>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        <button onClick={() => setBulkModal(null)} className="px-4 py-2 rounded-lg text-[12px] bg-[#1f2937] border border-[#374151] text-white hover:bg-[#252b36]">Cancel</button>
+                        <button onClick={() => doBulkMoveToGroup(bulkGroupChoice)} className="px-4 py-2 rounded-lg text-[12px] bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white hover:from-[#5558e3] hover:to-[#4338ca] font-semibold">Move</button>
                       </div>
                     </>
                   )}

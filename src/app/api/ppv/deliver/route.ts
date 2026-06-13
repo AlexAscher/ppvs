@@ -219,6 +219,26 @@ export async function POST(req: NextRequest) {
         }
       });
 
+      // Inline chat-event so the chatter sees "Customer paid the PPV
+      // ($X)" appear in their chat view alongside Telegram messages.
+      // Fans never see this — it lives in chat_system_events, not in TG.
+      after(async () => {
+        try {
+          await admin.from("chat_system_events").insert({
+            model_id: send.model_id,
+            peer_id: send.peer_id,
+            kind: "ppv_paid",
+            amount: Number(send.total_price ?? 0),
+            body: `Customer paid the PPV ($${Number(send.total_price ?? 0).toFixed(2)})`,
+          });
+        } catch (e) {
+          console.error(
+            "[ppv/deliver] chat-event insert failed:",
+            e instanceof Error ? e.message : e,
+          );
+        }
+      });
+
       // fans.total_spent increment moved to the background after() block —
       // it's not needed for the web reveal and was adding 2 round-trips to
       // the fan's critical path.

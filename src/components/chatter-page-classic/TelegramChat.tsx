@@ -75,6 +75,10 @@ export interface Message {
   } | null;
   /** Telegram grouped_id — messages in the same album share one id. */
   groupedId?: string | null;
+  /** When set, the bubble renders as a centered SYSTEM banner (tip / PPV
+   *  paid). Only the chatter sees these — they live in chat_system_events,
+   *  not in Telegram. media/reply/groupedId are ignored on system msgs. */
+  system?: { kind: "tip_paid" | "ppv_paid" } | null;
 }
 
 export interface ChatListItem {
@@ -862,6 +866,24 @@ export function TelegramChat({
         {/* Messages Area — p-5 space-y-3 from design */}
         <div ref={messagesRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-3 md:p-5 space-y-3">
           {chunks.map((chunk) => {
+            // System banner — centered, dim, with "Customer doesn't see this"
+            // footnote so the chatter understands fans never see this line.
+            // Tip / PPV purchase events flow through here.
+            if (chunk.kind === "single" && chunk.msg.system) {
+              const m = chunk.msg;
+              return (
+                <div key={m.id} className="flex justify-center my-2">
+                  <div className="max-w-[80%] px-3 py-2 rounded-xl bg-[#1f2937]/60 border border-[#2a2d35] text-center">
+                    <div className="text-[12px] text-[#e5e7eb] font-medium">
+                      {m.text}
+                    </div>
+                    <div className="text-[10px] text-[#6b7280] mt-1">
+                      {m.time} · Customer doesn&apos;t see this
+                    </div>
+                  </div>
+                </div>
+              );
+            }
             if (chunk.kind === "album") {
               const first = chunk.msgs[0];
               const caption = chunk.msgs.find((m) => m.text && m.text !== "—");

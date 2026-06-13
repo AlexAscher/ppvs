@@ -163,6 +163,12 @@ export default function ChatterPage() {
   const [dialogsByModel, setDialogsByModel] = useState<Record<string, Dialog[]>>({});
   const [selectedDialog, setSelectedDialog] = useState<Dialog | null>(null);
   const [apiMessages, setApiMessages] = useState<ApiMessage[]>([]);
+  // Per-dialog system events (tip / PPV paid) — fetched alongside messages
+  // and merged into the chat view as centered "Customer doesn't see this"
+  // banners. Cleared whenever the open chat changes.
+  const [systemEvents, setSystemEvents] = useState<
+    { id: string; kind: "tip_paid" | "ppv_paid"; body: string; createdAt: number }[]
+  >([]);
   const [activity, setActivity] = useState<ActivityState | null>(null);
 
   const [search, setSearch] = useState("");
@@ -653,10 +659,37 @@ export default function ChatterPage() {
       const url = new URL(`/api/telegram/messages/${modelId}`, window.location.origin);
       url.searchParams.set("peerId", dialog.id);
       if (dialog.accessHash) url.searchParams.set("accessHash", dialog.accessHash);
-      const res = await fetch(url.toString());
+      // Fan-paid system events live in our DB, not in Telegram — pull them
+      // in parallel with messages and merge by timestamp client-side.
+      const eventsUrl = new URL(`/api/chat-events/${modelId}`, window.location.origin);
+      eventsUrl.searchParams.set("peerId", dialog.id);
+      const [res, eventsRes] = await Promise.all([
+        fetch(url.toString()),
+        fetch(eventsUrl.toString()),
+      ]);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
       const list: ApiMessage[] = data.messages ?? [];
+      if (eventsRes.ok) {
+        const ev = (await eventsRes.json()) as {
+          events?: { id: string; kind: "tip_paid" | "ppv_paid"; body: string; created_at: string }[];
+        };
+        const mapped = (ev.events ?? []).map((e) => ({
+          id: e.id,
+          kind: e.kind,
+          body: e.body,
+          createdAt: Math.floor(new Date(e.created_at).getTime() / 1000),
+        }));
+        setSystemEvents((prev) => {
+          if (
+            prev.length === mapped.length &&
+            prev[prev.length - 1]?.id === mapped[mapped.length - 1]?.id
+          ) {
+            return prev;
+          }
+          return mapped;
+        });
+      }
       setApiMessages((prev) => {
         // Carry over optimistic messages (negative ids) that the server
         // poll hasn't reflected yet. Drop an optimistic once a real outgoing
@@ -874,6 +907,7 @@ export default function ChatterPage() {
     autoSelectedRef.current = null;
     setSelectedDialog(null);
     setApiMessages([]);
+    setSystemEvents([]);
     setSelectedModelId(id);
   }
 
@@ -883,6 +917,7 @@ export default function ChatterPage() {
     const d = list.find((x) => x.id === id) ?? null;
     setSelectedDialog(d);
     setApiMessages([]);
+    setSystemEvents([]);
     // On mobile, opening a chat swaps the single visible panel to the
     // conversation view (desktop shows everything at once anyway).
     setMobileView("chat");
@@ -1492,6 +1527,39 @@ export default function ChatterPage() {
     [apiMessages, selectedModelId, selectedDialog],
   );
 
+  // Merge chat_system_events into the rendered chat so the chatter sees
+  // "Customer sent a tip of $X" inline. Sorted by event timestamp against
+  // the Telegram message dates so the banner lands at the right spot in
+  // the conversation. The TelegramChat component renders entries with
+  // `system` as a centered banner, ignoring media / reply / grouping.
+  const chatMessagesWithEvents = useMemo((): ChatMessage[] => {
+    if (systemEvents.length === 0) return chatMessages;
+    const sysAsMessages: (ChatMessage & { _sortKey: number })[] = systemEvents.map(
+      (e): ChatMessage & { _sortKey: number } => ({
+        id: `sys_${e.id}`,
+        text: e.body,
+        time: formatTime(e.createdAt),
+        isChatter: false,
+        media: null,
+        replyPreview: null,
+        groupedId: null,
+        system: { kind: e.kind },
+        _sortKey: e.createdAt,
+      }),
+    );
+    const realWithKeys = chatMessages.map((m, idx): ChatMessage & { _sortKey: number } => ({
+      ...m,
+      _sortKey: apiMessages[idx]?.date ?? 0,
+    }));
+    const merged = [...realWithKeys, ...sysAsMessages].sort(
+      (a, b) => a._sortKey - b._sortKey,
+    );
+    return merged.map(({ _sortKey: _omit, ...rest }) => {
+      void _omit;
+      return rest;
+    });
+  }, [chatMessages, systemEvents, apiMessages]);
+
   const selectedChatItem = useMemo((): ChatListItem | null => {
     if (!selectedDialog) return null;
     // Prefer the latest status from the polled list so it stays fresh as
@@ -1637,7 +1705,7 @@ export default function ChatterPage() {
               if (activeGroupId === id) setActiveGroupId(null);
             }
           }}
-          messages={chatMessages}
+          messages={chatMessagesWithEvents}
           totalSpent={totalSpentFormatted}
           inputText={inputText}
           onInputChange={setInputText}

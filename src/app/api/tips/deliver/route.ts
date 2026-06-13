@@ -92,6 +92,26 @@ export async function POST(req: NextRequest) {
       }
     })();
 
+    // Inline chat-event so the chatter sees "Customer sent a tip of $X"
+    // appear in their chat view alongside Telegram messages. Fans never
+    // see this — it lives in chat_system_events, not in Telegram.
+    void (async () => {
+      try {
+        await admin.from("chat_system_events").insert({
+          model_id: tipRow.model_id,
+          peer_id: tipRow.peer_id,
+          kind: "tip_paid",
+          amount: Number(tipRow.amount ?? 0),
+          body: `Customer sent a tip of $${Number(tipRow.amount ?? 0).toFixed(2)}`,
+        });
+      } catch (e) {
+        console.error(
+          "[tips/deliver] chat-event insert failed:",
+          e instanceof Error ? e.message : e,
+        );
+      }
+    })();
+
     // Sales Alert for tips (fire-and-forget).
     void (async () => {
       try {

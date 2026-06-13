@@ -256,7 +256,19 @@ function ChatterDashboardTab() {
           .maybeSingle();
         if (m) model = m as ChatterModel;
       }
-      setAgency({ name: row.invitations?.agency_name ?? "Agency", model });
+      // Prefer the LIVE agency name (from /api/chatter/agency) over the
+      // invitation snapshot, which goes stale when the agency renames
+      // itself in Settings. Falls back to the invitation if the endpoint
+      // can't reach the agency's metadata.
+      let agencyName = row.invitations?.agency_name ?? "Agency";
+      try {
+        const r = await fetch("/api/chatter/agency");
+        if (r.ok) {
+          const d = (await r.json()) as { agencyName?: string | null };
+          if (d.agencyName) agencyName = d.agencyName;
+        }
+      } catch { /* keep invitation snapshot */ }
+      setAgency({ name: agencyName, model });
     } else {
       setAgency(null);
     }

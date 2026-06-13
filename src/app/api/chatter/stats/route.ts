@@ -1,3 +1,4 @@
+import { NextRequest } from "next/server";
 import { createSupabaseServerClient, createAdminSupabaseClient } from "@/lib/supabase-server";
 import { agencyNet } from "@/lib/platform";
 
@@ -34,24 +35,41 @@ function dayStart(d: Date): Date {
   return x;
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const ssr = await createSupabaseServerClient();
   const { data: { user } } = await ssr.auth.getUser();
   if (!user) return Response.json({ error: "Not authenticated" }, { status: 401 });
 
   const admin = createAdminSupabaseClient();
 
-  // All PPV sends owned by this chatter (any status). Computed everything
+  // Determine WHOSE stats to compute. Default = caller's own. If ?chatterId
+  // is supplied AND the caller is the agency that owns that chatter, return
+  // that chatter's stats — used by the agency's ChatterStatsModal so it
+  // doesn't have to re-implement the same math.
+  const wantId = new URL(req.url).searchParams.get("chatterId");
+  let targetChatterId = user.id;
+  if (wantId && wantId !== user.id) {
+    const { data: link } = await admin
+      .from("agency_chatters")
+      .select("chatter_id")
+      .eq("agency_id", user.id)
+      .eq("chatter_id", wantId)
+      .maybeSingle();
+    if (!link) return Response.json({ error: "Forbidden" }, { status: 403 });
+    targetChatterId = wantId;
+  }
+
+  // All PPV sends + tips owned by the target chatter. Computed everything
   // server-side: it's much cheaper than streaming N rows to the client.
   const [sendsRes, tipsRes] = await Promise.all([
     admin
       .from("ppv_sends")
       .select("total_price, status, paid_at, delivered_at, created_at, peer_id")
-      .eq("chatter_id", user.id),
+      .eq("chatter_id", targetChatterId),
     admin
       .from("tips")
       .select("amount, status, paid_at, created_at, peer_id")
-      .eq("chatter_id", user.id),
+      .eq("chatter_id", targetChatterId),
   ]);
 
   type PSend = {

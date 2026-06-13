@@ -1,8 +1,25 @@
 "use client";
 
-import { useState } from "react";
-import { X, Trash2, DollarSign, MessageSquare, TrendingUp, Eye, ChevronDown } from "lucide-react";
+import { useState, useEffect } from "react";
+import { X, Trash2, ChevronDown } from "lucide-react";
 import { AgencyChatter, ChatterModel } from "./types";
+
+type ChatterStatsPayload = {
+  netToday: number;
+  netWeek: number;
+  netMonth: number;
+  netAllTime: number;
+  payingFans: number;
+  avgOrder: number;
+  ppvsOpened: number;
+  conversion: number;
+};
+
+function fmtMoney(n: number): string {
+  if (!Number.isFinite(n)) return "$0";
+  if (n >= 10000) return `$${(n / 1000).toFixed(1)}k`;
+  return `$${n.toLocaleString("en-US", { maximumFractionDigits: n < 100 ? 2 : 0 })}`;
+}
 
 type Props = {
   chatter: AgencyChatter;
@@ -18,6 +35,20 @@ export function ChatterStatsModal({ chatter, models, onClose, onReassigned, onDe
   const [error, setError] = useState("");
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const [modelId, setModelId] = useState<string | null>(chatter.model_id);
+  const [stats, setStats] = useState<ChatterStatsPayload | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`/api/chatter/stats?chatterId=${chatter.chatter_id}`);
+        if (!r.ok) return;
+        const data = (await r.json()) as ChatterStatsPayload;
+        if (!cancelled) setStats(data);
+      } catch { /* best-effort */ }
+    })();
+    return () => { cancelled = true; };
+  }, [chatter.chatter_id]);
 
   async function handleReassign(newModelId: string) {
     setLoading(true);
@@ -65,13 +96,25 @@ export function ChatterStatsModal({ chatter, models, onClose, onReassigned, onDe
 
   const selectedModel = models.find((m) => m.id === modelId);
 
-  // mock stats
-  const stats = [
-    { label: "Net Sales Today", value: "$0", icon: DollarSign },
-    { label: "Net Sales All Time", value: "$0", icon: TrendingUp },
-    { label: "Messages Today", value: "0", icon: MessageSquare },
-    { label: "PPV Opened", value: "0", icon: Eye },
-  ];
+  // 8 stat cards — same data as the chatter's own dashboard. Loaded from
+  // /api/chatter/stats?chatterId=… (the route accepts a chatterId param
+  // for agencies querying their own chatters).
+  const statCards = stats
+    ? [
+        { label: "Net Today", value: fmtMoney(stats.netToday), emoji: "💵" },
+        { label: "Net This Week", value: fmtMoney(stats.netWeek), emoji: "📈" },
+        { label: "Net This Month", value: fmtMoney(stats.netMonth), emoji: "💰" },
+        { label: "Net All Time", value: fmtMoney(stats.netAllTime), emoji: "🏆" },
+        {
+          label: "Conversion",
+          value: stats.conversion > 0 ? `${(stats.conversion * 100).toFixed(1)}%` : "—",
+          emoji: "🎯",
+        },
+        { label: "PPVs Opened", value: String(stats.ppvsOpened), emoji: "👁️" },
+        { label: "Avg Order", value: fmtMoney(stats.avgOrder), emoji: "🛒" },
+        { label: "Paying Fans", value: String(stats.payingFans), emoji: "👥" },
+      ]
+    : Array.from({ length: 8 }, () => ({ label: "Loading", value: "…", emoji: "•" }));
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -137,19 +180,16 @@ export function ChatterStatsModal({ chatter, models, onClose, onReassigned, onDe
 
           <div>
             <div className="text-[12px] text-[#9ca3af] font-medium mb-2">Statistics</div>
-            <div className="grid grid-cols-2 gap-3">
-              {stats.map((s) => {
-                const Icon = s.icon;
-                return (
-                  <div key={s.label} className="bg-[#1f2937]/40 border border-[#374151] rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[11px] text-[#9ca3af] uppercase tracking-wider">{s.label}</span>
-                      <Icon className="w-4 h-4 text-[#6b7280]" />
-                    </div>
-                    <div className="text-[20px] font-bold text-white">{s.value}</div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-h-[260px] overflow-y-auto pr-1">
+              {statCards.map((s, i) => (
+                <div key={i} className="bg-[#1f2937]/40 border border-[#374151] rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[10px] text-[#9ca3af] uppercase tracking-wider">{s.label}</span>
+                    <span className="text-[14px] leading-none">{s.emoji}</span>
                   </div>
-                );
-              })}
+                  <div className="text-[18px] font-bold text-white">{s.value}</div>
+                </div>
+              ))}
             </div>
           </div>
 

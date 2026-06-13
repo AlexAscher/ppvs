@@ -21,9 +21,12 @@ export function SettingsTab({ role }: { role: "agency" | "chatter" }) {
 
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [agencyName, setAgencyName] = useState("");
 
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileMsg, setProfileMsg] = useState("");
+  const [savingAgency, setSavingAgency] = useState(false);
+  const [agencyMsg, setAgencyMsg] = useState("");
 
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -39,6 +42,7 @@ export function SettingsTab({ role }: { role: "agency" | "chatter" }) {
           (user.user_metadata?.display_name as string) ||
           "",
       );
+      setAgencyName((user.user_metadata?.agency_name as string) ?? "");
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -56,6 +60,25 @@ export function SettingsTab({ role }: { role: "agency" | "chatter" }) {
       setProfileMsg(e instanceof Error ? `Error: ${e.message}` : "Error");
     } finally {
       setSavingProfile(false);
+    }
+  }
+
+  async function saveAgencyName() {
+    setSavingAgency(true);
+    setAgencyMsg("");
+    try {
+      const res = await fetch("/api/settings/agency-name", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: agencyName }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      setAgencyMsg("Saved ✓");
+    } catch (e: unknown) {
+      setAgencyMsg(e instanceof Error ? `Error: ${e.message}` : "Error");
+    } finally {
+      setSavingAgency(false);
     }
   }
 
@@ -160,6 +183,32 @@ export function SettingsTab({ role }: { role: "agency" | "chatter" }) {
             </div>
           </div>
         </div>
+
+        {/* Agency name — agency only. Chatters see the result via
+            /api/chatter/agency in their dashboard ("Working for {name}"). */}
+        {role === "agency" && (
+          <div className={card}>
+            <h2 className="text-[15px] font-semibold text-white mb-4">Agency name</h2>
+            <div className="space-y-3">
+              <div>
+                <label className={label}>Name shown to your chatters</label>
+                <input
+                  className={input}
+                  value={agencyName}
+                  onChange={(e) => setAgencyName(e.target.value)}
+                  placeholder="My Agency"
+                  maxLength={80}
+                />
+              </div>
+              <div className="flex items-center gap-3">
+                <button className={btn} onClick={saveAgencyName} disabled={savingAgency || !agencyName.trim()}>
+                  {savingAgency ? "Saving…" : "Save name"}
+                </button>
+                {agencyMsg && <span className={msgCls(agencyMsg)}>{agencyMsg}</span>}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Sales Alerts — agency only */}
         {role === "agency" && <SalesAlertsSection />}

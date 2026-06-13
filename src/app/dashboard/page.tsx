@@ -264,6 +264,17 @@ function ChartCanvas({
   empty: string;
   period: ChartPeriod;
 }) {
+  // Track viewport width so x-axis label density updates on resize.
+  const [vw, setVw] = useState<number>(
+    typeof window !== "undefined" ? window.innerWidth : 1280,
+  );
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onResize = () => setVw(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
   if (chartData.length === 0) {
     return (
       <div className="h-[180px] flex items-center justify-center text-[13px] text-[#6b7280]">
@@ -284,9 +295,11 @@ function ChartCanvas({
     chartData.slice(1).map((d, i) => `L ${x(i + 1).toFixed(2)},${y(d.value).toFixed(2)}`).join(" ") +
     ` L ${x(n - 1).toFixed(2)},${VB_H} L ${x(0).toFixed(2)},${VB_H} Z`;
 
-  // How many labels to show along the bottom — pick a target count of ~8
-  // and stride through the buckets so labels stay readable.
-  const targetLabels = period === "7d" ? 7 : 8;
+  // How many labels to show along the bottom — pick a target count and
+  // stride through buckets so labels stay readable. Density adapts to
+  // viewport: small phones get 4, tablets get 5, desktops keep the
+  // original 7/8 (period-aware).
+  const targetLabels = vw < 480 ? 4 : vw < 900 ? 5 : period === "7d" ? 7 : 8;
   const stride = Math.max(1, Math.ceil(n / targetLabels));
 
   return (

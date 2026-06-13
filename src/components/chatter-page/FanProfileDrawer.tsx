@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { X, CreditCard, Calendar, User as UserIcon, Tag as TagIcon } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { X, Calendar, User as UserIcon, Tag as TagIcon } from "lucide-react";
 import type { FanRow } from "@/lib/fan-types";
 import { FanGroupsSection } from "./FanGroupsSection";
 
@@ -90,6 +90,25 @@ export function FanProfileDrawer({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [activeWindow, setActiveWindow] = useState<string | null>(null);
+  // Aggregated sale stats from /api/fans/[modelId]/stats — populated lazily
+  // when the drawer opens, alongside history.
+  const [salesStats, setSalesStats] = useState<{
+    ppvCount: number;
+    tipCount: number;
+    purchased: number;
+    avgPpv: number;
+    avgTip: number;
+    rawSpent: number;
+  } | null>(null);
+  // Editable basics — start blank, hydrate when fan prop arrives. Debounced
+  // save fires 500ms after the last edit so the chatter can type freely.
+  const [bio, setBio] = useState(fan?.bio ?? "");
+  const [birthdate, setBirthdate] = useState(fan?.birthdate ?? "");
+  const [location, setLocation] = useState(fan?.location ?? "");
+  const [basicsMsg, setBasicsMsg] = useState("");
+  // Track which fan's basics we currently hold so a switch repopulates
+  // the inputs from the new fan row instead of leaking previous values.
+  const lastFanRef = useRef<string | null>(null);
 
   useEffect(() => {
     // React 19 strict effects: defer initial state resets to next tick so
@@ -116,11 +135,18 @@ export function FanProfileDrawer({
         notesUrl.searchParams.set("peerId", peerId);
         const tzUrl = new URL(`/api/fans/${modelId}/timezone`, window.location.origin);
         tzUrl.searchParams.set("peerId", peerId);
-        const [histRes, notesRes, tzRes] = await Promise.all([
+        const statsUrl = new URL(`/api/fans/${modelId}/stats`, window.location.origin);
+        statsUrl.searchParams.set("peerId", peerId);
+        const [histRes, notesRes, tzRes, statsRes] = await Promise.all([
           fetch(histUrl.toString()),
           fetch(notesUrl.toString()),
           fetch(tzUrl.toString()),
+          fetch(statsUrl.toString()),
         ]);
+        if (statsRes.ok) {
+          const sj = await statsRes.json();
+          if (!cancelled) setSalesStats(sj);
+        }
         if (tzRes.ok) {
           const tz = (await tzRes.json()) as { label?: string | null };
           if (!cancelled) setActiveWindow(tz.label ?? null);
@@ -151,10 +177,76 @@ export function FanProfileDrawer({
     };
   }, [open, modelId, peerId]);
 
+  // Hydrate basics when the fan row (or which fan we're viewing) changes.
+  // We track by fan id so a re-fetch of the same fan doesn't stomp the
+  // chatter's in-progress edits.
+  useEffect(() => {
+    const id = fan?.id ?? null;
+    if (id !== lastFanRef.current) {
+      lastFanRef.current = id;
+      setBio(fan?.bio ?? "");
+      setBirthdate(fan?.birthdate ?? "");
+      setLocation(fan?.location ?? "");
+      setBasicsMsg("");
+    }
+  }, [fan]);
+
+  // Debounced auto-save for basics. Fires 500ms after the last edit and
+  // only when the drawer + fan are present. Best-effort — UI never blocks
+  // on the network.
+  useEffect(() => {
+    if (!open || !modelId || !peerId || !fan) return;
+    // Don't fire on the initial hydration pass.
+    if (
+      bio === (fan.bio ?? "") &&
+      birthdate === (fan.birthdate ?? "") &&
+      location === (fan.location ?? "")
+    ) {
+      return;
+    }
+    const tid = setTimeout(() => {
+      void (async () => {
+        try {
+          const res = await fetch(`/api/fans/${modelId}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              peerId,
+              bio: bio.trim() || null,
+              birthdate: birthdate || null,
+              location: location.trim() || null,
+            }),
+          });
+          if (res.ok) {
+            setBasicsMsg("Saved ✓");
+            setTimeout(() => setBasicsMsg(""), 1500);
+          } else {
+            const d = await res.json().catch(() => ({}));
+            setBasicsMsg(`Error: ${d.error ?? `HTTP ${res.status}`}`);
+          }
+        } catch (e) {
+          setBasicsMsg(e instanceof Error ? `Error: ${e.message}` : "Error");
+        }
+      })();
+    }, 500);
+    return () => clearTimeout(tid);
+  }, [bio, birthdate, location, fan, modelId, peerId, open]);
+
   if (!open) return null;
 
   const totalSpent = Number(fan?.total_spent ?? 0);
   const tags = fan?.tags ?? [];
+  // Buying-power dots — five buckets keyed off lifetime spend so the chatter
+  // can eyeball the fan tier without doing math. Tweak the thresholds with
+  // taste; everything past $500 fills all five.
+  const buyingPowerDots = (() => {
+    if (totalSpent >= 500) return 5;
+    if (totalSpent >= 200) return 4;
+    if (totalSpent >= 75) return 3;
+    if (totalSpent >= 20) return 2;
+    if (totalSpent > 0) return 1;
+    return 0;
+  })();
 
   return (
     <div
@@ -208,17 +300,110 @@ export function FanProfileDrawer({
             </div>
           </div>
 
-          {/* Total spent */}
-          <div className="px-4 py-3 rounded-lg bg-[#1f2937]/60 border border-[#374151] flex items-center gap-3">
-            <div className="w-10 h-10 rounded-md bg-[#6366f1]/15 flex items-center justify-center">
-              <CreditCard className="w-4 h-4 text-[#6366f1]" />
+          {/* Editable basics — bio, birthdate, location. Auto-save 500ms
+              after the last edit. The "Saved ✓" / "Error" hint slides in
+              briefly below the inputs. */}
+          <div className="space-y-2">
+            <div className="text-[10px] text-[#6b7280] uppercase tracking-wide flex items-center justify-between">
+              <span>Profile</span>
+              {basicsMsg && (
+                <span
+                  className={`normal-case text-[10px] ${
+                    basicsMsg.startsWith("Error") ? "text-red-400" : "text-emerald-400"
+                  }`}
+                >
+                  {basicsMsg}
+                </span>
+              )}
             </div>
-            <div className="flex-1">
-              <div className="text-[10px] text-[#6b7280] uppercase tracking-wide">
-                Lifetime spend
+            <input
+              value={bio}
+              onChange={(e) => setBio(e.target.value)}
+              placeholder="Bio / personality notes…"
+              className="w-full px-3 py-2 bg-[#1f2937]/60 border border-[#374151] rounded-md text-[12px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1]"
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="date"
+                value={birthdate ?? ""}
+                onChange={(e) => setBirthdate(e.target.value)}
+                placeholder="Birthdate"
+                className="px-3 py-2 bg-[#1f2937]/60 border border-[#374151] rounded-md text-[12px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1]"
+              />
+              <input
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                placeholder="Location"
+                className="px-3 py-2 bg-[#1f2937]/60 border border-[#374151] rounded-md text-[12px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1]"
+              />
+            </div>
+          </div>
+
+          {/* Timeline (Fan since / Last online / Last response / Last read) */}
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { label: "Fan since", iso: fan?.created_at ?? null },
+              { label: "Last online", iso: fan?.last_seen_at ?? null },
+              { label: "Last response", iso: fan?.last_response_at ?? null },
+              { label: "Last read", iso: fan?.last_read_at ?? null },
+            ].map((row) => (
+              <div
+                key={row.label}
+                className="px-3 py-2 rounded-md bg-[#1f2937]/40 border border-[#2a2d35]"
+              >
+                <div className="text-[10px] text-[#6b7280] uppercase tracking-wide">
+                  {row.label}
+                </div>
+                <div className="text-[12px] text-white truncate">
+                  {row.iso ? new Date(row.iso).toLocaleDateString("en-US") : "—"}
+                </div>
               </div>
-              <div className="text-[18px] font-bold text-white leading-tight">
-                ${totalSpent.toFixed(totalSpent < 100 ? 2 : 0)}
+            ))}
+          </div>
+
+          {/* Sales stats grid — Spent / avg PPV / avg Tip / Purchased.
+              Numbers come from /api/fans/[modelId]/stats (live, not cached
+              on the fan row). */}
+          <div>
+            <div className="text-[10px] text-[#6b7280] uppercase tracking-wide mb-2">
+              Stats
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { label: "Spent", value: `$${totalSpent.toFixed(totalSpent < 100 ? 2 : 0)}`, accent: true },
+                { label: "Purchased", value: String(salesStats?.purchased ?? 0) },
+                { label: "Avg PPV", value: salesStats ? `$${salesStats.avgPpv.toFixed(2)}` : "—" },
+                { label: "Avg Tip", value: salesStats ? `$${salesStats.avgTip.toFixed(2)}` : "—" },
+              ].map((c) => (
+                <div
+                  key={c.label}
+                  className="px-3 py-2 rounded-md bg-[#1f2937]/40 border border-[#2a2d35]"
+                >
+                  <div className="text-[10px] text-[#6b7280] uppercase tracking-wide">
+                    {c.label}
+                  </div>
+                  <div
+                    className={`text-[15px] font-bold leading-tight ${
+                      c.accent ? "text-[#6366f1]" : "text-white"
+                    }`}
+                  >
+                    {c.value}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {/* Buying-power indicator — five dots filled according to spend. */}
+            <div className="mt-2 flex items-center gap-2 text-[10px] text-[#6b7280]">
+              <span className="uppercase tracking-wide">Buying power</span>
+              <div className="flex items-center gap-1">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <span
+                    key={i}
+                    className={`block w-2 h-2 rounded-full ${
+                      i <= buyingPowerDots ? "bg-[#6366f1]" : "bg-[#2a2d35]"
+                    }`}
+                  />
+                ))}
               </div>
             </div>
           </div>

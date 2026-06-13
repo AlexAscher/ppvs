@@ -50,6 +50,11 @@ type UpsertBody = {
   notes?: string;
   tags?: string[];
   touchLastSeen?: boolean;
+  /** Profile basics (added by 20260615). All three are optional and may
+   *  be null to clear the stored value. */
+  bio?: string | null;
+  birthdate?: string | null;
+  location?: string | null;
 };
 
 export async function POST(
@@ -79,6 +84,16 @@ export async function POST(
     if (body.notes !== undefined) patch.notes = body.notes;
     if (body.tags !== undefined) patch.tags = body.tags;
     if (body.touchLastSeen) patch.last_seen_at = new Date().toISOString();
+    if (body.bio !== undefined) patch.bio = body.bio?.toString().slice(0, 2000) ?? null;
+    if (body.birthdate !== undefined) {
+      // Empty string from the date input → store NULL so "no date" stays
+      // distinguishable from "12/30 1899" etc.
+      const s = (body.birthdate ?? "").toString().trim();
+      patch.birthdate = s.length > 0 ? s : null;
+    }
+    if (body.location !== undefined) {
+      patch.location = body.location?.toString().slice(0, 200) ?? null;
+    }
 
     const { data, error } = await admin
       .from("fans")

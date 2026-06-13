@@ -17,6 +17,16 @@ export type FanRow = {
   total_spent: number;
   tags: string[];
   last_seen_at: string | null;
+  /** Editable bio (free-form). Added by 20260615_auto_reply_delay_fan_profile. */
+  bio?: string | null;
+  /** Editable birthdate (YYYY-MM-DD). Optional. */
+  birthdate?: string | null;
+  /** Editable location (city, country). Optional. */
+  location?: string | null;
+  /** Most recent incoming message timestamp (auto-bumped by activity hook). */
+  last_response_at?: string | null;
+  /** Most recent read receipt of the model's outgoing messages. */
+  last_read_at?: string | null;
   created_at: string;
 };
 

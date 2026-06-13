@@ -798,36 +798,38 @@ export function TelegramChat({
             </div>
           </button>
           <div className="flex items-center gap-2 shrink-0">
-            {/* Per-fan group memberships (replaces the old emoji-tag row).
-                Each chip is one of the agency's Fan Groups; active = the fan
-                belongs to it. Click toggles membership. Hidden on mobile
-                where the fan profile drawer handles it instead. */}
-            {(groups ?? []).length > 0 && (
-              <div className="hidden md:flex items-center gap-1.5 max-w-[420px] overflow-x-auto">
-                {(groups ?? []).map((g) => {
-                  const active = (selectedFanGroupIds ?? []).includes(g.id);
-                  const disabled = !selected || !onToggleFanGroup;
-                  return (
+            {/* Per-fan group memberships — show ONLY chips for groups this
+                fan actually belongs to (per user spec: "if not in any
+                groups, nothing should be there"). Clicking a chip removes
+                the fan from that group. Adding lives elsewhere (dialog-list
+                filter chips have +Add; fan profile drawer too). */}
+            {(() => {
+              const memberChips = (groups ?? []).filter((g) =>
+                (selectedFanGroupIds ?? []).includes(g.id),
+              );
+              if (memberChips.length === 0) return null;
+              return (
+                <div className="hidden md:flex items-center gap-1.5 max-w-[420px] overflow-x-auto">
+                  {memberChips.map((g) => (
                     <button
                       key={g.id}
                       type="button"
-                      onClick={() => !disabled && onToggleFanGroup?.(g.id)}
-                      disabled={disabled}
-                      title={active ? `Remove from ${g.name}` : `Add to ${g.name}`}
+                      onClick={() => selected && onToggleFanGroup?.(g.id)}
+                      disabled={!selected || !onToggleFanGroup}
+                      title={`Remove from ${g.name}`}
                       className="px-2.5 py-1 rounded-full text-[11px] font-medium whitespace-nowrap border transition-all disabled:cursor-not-allowed disabled:opacity-50"
                       style={{
-                        background: active ? `${g.color}30` : "#1f2937",
-                        borderColor: active ? g.color : "#374151",
-                        color: active ? g.color : "#9ca3af",
-                        opacity: active ? 1 : 0.7,
+                        background: `${g.color}30`,
+                        borderColor: g.color,
+                        color: g.color,
                       }}
                     >
                       {g.emoji ? `${g.emoji} ` : ""}{g.name}
                     </button>
-                  );
-                })}
-              </div>
-            )}
+                  ))}
+                </div>
+              );
+            })()}
             <div className="px-2.5 md:px-3 py-1.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[11px] text-[#9ca3af] whitespace-nowrap">
               <span className="hidden sm:inline">Total spent: </span>
               <span className="text-[#6366f1] font-bold">{totalSpent}</span>
@@ -843,6 +845,15 @@ export function TelegramChat({
               const first = chunk.msgs[0];
               const caption = chunk.msgs.find((m) => m.text && m.text !== "—");
               const cols = chunk.msgs.length === 1 ? 1 : 2;
+              // "Delivered PPV original" heuristic — outgoing album with NO
+              // caption text in any chunk. Previews always carry a caption
+              // ("Unlock for $X ↗"); regular chatter sends usually do too.
+              // A captionless outgoing album is almost always the post-pay
+              // delivery (or a free send). Per user spec, those render as
+              // a clean "Tap to open" placeholder instead of the actual
+              // thumb — the agency doesn't want unblurred original previews
+              // visible in the chat interface.
+              const isDeliveredOriginals = first.isChatter && !caption;
               return (
                 <div
                   key={chunk.groupedId}
@@ -880,36 +891,55 @@ export function TelegramChat({
                           >
                             {m.media &&
                             (m.media.type === "photo" || m.media.type === "video") ? (
-                              // Show the actual thumbnail (user wants blurred
-                              // preview bytes visible — they're tiny pre-blurred
-                              // JPEGs for locked previews, regular thumbs for
-                              // delivered originals). Inline thumb avoids the
-                              // "Tap to open" placeholder which made everything
-                              // look identical.
-                              <>
-                                {m.media.thumbDataUrl ? (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img
-                                    src={m.media.thumbDataUrl}
-                                    alt=""
-                                    className="w-full h-full object-cover"
-                                    draggable={false}
-                                  />
-                                ) : (
-                                  <div className={`w-full h-full ${
-                                    first.isChatter
-                                      ? "bg-gradient-to-br from-[#5558e3]/35 to-[#4338ca]/20"
-                                      : "bg-gradient-to-br from-[#1f2937] to-[#0d1117]"
-                                  }`} />
-                                )}
-                                {m.media.type === "video" && (
-                                  <div className="absolute inset-0 flex items-center justify-center">
-                                    <div className="w-8 h-8 rounded-full bg-black/55 flex items-center justify-center">
-                                      <Play className="w-4 h-4 text-white" fill="white" />
-                                    </div>
+                              isDeliveredOriginals ? (
+                                // Delivered originals → clean placeholder
+                                // (per user: don't show unblurred thumbs in
+                                // the chat UI). Tap on the wrapping button
+                                // opens the original in the lightbox.
+                                <div className={`w-full h-full flex flex-col items-center justify-center gap-0.5 ${
+                                  first.isChatter
+                                    ? "bg-gradient-to-br from-[#5558e3]/35 to-[#4338ca]/20"
+                                    : "bg-gradient-to-br from-[#1f2937] to-[#0d1117]"
+                                }`}>
+                                  <div className="text-[26px] leading-none">
+                                    {m.media.type === "video" ? "🎬" : "🖼️"}
                                   </div>
-                                )}
-                              </>
+                                  <div className="text-[9px] font-semibold text-white/85 uppercase tracking-wider">
+                                    {m.media.type === "video" ? "Video" : "Photo"}
+                                  </div>
+                                  <div className="text-[8px] text-white/55 mt-0.5">Tap to open</div>
+                                </div>
+                              ) : (
+                                // Pre-blurred preview / fan's incoming media
+                                // → show the actual thumb (it's already
+                                // safe-to-display bytes for previews, and
+                                // gives the chatter useful context for
+                                // incoming).
+                                <>
+                                  {m.media.thumbDataUrl ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                      src={m.media.thumbDataUrl}
+                                      alt=""
+                                      className="w-full h-full object-cover"
+                                      draggable={false}
+                                    />
+                                  ) : (
+                                    <div className={`w-full h-full ${
+                                      first.isChatter
+                                        ? "bg-gradient-to-br from-[#5558e3]/35 to-[#4338ca]/20"
+                                        : "bg-gradient-to-br from-[#1f2937] to-[#0d1117]"
+                                    }`} />
+                                  )}
+                                  {m.media.type === "video" && (
+                                    <div className="absolute inset-0 flex items-center justify-center">
+                                      <div className="w-8 h-8 rounded-full bg-black/55 flex items-center justify-center">
+                                        <Play className="w-4 h-4 text-white" fill="white" />
+                                      </div>
+                                    </div>
+                                  )}
+                                </>
+                              )
                             ) : (
                               <div className="w-full h-full flex items-center justify-center text-[22px]">🔒</div>
                             )}

@@ -20,6 +20,12 @@ export type PpvItem = {
    *  so legacy callers that build a PpvItem locally don't have to fake
    *  the field. */
   preview_url?: string | null;
+  /** Moderation state. Falls back to "approved" when the column is missing
+   *  on older schemas (pre-20260616_ppv_moderation). New uploads default
+   *  to "pending" — the platform admin flips it to "approved" before
+   *  chatters can send. */
+  review_status?: "pending" | "approved" | "rejected";
+  review_notes?: string | null;
   created_at: string;
   tags: PpvTag[];
 };

@@ -38,6 +38,7 @@ type PpvRow = {
   media_url: string | null;
   preview_url: string | null;
   tg_file_id: string | null;
+  review_status: string | null;
 };
 
 export async function POST(req: NextRequest) {
@@ -75,7 +76,7 @@ export async function POST(req: NextRequest) {
     // lets the free-send path reuse the lazy file_id cache for instant delivery.
     const { data: ppvRows, error: ppvErr } = await admin
       .from("ppvs")
-      .select("id, name, price, media_url, preview_url, tg_file_id")
+      .select("id, name, price, media_url, preview_url, tg_file_id, review_status")
       .in("id", body.ppvIds)
       .eq("model_id", body.modelId);
     if (ppvErr) {
@@ -84,6 +85,25 @@ export async function POST(req: NextRequest) {
     const items = (ppvRows ?? []) as PpvRow[];
     if (items.length === 0) {
       return Response.json({ error: "No matching PPVs found" }, { status: 404 });
+    }
+
+    // Block sending PPVs that haven't passed admin review. We treat NULL as
+    // approved so the moderation column being missing on older schemas
+    // (no migration yet) doesn't lock everyone out. After the migration
+    // runs, NULL is impossible (column is NOT NULL with default 'pending')
+    // and only 'approved' rows pass.
+    const notApproved = items.filter(
+      (p) => p.review_status != null && p.review_status !== "approved",
+    );
+    if (notApproved.length > 0) {
+      const names = notApproved.map((p) => p.name).slice(0, 3).join(", ");
+      const more = notApproved.length > 3 ? ` + ${notApproved.length - 3} more` : "";
+      return Response.json(
+        {
+          error: `Some PPVs are still under admin review and can't be sent yet: ${names}${more}. Once they're approved you'll be able to send them.`,
+        },
+        { status: 403 },
+      );
     }
 
     // Preserve the order the chatter selected (the DB query has no guaranteed order).

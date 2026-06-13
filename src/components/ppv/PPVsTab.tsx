@@ -119,7 +119,7 @@ export function PPVsTab() {
       const [tagsRes, groupsRes, ppvsRes, itemTagsRes, groupTagsRes] = await Promise.all([
         supabase.from("ppv_tags").select("id, model_id, name, color, emoji").eq("model_id", modelId).order("created_at"),
         supabase.from("ppv_groups").select("id, model_id, name, bundle_price, created_at").eq("model_id", modelId).order("created_at", { ascending: false }),
-        supabase.from("ppvs").select("id, model_id, group_id, name, description, price, media_url, preview_url, created_at").eq("model_id", modelId).order("created_at", { ascending: false }),
+        supabase.from("ppvs").select("id, model_id, group_id, name, description, price, media_url, preview_url, review_status, review_notes, created_at").eq("model_id", modelId).order("created_at", { ascending: false }),
         supabase.from("ppv_item_tags").select("ppv_id, tag_id"),
         supabase.from("ppv_group_tags").select("group_id, tag_id"),
       ]);
@@ -611,6 +611,18 @@ function PpvCard({ ppv, onClick }: { ppv: PpvItem; onClick: () => void }) {
         {isAudio && (
           <div className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/70 backdrop-blur-sm rounded-md text-[10px] font-semibold text-white flex items-center gap-1">
             <Music className="w-2.5 h-2.5" /> Audio
+          </div>
+        )}
+        {/* Moderation status badge (pending / rejected). Approved items
+            stay un-badged — that's the steady state. */}
+        {ppv.review_status === "pending" && (
+          <div className="absolute top-2 right-2 px-2 py-0.5 bg-[#f59e0b]/95 rounded-md text-[10px] font-bold text-black flex items-center gap-1 shadow-md">
+            ⏳ Review
+          </div>
+        )}
+        {ppv.review_status === "rejected" && (
+          <div className="absolute top-2 right-2 px-2 py-0.5 bg-[#ef4444] rounded-md text-[10px] font-bold text-white flex items-center gap-1 shadow-md">
+            ✕ Rejected
           </div>
         )}
       </div>

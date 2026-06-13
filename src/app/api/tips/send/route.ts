@@ -92,16 +92,13 @@ export async function POST(req: NextRequest) {
     const tipUrl =
       buildMiniAppLink({ startParam: code }) ?? `${baseUrl}/tip/${code}`;
 
-    // Build the message in PayAndView format:
+    // Build the message:
     //   <optional chatter message>
-    //   Tip for $X.XX ↗ (URL)
-    // The "Tip for $X.XX ↗" portion is a TextUrl hyperlink; the URL after
-    // it is visible plain text (also auto-detected by Telegram as a link).
-    // One \n separates caption from link line (per user spec).
+    //   Tip for $X.XX ↗     ← TextUrl entity, URL hidden from body
     const priceFmt = Number(amount).toFixed(2);
     const tipLabel = `Tip for $${priceFmt} ↗`;
     const messageBlock = message ? `${message}\n` : "";
-    const tipText = `${messageBlock}${tipLabel} (${tipUrl})`;
+    const tipText = `${messageBlock}${tipLabel}`;
 
     const tipEntity = new Api.MessageEntityTextUrl({
       offset: messageBlock.length,

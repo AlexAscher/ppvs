@@ -21,6 +21,10 @@ type SalesAlertCommon = {
   modelName?: string;
   fanDisplay: string;       // "@user" or "Fan Name"
   amount: number;           // dollars
+  /** The chatter who initiated the sale. Resolved lazily inside the
+   *  fan-out so callers don't have to pass full names — we look up the
+   *  auth user's display name from `auth.users` if only the id is given. */
+  chatterId?: string | null;
 };
 
 export type SalesAlertEvent =
@@ -56,14 +60,23 @@ function fmtUSD(amount: number): string {
   return amount % 1 === 0 ? `$${amount.toFixed(0)}` : `$${amount.toFixed(2)}`;
 }
 
-function buildMessage(ev: SalesAlertEvent): string {
+/** Compact 3-line alert format (per user spec). Drops the PPV item name
+ *  (was noisy) and adds the chatter so the agency knows who closed the sale.
+ *
+ *   💰 +$10 PPV
+ *   Oscar | Comfygod ← @benzo_CEO
+ *   ✍️ Chatter: Alex
+ *
+ *  Tips use the same shape with 💎 on the amount line; the fan's tip
+ *  message (if any) appended as a fourth line.
+ */
+function buildMessage(ev: SalesAlertEvent, chatterName: string | null): string {
   const model = ev.modelName ? ev.modelName : "model";
-  if (ev.type === "ppv") {
-    return `💰 +${fmtUSD(ev.amount)} PPV\n${model} ← ${ev.fanDisplay}\n📦 ${ev.itemName}`;
-  }
-  // tip
-  const tail = ev.message ? `\n💬 ${ev.message}` : "";
-  return `💎 +${fmtUSD(ev.amount)} Tip\n${model} ← ${ev.fanDisplay}${tail}`;
+  const kind = ev.type === "ppv" ? "PPV" : "Tip";
+  const emoji = ev.type === "ppv" ? "💰" : "💎";
+  const chatterLine = chatterName ? `\n✍️ Chatter: ${chatterName}` : "";
+  const tipTail = ev.type === "tip" && ev.message ? `\n💬 ${ev.message}` : "";
+  return `${emoji} +${fmtUSD(ev.amount)} ${kind}\n${model} ← ${ev.fanDisplay}${chatterLine}${tipTail}`;
 }
 
 /**
@@ -119,7 +132,25 @@ async function sendSalesAlertInner(event: SalesAlertEvent): Promise<void> {
   if (event.type === "ppv" && !settings.alerts_ppv) return;
   if (event.type === "tip" && !settings.alerts_tips) return;
 
-  const text = buildMessage(event);
+  // Resolve the chatter's display name once for the alert body. We try
+  // auth.users metadata first (full_name / display_name → email prefix);
+  // null falls back to "Chatter" elision in buildMessage.
+  let chatterName: string | null = null;
+  if (event.chatterId) {
+    try {
+      const { data: u } = await admin.auth.admin.getUserById(event.chatterId);
+      const md = (u?.user?.user_metadata ?? {}) as Record<string, unknown>;
+      chatterName =
+        (md.full_name as string | undefined)?.trim() ||
+        (md.display_name as string | undefined)?.trim() ||
+        u?.user?.email?.split("@")[0] ||
+        null;
+    } catch {
+      /* best-effort; alert still goes out without the chatter line */
+    }
+  }
+
+  const text = buildMessage(event, chatterName);
 
   // ── Primary path: bot DM (no userbot, no ban risk) ──────────────────
   if (settings.alerts_bot_chat_id) {

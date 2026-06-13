@@ -169,10 +169,13 @@ function MediaBubble({
   onOpen: () => void;
   isChatter: boolean;
 }) {
-  // (Previously: stripped thumb + progressive HQ load. Now: clean "Tap to
-  // open" placeholder for photo/video — user feedback was that compressed
-  // Telegram thumbs looked bad. The lightbox still serves the full original
-  // on tap, so no quality is lost — only the inline preview is replaced.)
+  // Progressive loading: stripped thumb shows instantly, HQ preview from
+  // /api/telegram/media?quality=thumb fades in over it (lightbox keeps
+  // the full original on tap). User wants the real thumbnail rendered
+  // because the locked-preview path uploads small pre-blurred JPEGs to TG
+  // already — the inline preview is cheap *and* shows what was actually
+  // sent.
+  const [hqLoaded, setHqLoaded] = useState(false);
 
   if (media.type === "sticker") {
     const size = 128;
@@ -226,37 +229,52 @@ function MediaBubble({
     );
   }
   if (media.type === "photo" || media.type === "video") {
-    // Placeholder tile (per user request: don't render Telegram's compressed
-    // thumb in chat — it looks bad. Show a clean card with type + "Tap to
-    // open". Clicking lifts the original into the Lightbox via onOpen, no
-    // bytes downloaded until then.)
     const aspect = media.width && media.height ? media.width / media.height : 1;
     const w = 240;
     const h = Math.round(w / Math.max(0.6, Math.min(1.8, aspect)));
-    const isVideo = media.type === "video";
+    const hqUrl = `${media.fullUrl}&quality=thumb`;
     return (
       <button
         type="button"
         onClick={onOpen}
-        className={`block relative rounded-lg overflow-hidden border transition-all hover:scale-[1.01] hover:border-[#6366f1]/40 ${
-          isChatter
-            ? "border-white/15 bg-gradient-to-br from-[#5558e3]/30 to-[#4338ca]/20"
-            : "border-[#2a2d35] bg-gradient-to-br from-[#1f2937] to-[#0d1117]"
-        }`}
+        className="block relative rounded-lg overflow-hidden border border-[#2a2d35] hover:opacity-90 transition-opacity"
         style={{ width: w, height: h }}
       >
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5">
-          <div className="text-[44px] leading-none">{isVideo ? "🎬" : "🖼️"}</div>
-          <div className="text-[12px] font-semibold text-white/90">
-            {isVideo ? "Video" : "Photo"}
-          </div>
-          <div className="text-[10px] text-white/55">Tap to open</div>
-          {isVideo && media.durationSec ? (
-            <div className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-black/60 text-white text-[10px] font-medium">
-              {formatDuration(media.durationSec)}
+        {media.thumbDataUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={media.thumbDataUrl}
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover"
+            draggable={false}
+          />
+        ) : (
+          <div className="absolute inset-0 w-full h-full bg-gradient-to-br from-[#1f2937] to-[#111827]" />
+        )}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={hqUrl}
+          alt=""
+          className="absolute inset-0 w-full h-full object-cover transition-opacity duration-300"
+          style={{ opacity: hqLoaded ? 1 : 0 }}
+          onLoad={() => setHqLoaded(true)}
+          onError={() => { /* keep stripped thumb if HQ fails */ }}
+          draggable={false}
+        />
+        {media.type === "video" && (
+          <>
+            <div className="absolute inset-0 flex items-center justify-center z-10">
+              <div className="w-12 h-12 rounded-full bg-black/55 border border-white/15 flex items-center justify-center">
+                <Play className="w-5 h-5 text-white" fill="white" />
+              </div>
             </div>
-          ) : null}
-        </div>
+            {media.durationSec ? (
+              <div className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded bg-black/65 text-white text-[10px] font-medium z-10">
+                {formatDuration(media.durationSec)}
+              </div>
+            ) : null}
+          </>
+        )}
       </button>
     );
   }
@@ -822,6 +840,14 @@ export function TelegramChat({
                           ? "bg-gradient-to-br from-[#6366f1] to-[#5558e3] rounded-br-sm"
                           : "bg-[#1f2937] rounded-bl-sm"
                       }`}
+                      // Fix "giant right margin" bug: with a fixed 100px/col
+                      // grid the bubble wrapper grew to fit the longest
+                      // caption line (e.g. an unlock URL) and left a wide
+                      // empty strip to the right of the tiles. Constrain the
+                      // bubble's width to the grid width (cols × 100 + gap)
+                      // so caption text wraps within the album footprint
+                      // instead of pushing the bubble wider.
+                      style={{ maxWidth: cols * 100 + (cols - 1) * 2 + 8 }}
                     >
                       <div
                         className="grid gap-0.5 overflow-hidden rounded-xl"
@@ -837,21 +863,36 @@ export function TelegramChat({
                           >
                             {m.media &&
                             (m.media.type === "photo" || m.media.type === "video") ? (
-                              // Clean placeholder tile per user request — TG
-                              // thumbs are tiny + compressed and look bad in
-                              // the chat. The original loads on tap (lightbox).
-                              <div className={`w-full h-full flex flex-col items-center justify-center gap-0.5 ${
-                                first.isChatter
-                                  ? "bg-gradient-to-br from-[#5558e3]/35 to-[#4338ca]/20"
-                                  : "bg-gradient-to-br from-[#1f2937] to-[#0d1117]"
-                              }`}>
-                                <div className="text-[26px] leading-none">
-                                  {m.media.type === "video" ? "🎬" : "🖼️"}
-                                </div>
-                                <div className="text-[9px] font-semibold text-white/85 uppercase tracking-wider">
-                                  {m.media.type === "video" ? "Video" : "Photo"}
-                                </div>
-                              </div>
+                              // Show the actual thumbnail (user wants blurred
+                              // preview bytes visible — they're tiny pre-blurred
+                              // JPEGs for locked previews, regular thumbs for
+                              // delivered originals). Inline thumb avoids the
+                              // "Tap to open" placeholder which made everything
+                              // look identical.
+                              <>
+                                {m.media.thumbDataUrl ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={m.media.thumbDataUrl}
+                                    alt=""
+                                    className="w-full h-full object-cover"
+                                    draggable={false}
+                                  />
+                                ) : (
+                                  <div className={`w-full h-full ${
+                                    first.isChatter
+                                      ? "bg-gradient-to-br from-[#5558e3]/35 to-[#4338ca]/20"
+                                      : "bg-gradient-to-br from-[#1f2937] to-[#0d1117]"
+                                  }`} />
+                                )}
+                                {m.media.type === "video" && (
+                                  <div className="absolute inset-0 flex items-center justify-center">
+                                    <div className="w-8 h-8 rounded-full bg-black/55 flex items-center justify-center">
+                                      <Play className="w-4 h-4 text-white" fill="white" />
+                                    </div>
+                                  </div>
+                                )}
+                              </>
                             ) : (
                               <div className="w-full h-full flex items-center justify-center text-[22px]">🔒</div>
                             )}

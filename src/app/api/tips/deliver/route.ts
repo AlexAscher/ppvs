@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
 
     const { data: tip, error } = await admin
       .from("tips")
-      .select("id, model_id, peer_id, peer_username, amount, message, status")
+      .select("id, model_id, peer_id, peer_username, amount, message, status, chatter_id")
       .eq("code", code)
       .maybeSingle();
 
@@ -111,6 +111,7 @@ export async function POST(req: NextRequest) {
           fanDisplay: tipRow.peer_username ? `@${tipRow.peer_username}` : "Fan",
           amount: Number(tipRow.amount ?? 0),
           message: tipRow.message,
+          chatterId: (tipRow as { chatter_id?: string | null }).chatter_id ?? null,
         });
       } catch (e: unknown) {
         console.error(

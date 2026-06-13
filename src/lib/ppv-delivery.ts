@@ -393,24 +393,20 @@ export async function sendBlurredPreviewWithLink(
     return buildLockedPlaceholder(i, isVideo);
   });
 
-  // Build the caption. Layout (PayAndView-style):
-  //   <chatter caption>          ← only if non-empty, single \n separator
-  //   Unlock for $X.XX ↗ (URL)   ← the ↗ label is the hyperlink, URL is
-  //                                also visible in parens as plain text.
+  // Build the caption. Layout:
+  //   <chatter caption>         ← only if non-empty, single \n separator
+  //   Unlock for $X.XX ↗        ← TextUrl entity hides the URL behind the
+  //                                colored "Unlock for $X.XX ↗" label.
   //
-  // The hyperlink (TextUrl entity) covers ONLY the "Unlock for $X.XX ↗"
-  // portion — Telegram renders it as colored/underlined link text. The URL
-  // string after it is plain, but Telegram also auto-detects it as a link
-  // (so even on clients that drop the entity, the URL is still clickable).
-  // We do not include a separate "🔒 Locked content — N items" line —
-  // the album itself shows there are N items.
+  // We deliberately do NOT include the raw URL in the visible text — it
+  // makes the message look spammy. The entity is what Telegram renders as
+  // a clickable hyperlink; the URL lives only in the entity payload,
+  // hidden from the message body.
   const cleanCaption = caption.trim();
   const priceFmt = totalPrice.toFixed(2);
   const unlockLabel = `Unlock for $${priceFmt} ↗`;
-  // captionBlock: empty caption → no leading text. With caption → caption
-  // + single \n separator (per user spec: "после Caption один enter").
   const captionBlock = cleanCaption ? `${cleanCaption}\n` : "";
-  const messageCaption = `${captionBlock}${unlockLabel} (${payUrl})`;
+  const messageCaption = `${captionBlock}${unlockLabel}`;
 
   // Compute the UTF-16 offset of unlockLabel within messageCaption.
   // JS string `.length` is already in UTF-16 code units.

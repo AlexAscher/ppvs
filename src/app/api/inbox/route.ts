@@ -1,6 +1,7 @@
 import { Api } from "telegram";
 import { createSupabaseServerClient, createAdminSupabaseClient } from "@/lib/supabase-server";
 import { withTelegramClient } from "@/lib/telegram-pool";
+import { decryptIfNeeded } from "@/lib/crypto";
 
 // Inbox is heavier than a single /api/telegram/dialogs call: it fans out to
 // every connected model of the agency. Cap how long we wait per model so one
@@ -84,15 +85,24 @@ export async function GET() {
   if (modelIds.length === 0) return Response.json({ items: [], models: [] });
 
   // Fan out across every model. Each is wrapped in its own timeout so one
-  // bad session doesn't block the whole Inbox.
+  // bad session doesn't block the whole Inbox. Each model's session +
+  // api_hash are stored encrypted ("v1:" prefix), so decrypt before
+  // handing them to gramJS — that decryption is what every other Telegram
+  // route does via telegram-authorize.ts. Without it the inbox silently
+  // fails to connect for every model (which is the bug the user hit).
   const settled = await Promise.allSettled(
     models.map(async (m) => {
+      const sess = decryptIfNeeded(m.session_string);
+      const hash = decryptIfNeeded(m.api_hash);
+      if (!sess || !hash) {
+        throw new Error(`could not decrypt secrets for model ${m.id}`);
+      }
       const items = await timeout(
         withTelegramClient(
           m.id,
-          m.session_string,
+          sess,
           m.api_id,
-          m.api_hash,
+          hash,
           async (tg) => {
             const dialogs = await tg.getDialogs({ limit: PER_MODEL_DIALOG_LIMIT });
             const out: InboxItem[] = [];

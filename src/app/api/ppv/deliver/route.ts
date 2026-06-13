@@ -25,6 +25,7 @@ type SendRow = {
   status: string;
   total_price: number;
   expires_at: string | null;
+  chatter_id: string | null;
 };
 
 type ModelRow = {
@@ -97,7 +98,7 @@ export async function POST(req: NextRequest) {
           admin
             .from("ppv_sends")
             .select(
-              "id, model_id, peer_id, peer_access_hash, peer_username, caption, status, total_price, expires_at",
+              "id, model_id, peer_id, peer_access_hash, peer_username, caption, status, total_price, expires_at, chatter_id",
             )
             .eq("code", code)
             .maybeSingle(),
@@ -208,6 +209,7 @@ export async function POST(req: NextRequest) {
             fanDisplay: send.peer_username ? `@${send.peer_username}` : `Fan ${send.peer_id.slice(-4)}`,
             amount: Number(send.total_price ?? 0),
             itemName: firstItem?.name ?? "PPV",
+            chatterId: send.chatter_id ?? null,
           });
         } catch (e) {
           console.error(

@@ -200,6 +200,12 @@ export function PPVsTab() {
   const filteredStandalone = standalonePpvs.filter((p) => matchesFilter(p.tags));
   const filteredGroups = groups.filter((g) => matchesFilter(g.tags) || g.items.some((it) => matchesFilter(it.tags)));
 
+  // Moderation summary for the info banners — counts across standalone +
+  // grouped items so we can nudge the agency about pending / declined PPVs.
+  const allItems = [...standalonePpvs, ...groups.flatMap((g) => g.items)];
+  const pendingCount = allItems.filter((p) => p.review_status === "pending").length;
+  const declinedCount = allItems.filter((p) => p.review_status === "rejected").length;
+
   function handlePpvSaved(saved: PpvItem) {
     // When a PPV's group_id changes (move-to-group / +add-to-group / drop
     // out to standalone), we strip the OLD location and write to the NEW
@@ -437,6 +443,43 @@ export function PPVsTab() {
               <Plus className="w-4 h-4" />Add PPV
             </button>
           </div>
+        </div>
+
+        {/* Moderation info — always-on explainer + conditional nudges so the
+            agency understands the review flow and what to do about declined
+            content. */}
+        <div className="rounded-lg border border-[#2a2d35] bg-[#161a22] px-4 py-3 space-y-2">
+          <div className="flex items-start gap-2 text-[12px] text-[#9ca3af]">
+            <span className="text-[14px] leading-none mt-0.5">🛡️</span>
+            <span>
+              Every PPV you upload is reviewed before it goes live. Once it&apos;s
+              <span className="text-emerald-400 font-medium"> approved</span>, it
+              becomes available to send to your fans from the chat. Items still
+              <span className="text-[#f59e0b] font-medium"> pending</span> review
+              can&apos;t be sent yet.
+            </span>
+          </div>
+          {pendingCount > 0 && (
+            <div className="flex items-center gap-2 text-[12px] text-[#f59e0b]">
+              <span>⏳</span>
+              <span>
+                {pendingCount} item{pendingCount > 1 ? "s are" : " is"} waiting for
+                approval — you&apos;ll be able to send {pendingCount > 1 ? "them" : "it"} as
+                soon as review is done.
+              </span>
+            </div>
+          )}
+          {declinedCount > 0 && (
+            <div className="flex items-center gap-2 text-[12px] text-[#f87171]">
+              <span>⛔</span>
+              <span>
+                {declinedCount} item{declinedCount > 1 ? "s were" : " was"}
+                {" "}<span className="font-semibold">declined</span> and can never
+                be sent. Please delete {declinedCount > 1 ? "them" : "it"} from this
+                page to keep your vault clean.
+              </span>
+            </div>
+          )}
         </div>
 
         {tags.length > 0 && (
@@ -753,16 +796,16 @@ function PpvCard({ ppv, onClick }: { ppv: PpvItem; onClick: () => void }) {
             <Music className="w-2.5 h-2.5" /> Audio
           </div>
         )}
-        {/* Moderation status badge (pending / rejected). Approved items
+        {/* Moderation status badge (pending / declined). Approved items
             stay un-badged — that's the steady state. */}
         {ppv.review_status === "pending" && (
           <div className="absolute top-2 right-2 px-2 py-0.5 bg-[#f59e0b]/95 rounded-md text-[10px] font-bold text-black flex items-center gap-1 shadow-md">
-            ⏳ Review
+            ⏳ Pending
           </div>
         )}
         {ppv.review_status === "rejected" && (
           <div className="absolute top-2 right-2 px-2 py-0.5 bg-[#ef4444] rounded-md text-[10px] font-bold text-white flex items-center gap-1 shadow-md">
-            ✕ Rejected
+            ✕ Declined
           </div>
         )}
       </div>

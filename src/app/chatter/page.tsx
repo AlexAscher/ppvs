@@ -22,6 +22,7 @@ import {
   type PpvTag,
   type PpvGroup,
 } from "@/components/chatter-page-classic/ActionPanel";
+import { NotificationToaster } from "@/components/NotificationToaster";
 import type { FanRow, FanNote } from "@/lib/fan-types";
 import { QuickReplyModal } from "@/components/chatter-page/QuickReplyModal";
 import { FanProfileDrawer } from "@/components/chatter-page/FanProfileDrawer";
@@ -421,7 +422,7 @@ export default function ChatterPage() {
             .eq("model_id", selectedModelId),
           supabase
             .from("ppvs")
-            .select("id, model_id, group_id, name, price, media_url, preview_url, created_at")
+            .select("id, model_id, group_id, name, price, media_url, preview_url, review_status, created_at")
             .eq("model_id", selectedModelId)
             .order("created_at", { ascending: false }),
           supabase.from("ppv_item_tags").select("ppv_id, tag_id"),
@@ -449,15 +450,22 @@ export default function ChatterPage() {
         media_url: string | null;
         preview_url?: string | null;
         group_id: string | null;
-      }>).map((row) => ({
-        id: row.id,
-        name: row.name,
-        price: row.price,
-        media_url: row.media_url,
-        preview_url: row.preview_url ?? null,
-        group_id: row.group_id,
-        tags: linksByItem.get(row.id) ?? [],
-      }));
+        review_status?: "pending" | "approved" | "rejected" | null;
+      }>)
+        // Only approved PPVs are sendable from the chat. Pending / rejected
+        // items are hidden entirely so a chatter can't attach unreviewed
+        // content. Null / missing status (pre-moderation schemas) counts as
+        // approved for backwards-compat.
+        .filter((row) => (row.review_status ?? "approved") === "approved")
+        .map((row) => ({
+          id: row.id,
+          name: row.name,
+          price: row.price,
+          media_url: row.media_url,
+          preview_url: row.preview_url ?? null,
+          group_id: row.group_id,
+          tags: linksByItem.get(row.id) ?? [],
+        }));
       const groups: PpvGroup[] = ((groupsRaw ?? []) as Array<{
         id: string;
         name: string;
@@ -1620,6 +1628,9 @@ export default function ChatterPage() {
       className="chatter-root h-[100dvh] w-full flex flex-col bg-[#0d1117] text-white overflow-hidden"
       style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif' }}
     >
+      {/* Top-right toaster — pops a 5s toast when a tip/PPV this user sent
+          gets paid. Only the link's creator sees it (API-scoped). */}
+      <NotificationToaster />
       <Topbar
         displayName={displayName}
         sales="$0"

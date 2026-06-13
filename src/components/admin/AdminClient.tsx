@@ -268,6 +268,21 @@ function PartialBanner({ onRetry }: { onRetry: () => void }) {
   );
 }
 
+/** Anchor styled as a button that triggers a file download. We use a real
+ *  <a download> rather than fetch+blob so the browser handles the save
+ *  dialog and the request still carries the admin's auth cookies. */
+function DownloadButton({ href, label }: { href: string; label: string }) {
+  return (
+    <a
+      href={href}
+      download
+      className="px-3 py-2 bg-[#1f2937] border border-[#374151] rounded-lg text-[12px] font-medium text-white hover:bg-[#374151] transition-all"
+    >
+      {label}
+    </a>
+  );
+}
+
 function FanRowItem({ fan }: { fan: AdminAgencyFan }) {
   const primary = fan.username ? `@${fan.username}` : fan.name;
   const secondary = fan.username ? fan.name : `ID ${fan.peerId}`;
@@ -737,6 +752,23 @@ function AgencyDetail({ agencyId, onBack }: { agencyId: string; onBack: () => vo
               onChange={(e) => setFanQ(e.target.value)}
               placeholder="Search fans…"
               className="bg-[#1f2937] border border-[#374151] rounded-lg px-3.5 py-2 text-[13px] text-white placeholder:text-[#6b7280] outline-none focus:border-[#6366f1] w-full sm:w-[260px]"
+            />
+          </div>
+          {/* Export buttons — download the FULL list (server-side, no UI cap)
+              as a .txt file. Three flavours: every username, paying fans
+              only, and everyone ranked by spend. */}
+          <div className="flex flex-wrap gap-2 mb-3">
+            <DownloadButton
+              href={`/api/admin/agencies/${agencyId}/fans-export?type=all`}
+              label="⬇ All usernames"
+            />
+            <DownloadButton
+              href={`/api/admin/agencies/${agencyId}/fans-export?type=paying`}
+              label="⬇ Paying fans"
+            />
+            <DownloadButton
+              href={`/api/admin/agencies/${agencyId}/fans-export?type=ranked`}
+              label="⬇ Ranked by spend"
             />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[480px] overflow-y-auto pr-1">

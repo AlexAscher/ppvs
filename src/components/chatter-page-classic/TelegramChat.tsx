@@ -120,6 +120,14 @@ interface TelegramChatProps {
   sending: boolean;
   fanTags: string[];
   onToggleTag: (tag: string) => void;
+  /** Group memberships of the *selected* fan (subset of `groups` ids).
+   *  Drives the chip row at the right of the chat header — replaces the
+   *  old emoji-tag row at user's request. */
+  selectedFanGroupIds?: string[];
+  /** Toggle the selected fan into / out of a group. Falls back to a no-op
+   *  if the parent doesn't pass it (avoids forcing the prop on legacy
+   *  call sites). */
+  onToggleFanGroup?: (groupId: string) => void | Promise<void>;
   onOpenQuickReply: () => void;
   onOpenFanProfile: () => void;
   replyingTo: ReplyContext | null;
@@ -479,6 +487,8 @@ export function TelegramChat({
   sending,
   fanTags,
   onToggleTag,
+  selectedFanGroupIds,
+  onToggleFanGroup,
   onOpenQuickReply,
   onOpenFanProfile,
   replyingTo,
@@ -788,29 +798,36 @@ export function TelegramChat({
             </div>
           </button>
           <div className="flex items-center gap-2 shrink-0">
-            {/* Per-fan emoji tags. Active tag = colored ring; click toggles.
-                Hidden on mobile (tap the avatar → fan profile to tag there). */}
-            <div className="hidden md:flex items-center gap-1">
-              {FAN_TAGS.map((t) => {
-                const active = fanTags.includes(t);
-                return (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => selected && onToggleTag(t)}
-                    disabled={!selected}
-                    title={active ? "Remove tag" : "Add tag"}
-                    className={`w-7 h-7 flex items-center justify-center rounded-md text-[15px] leading-none transition-all ${
-                      active
-                        ? "bg-[#6366f1]/20 ring-1 ring-[#6366f1]"
-                        : "bg-[#1f2937]/50 hover:bg-[#1f2937] opacity-50 hover:opacity-100"
-                    } disabled:cursor-not-allowed`}
-                  >
-                    {t}
-                  </button>
-                );
-              })}
-            </div>
+            {/* Per-fan group memberships (replaces the old emoji-tag row).
+                Each chip is one of the agency's Fan Groups; active = the fan
+                belongs to it. Click toggles membership. Hidden on mobile
+                where the fan profile drawer handles it instead. */}
+            {(groups ?? []).length > 0 && (
+              <div className="hidden md:flex items-center gap-1.5 max-w-[420px] overflow-x-auto">
+                {(groups ?? []).map((g) => {
+                  const active = (selectedFanGroupIds ?? []).includes(g.id);
+                  const disabled = !selected || !onToggleFanGroup;
+                  return (
+                    <button
+                      key={g.id}
+                      type="button"
+                      onClick={() => !disabled && onToggleFanGroup?.(g.id)}
+                      disabled={disabled}
+                      title={active ? `Remove from ${g.name}` : `Add to ${g.name}`}
+                      className="px-2.5 py-1 rounded-full text-[11px] font-medium whitespace-nowrap border transition-all disabled:cursor-not-allowed disabled:opacity-50"
+                      style={{
+                        background: active ? `${g.color}30` : "#1f2937",
+                        borderColor: active ? g.color : "#374151",
+                        color: active ? g.color : "#9ca3af",
+                        opacity: active ? 1 : 0.7,
+                      }}
+                    >
+                      {g.emoji ? `${g.emoji} ` : ""}{g.name}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             <div className="px-2.5 md:px-3 py-1.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[11px] text-[#9ca3af] whitespace-nowrap">
               <span className="hidden sm:inline">Total spent: </span>
               <span className="text-[#6366f1] font-bold">{totalSpent}</span>

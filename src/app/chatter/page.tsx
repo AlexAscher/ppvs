@@ -9,7 +9,7 @@ import { useEcoMode, ECO_INTERVAL_MULTIPLIER } from "@/lib/use-eco";
 // pixel-match of that design. The older medium-sized chatter-page/* design
 // components are retired; only its non-visual modals are still used.
 import { Topbar } from "@/components/chatter-page-classic/Topbar";
-import { ModelSelectorBar } from "@/components/chatter-page-classic/ModelSelectorBar";
+// ModelSelectorBar removed — model chips moved INTO Topbar (see Topbar.tsx).
 import {
   TelegramChat,
   type ChatListItem,
@@ -1523,12 +1523,12 @@ export default function ChatterPage() {
             setReloading(false);
           }
         }}
-      />
-      <ModelSelectorBar
         models={modelOptions}
-        selectedModel={selectedModelId ?? ""}
-        onModelSelect={handleModelSelect}
+        selectedModelId={selectedModelId ?? undefined}
+        onSelectModel={handleModelSelect}
       />
+      {/* ModelSelectorBar is folded into the Topbar above (per user spec
+          "no separate strip, no scroll, just chips right of the logo"). */}
       {selectedModelExpired && (
         <div className="px-5 py-2 bg-amber-500/10 border-b border-amber-500/30 text-[12px] text-amber-300 flex items-center gap-2">
           <span>⚠️</span>
@@ -1599,6 +1599,38 @@ export default function ChatterPage() {
           sending={sending}
           fanTags={fanTags}
           onToggleTag={handleToggleTag}
+          selectedFanGroupIds={selectedDialog ? (groupIdsByPeer[selectedDialog.id] ?? []) : []}
+          onToggleFanGroup={async (groupId) => {
+            if (!selectedDialog || !selectedModelId) return;
+            const peerId = selectedDialog.id;
+            const current = groupIdsByPeer[peerId] ?? [];
+            const isMember = current.includes(groupId);
+            // Optimistic flip — the header chip recolours instantly even
+            // while the API call is in flight. Rollback if the call fails.
+            setGroupIdsByPeer((prev) => ({
+              ...prev,
+              [peerId]: isMember
+                ? current.filter((g) => g !== groupId)
+                : [...current, groupId],
+            }));
+            try {
+              if (isMember) {
+                await fetch(
+                  `/api/groups/${groupId}/members?modelId=${selectedModelId}&peerId=${peerId}`,
+                  { method: "DELETE" },
+                );
+              } else {
+                await fetch(`/api/groups/${groupId}/members`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ modelId: selectedModelId, peerId }),
+                });
+              }
+            } catch {
+              // Rollback optimistic update on failure.
+              setGroupIdsByPeer((prev) => ({ ...prev, [peerId]: current }));
+            }
+          }}
           onOpenQuickReply={() => setQuickReplyOpen(true)}
           onOpenFanProfile={() => setFanDrawerOpen(true)}
           replyingTo={replyingTo}

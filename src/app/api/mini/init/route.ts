@@ -24,8 +24,8 @@ type PpvSendRow = {
 type ItemRowRaw = {
   ordinal: number;
   ppvs:
-    | { name: string; media_url: string | null; preview_url: string | null }
-    | { name: string; media_url: string | null; preview_url: string | null }[]
+    | { id: string; name: string; preview_url: string | null }
+    | { id: string; name: string; preview_url: string | null }[]
     | null;
 };
 type TipRow = {
@@ -80,14 +80,15 @@ export async function POST(req: NextRequest) {
     const send = ppvRaw as PpvSendRow;
     const { data: itemsRaw } = await admin
       .from("ppv_send_items")
-      .select("ordinal, ppvs(name, media_url, preview_url)")
+      .select("ordinal, ppvs(id, name, preview_url)")
       .eq("send_id", send.id)
       .order("ordinal", { ascending: true });
     const items = ((itemsRaw ?? []) as unknown as ItemRowRaw[]).map((it) => {
       const ppv = Array.isArray(it.ppvs) ? it.ppvs[0] ?? null : it.ppvs;
       return {
         name: ppv?.name ?? "Item",
-        media_url: ppv?.preview_url ?? null,
+        // Preview via the public signed-url endpoint (private-bucket-ready).
+        media_url: ppv?.preview_url && ppv?.id ? `/api/ppv/file/${ppv.id}?kind=preview` : null,
       };
     });
     const basePrice = Number(send.total_price ?? 0);

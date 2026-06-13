@@ -102,6 +102,10 @@ type Tab = "ppv" | "tips" | "notes" | "stats";
 // modest and additionally guard with in-flight refs (see fetchDialogs/fetchMessages).
 const DIALOGS_POLL_MS = 10_000;
 const MESSAGES_POLL_MS = 5_000;
+// When the SSE stream is connected it pushes new-message events in real time,
+// so the message poll drops to a slow backstop (catches anything SSE missed).
+// On SSE drop we fall back to the fast cadence above.
+const MESSAGES_POLL_SSE_MS = 20_000;
 // Activity is light (in-memory read, no gramJS hop) so we poll faster.
 const ACTIVITY_POLL_MS = 3_000;
 
@@ -267,6 +271,9 @@ export default function ChatterPage() {
   } | null>(null);
 
   const autoSelectedRef = useRef<string | null>(null);
+  // True while the SSE realtime stream is connected — drives the message
+  // poll down to a slow backstop (events carry the live updates instead).
+  const sseConnectedRef = useRef(false);
   // Deep-link from the agency Inbox (?modelId=&peerId=) — the peer to open
   // once that model's dialogs have loaded. Consumed once, then cleared.
   const deepLinkPeerRef = useRef<string | null>(null);
@@ -730,17 +737,24 @@ export default function ChatterPage() {
 
   useEffect(() => {
     if (!selectedModelId || !selectedDialog) return;
-    const tid = setTimeout(() => {
-      void fetchMessages(selectedModelId, selectedDialog);
-    }, 0);
-    const iv = setInterval(() => {
-      void fetchMessages(selectedModelId, selectedDialog);
-      // Eco mode never slows the OPEN chat — messages stay instant. It only
-      // dilutes the chat-list / presence / stats polls below.
-    }, MESSAGES_POLL_MS);
+    const modelId = selectedModelId;
+    const dialog = selectedDialog;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    // Self-adjusting cadence: fast (5s) when SSE is down, slow backstop (20s)
+    // when SSE is feeding live message events. Eco mode never slows the OPEN
+    // chat — it only dilutes the chat-list / presence / stats polls below.
+    const tick = () => {
+      if (stopped) return;
+      void fetchMessages(modelId, dialog);
+      const delay = sseConnectedRef.current ? MESSAGES_POLL_SSE_MS : MESSAGES_POLL_MS;
+      timer = setTimeout(tick, delay);
+    };
+    const first = setTimeout(tick, 0);
     return () => {
-      clearTimeout(tid);
-      clearInterval(iv);
+      stopped = true;
+      clearTimeout(first);
+      clearTimeout(timer);
     };
   }, [selectedModelId, selectedDialog, fetchMessages]);
 
@@ -788,6 +802,16 @@ export default function ChatterPage() {
     if (!selectedModelId) return;
     const modelId = selectedModelId;
     const es = new EventSource(`/api/telegram/stream/${modelId}`);
+    // Connection state gates the message-poll cadence: connected → slow
+    // backstop, dropped → fast fallback. EventSource auto-reconnects; on each
+    // reconnect attempt onerror fires (flipping us back to fast polling) and
+    // onopen restores the backstop.
+    es.onopen = () => {
+      sseConnectedRef.current = true;
+    };
+    es.onerror = () => {
+      sseConnectedRef.current = false;
+    };
     es.onmessage = (e) => {
       try {
         const ev = JSON.parse(e.data) as {
@@ -806,7 +830,10 @@ export default function ChatterPage() {
         // ignore malformed payloads
       }
     };
-    return () => es.close();
+    return () => {
+      sseConnectedRef.current = false;
+      es.close();
+    };
   }, [selectedModelId, selectedDialog, fetchMessages, fetchActivity]);
 
   // ── stats polling ─────────────────────────────────────────────────────────

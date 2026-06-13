@@ -297,7 +297,7 @@ export function ActionPanel({
                       </div>
                     ) : isVid ? (
                       <video
-                        src={item.media_url}
+                        src={`/api/ppv/file/${item.id}`}
                         muted
                         loop
                         playsInline
@@ -307,7 +307,7 @@ export function ActionPanel({
                     ) : (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
-                        src={item.media_url}
+                        src={`/api/ppv/file/${item.id}`}
                         alt={item.name}
                         className="w-full h-full object-cover"
                         onError={(e) => {

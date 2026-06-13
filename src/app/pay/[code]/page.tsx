@@ -17,8 +17,8 @@ type SendRow = {
 type ItemRowRaw = {
   ordinal: number;
   ppvs:
-    | { name: string; media_url: string | null; preview_url: string | null }
-    | { name: string; media_url: string | null; preview_url: string | null }[]
+    | { id: string; name: string; preview_url: string | null }
+    | { id: string; name: string; preview_url: string | null }[]
     | null;
 };
 
@@ -37,19 +37,19 @@ export default async function PayPage({ params }: { params: Promise<{ code: stri
 
   const { data: itemsRaw } = await admin
     .from("ppv_send_items")
-    .select("ordinal, ppvs(name, media_url, preview_url)")
+    .select("ordinal, ppvs(id, name, preview_url)")
     .eq("send_id", send.id)
     .order("ordinal", { ascending: true });
 
-  // The locked page ships ONLY the pre-blurred `preview_url`. We deliberately
-  // never fall back to the original `media_url` — that would leak the
-  // unpaywalled file (the storage bucket is currently public, so a URL is the
-  // full asset). For items without a preview the client renders a lock tile.
+  // The locked page ships ONLY the pre-blurred preview, served through the
+  // signed-url endpoint (?kind=preview is public) so it keeps working once
+  // the bucket is private. We never reference the original here — that would
+  // leak the un-paywalled file. Items without a preview render a lock tile.
   const items = ((itemsRaw ?? []) as unknown as ItemRowRaw[]).map((it) => {
     const ppv = Array.isArray(it.ppvs) ? it.ppvs[0] ?? null : it.ppvs;
     return {
       name: ppv?.name ?? "Item",
-      media_url: ppv?.preview_url ?? null,
+      media_url: ppv?.preview_url && ppv?.id ? `/api/ppv/file/${ppv.id}?kind=preview` : null,
     };
   });
 

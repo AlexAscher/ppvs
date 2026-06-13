@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase-server";
 import { withTimeout } from "@/lib/with-timeout";
+import { consume, getClientIp, tooManyRequests } from "@/lib/rate-limit";
 
 const STATUS_QUERY_TIMEOUT_MS = 12_000;
 
@@ -12,6 +13,11 @@ const STATUS_QUERY_TIMEOUT_MS = 12_000;
  */
 export async function GET(req: NextRequest) {
   try {
+    // The code is a bearer secret; cap polling per IP so it can't be used to
+    // brute-force-scan codes. Generous because the chatter UI polls actively.
+    const ip = getClientIp(req);
+    if (!consume(`ppv-status|${ip}`, 120, 60_000)) return tooManyRequests(30);
+
     const code = new URL(req.url).searchParams.get("code");
     if (!code) return Response.json({ error: "code required" }, { status: 400 });
 

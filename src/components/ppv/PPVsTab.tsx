@@ -754,6 +754,9 @@ function PpvCard({ ppv, onClick }: { ppv: PpvItem; onClick: () => void }) {
   // render an actual <video> element (autoplay/muted for thumbnail feel).
   const isVideo = !!ppv.media_url && /\.(mp4|mov|webm|m4v|mkv)(\?|$)/i.test(ppv.media_url);
   const isAudio = !!ppv.media_url && /\.(mp3|m4a|aac|ogg|oga|opus|wav|flac)(\?|$)/i.test(ppv.media_url);
+  // Render the original through the authorized signed-url endpoint rather
+  // than the raw storage url, so it keeps working once the bucket is private.
+  const src = `/api/ppv/file/${ppv.id}`;
   return (
     <button
       onClick={onClick}
@@ -767,7 +770,7 @@ function PpvCard({ ppv, onClick }: { ppv: PpvItem; onClick: () => void }) {
             </div>
           ) : isVideo ? (
             <video
-              src={ppv.media_url}
+              src={src}
               muted
               loop
               playsInline
@@ -777,7 +780,7 @@ function PpvCard({ ppv, onClick }: { ppv: PpvItem; onClick: () => void }) {
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={ppv.media_url}
+              src={src}
               alt={ppv.name}
               className="absolute inset-0 w-full h-full object-cover"
               onError={(e) => {

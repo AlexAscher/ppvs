@@ -115,6 +115,18 @@ export async function GET(req: NextRequest) {
     };
     if (modelIds.length === 0) return Response.json(empty);
 
+    // ── Fast path: aggregate in Postgres via fn_dashboard_core ──────────────
+    // One round-trip returns ~5 KB of pre-aggregated JSON instead of pulling
+    // every ppv_sends + fans row across the Ireland↔EU link. Falls through to
+    // the in-Node loaders below if the RPC is missing (migration not yet run)
+    // or errors — so nothing breaks regardless of deploy order.
+    try {
+      const fastPath = await computeViaRpc(admin, user.id, modelIds, nameByModel, period, partial);
+      if (fastPath) return Response.json(fastPath);
+    } catch {
+      /* fall through to the loader path */
+    }
+
     // 2. Sends + fans via paginated loaders (small per-page requests survive
     //    flaky uplinks much better than one giant SELECT). Chatters + payouts
     //    are tiny — single-shot with .catch.
@@ -306,4 +318,185 @@ export async function GET(req: NextRequest) {
     // Timeouts land here — tell the client to retry.
     return Response.json({ error: msg }, { status: 503 });
   }
+}
+
+type AdminClient = ReturnType<typeof createAdminSupabaseClient>;
+
+/**
+ * Postgres-side aggregation via fn_dashboard_core. Returns the full
+ * DashboardStats, or null when the RPC is unavailable / errors (the caller
+ * then falls back to the in-Node loader path). Keeps chatter-name resolution,
+ * recent sales, payouts + chart shaping in Node (cheap, small queries).
+ */
+async function computeViaRpc(
+  admin: AdminClient,
+  agencyUserId: string,
+  modelIds: string[],
+  nameByModel: Map<string, string>,
+  period: ReturnType<typeof parseChartPeriod>,
+  partial: boolean,
+): Promise<DashboardStats | null> {
+  const netMult = agencyNet(1); // (1 − platform fee), single source of truth
+  const now = new Date();
+  const todayStart = startOfDay(now);
+  const weekStart = todayStart - 6 * 86_400_000;
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+
+  const rpc = await withTimeout(
+    Promise.resolve(
+      admin.rpc("fn_dashboard_core", {
+        p_model_ids: modelIds,
+        p_today: new Date(todayStart).toISOString(),
+        p_week: new Date(weekStart).toISOString(),
+        p_month: new Date(monthStart).toISOString(),
+        p_net_mult: netMult,
+      }),
+    ),
+    Q_TIMEOUT,
+    "dashboard: rpc",
+  );
+  if (rpc.error || !rpc.data) return null;
+
+  const core = rpc.data as {
+    net_all: number; net_today: number; net_week: number; net_month: number;
+    sales: number;
+    models: { id: string; net: number; sales: number }[];
+    chatters: { id: string; net: number; sales: number }[];
+    paying_fans: number;
+    top_fans: { username: string | null; name: string | null; spent: number }[];
+    series: { d: string; value: number }[];
+  };
+
+  // Chart: daily series covers 7d/30d/all. 1d (hourly) needs intraday data
+  // the daily series lacks, so pull just today's sends (small).
+  let earliest: number | undefined;
+  if (period === "all" && core.series.length > 0) {
+    earliest = new Date(core.series[0].d).getTime();
+  }
+  const buckets = buildChartBuckets(period, earliest);
+  if (period === "1d") {
+    try {
+      const r = await withTimeout(
+        Promise.resolve(
+          admin
+            .from("ppv_sends")
+            .select("total_price, created_at, status")
+            .in("model_id", modelIds)
+            .in("status", ["paid", "delivered"])
+            .gte("created_at", new Date(todayStart).toISOString()),
+        ),
+        Q_TIMEOUT,
+        "dashboard: 1d chart",
+      );
+      for (const s of (r.data ?? []) as { total_price: number | string; created_at: string }[]) {
+        const b = bucketFor(buckets, new Date(s.created_at).getTime(), period);
+        if (b) b.value += agencyNet(Number(s.total_price ?? 0));
+      }
+    } catch {
+      /* empty chart is acceptable */
+    }
+  } else {
+    for (const pt of core.series) {
+      const b = bucketFor(buckets, new Date(pt.d).getTime(), period);
+      if (b) b.value += Number(pt.value);
+    }
+  }
+
+  // Chatter display names (best-effort, capped at 10).
+  const chatters: ChatterStat[] = await Promise.all(
+    core.chatters.slice(0, 10).map(async (c) => {
+      let name = "Chatter";
+      try {
+        const { data } = await admin.auth.admin.getUserById(c.id);
+        const u = data?.user;
+        name =
+          (u?.user_metadata?.full_name as string) ||
+          (u?.user_metadata?.display_name as string) ||
+          u?.email?.split("@")[0] ||
+          "Chatter";
+      } catch {
+        /* keep default */
+      }
+      return { id: c.id, name, net: c.net, sales: c.sales };
+    }),
+  );
+
+  // Recent sales + payouts + active-chatter count — small, run in parallel.
+  const [recentRes, payoutsRes, linksRes] = await Promise.all([
+    withTimeout(
+      Promise.resolve(
+        admin
+          .from("ppv_sends")
+          .select("model_id, peer_username, total_price, created_at")
+          .in("model_id", modelIds)
+          .in("status", ["paid", "delivered"])
+          .order("created_at", { ascending: false })
+          .limit(10),
+      ),
+      Q_TIMEOUT,
+      "dashboard: recent",
+    ).catch(() => ({ data: [] as unknown[] })),
+    withTimeout(
+      Promise.resolve(admin.from("payouts").select("amount, status").eq("agency_user_id", agencyUserId)),
+      Q_TIMEOUT,
+      "dashboard: payouts",
+    ).catch(() => ({ data: [] as { amount: number; status: string }[] })),
+    withTimeout(
+      Promise.resolve(admin.from("agency_chatters").select("chatter_id").eq("agency_id", agencyUserId)),
+      Q_TIMEOUT,
+      "dashboard: chatters",
+    ).catch(() => ({ data: [] as { chatter_id: string }[] })),
+  ]);
+
+  const recentSales: RecentSale[] = (
+    (recentRes.data ?? []) as {
+      model_id: string;
+      peer_username: string | null;
+      total_price: number | string;
+      created_at: string;
+    }[]
+  ).map((r) => ({
+    fanName: r.peer_username ? `@${r.peer_username}` : "Fan",
+    amount: Number(r.total_price ?? 0),
+    modelName: nameByModel.get(r.model_id) ?? "Model",
+    ts: new Date(r.created_at).getTime(),
+  }));
+
+  const payouts = (payoutsRes.data ?? []) as { amount: number; status: string }[];
+  const paidOrPending = payouts
+    .filter((p) => p.status !== "rejected")
+    .reduce((sum, p) => sum + Number(p.amount ?? 0), 0);
+  const pendingPayouts = payouts
+    .filter((p) => p.status === "pending")
+    .reduce((sum, p) => sum + Number(p.amount ?? 0), 0);
+
+  const models: ModelStat[] = core.models.map((m) => ({
+    id: m.id,
+    name: nameByModel.get(m.id) ?? "Model",
+    net: m.net,
+    sales: m.sales,
+  }));
+  const topFans: FanStat[] = core.top_fans.map((f) => ({
+    name: f.username ? `@${f.username}` : f.name || "Fan",
+    spent: Number(f.spent),
+  }));
+
+  return {
+    netToday: core.net_today,
+    netWeek: core.net_week,
+    netMonth: core.net_month,
+    netAllTime: core.net_all,
+    sales: core.sales,
+    avgOrder: core.sales > 0 ? core.net_all / core.sales : 0,
+    payingFans: core.paying_fans,
+    activeChatters: ((linksRes.data ?? []) as { chatter_id: string }[]).length,
+    availableBalance: Math.max(0, core.net_all - paidOrPending),
+    pendingPayouts,
+    chart: buckets.map((b) => ({ date: b.date, value: Math.round(b.value) })),
+    models,
+    chatters,
+    topFans,
+    recentSales,
+    partial,
+  };
 }

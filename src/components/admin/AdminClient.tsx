@@ -1107,10 +1107,10 @@ function AgencyVaultPanel({ agencyId }: { agencyId: string }) {
               >
                 {p.media_url ? (
                   isVideo ? (
-                    <video src={p.media_url} muted className="absolute inset-0 w-full h-full object-cover" />
+                    <video src={`/api/ppv/file/${p.id}`} muted className="absolute inset-0 w-full h-full object-cover" />
                   ) : (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={p.media_url} alt={p.name} className="absolute inset-0 w-full h-full object-cover" />
+                    <img src={`/api/ppv/file/${p.id}`} alt={p.name} className="absolute inset-0 w-full h-full object-cover" />
                   )
                 ) : (
                   <div className="absolute inset-0 flex items-center justify-center text-[#374151] text-[24px]">📦</div>
@@ -1191,10 +1191,10 @@ function AdminPpvLightbox({
           <div className="relative w-full bg-black rounded-lg overflow-hidden" style={{ aspectRatio: "16/10" }}>
             {ppv.media_url ? (
               isVideo ? (
-                <video src={ppv.media_url} controls autoPlay muted className="w-full h-full object-contain" />
+                <video src={`/api/ppv/file/${ppv.id}`} controls autoPlay muted className="w-full h-full object-contain" />
               ) : (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={ppv.media_url} alt={ppv.name} className="w-full h-full object-contain" />
+                <img src={`/api/ppv/file/${ppv.id}`} alt={ppv.name} className="w-full h-full object-contain" />
               )
             ) : (
               <div className="absolute inset-0 flex items-center justify-center text-[#374151] text-[40px]">📦</div>

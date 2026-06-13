@@ -12,6 +12,28 @@ import {
   serializeCachedFile,
   toInputMedia,
 } from "@/lib/ppv-file-cache";
+import { ppvMediaPathFromUrl } from "@/lib/ppv-storage";
+import { createAdminSupabaseClient } from "@/lib/supabase-server";
+
+/**
+ * If `url` points at our own Supabase Storage object, swap it for a short-
+ * lived SIGNED url before fetching. This is what lets us flip the `ppvs`
+ * bucket to PRIVATE without breaking server-side delivery — a signed url
+ * works whether the bucket is public or private. External urls pass through
+ * unchanged, and any signing failure falls back to the original url (so a
+ * still-public bucket keeps working).
+ */
+async function toFetchableStorageUrl(url: string): Promise<string> {
+  const path = ppvMediaPathFromUrl(url);
+  if (!path) return url;
+  try {
+    const admin = createAdminSupabaseClient();
+    const { data } = await admin.storage.from("ppvs").createSignedUrl(path, 300);
+    return data?.signedUrl ?? url;
+  } catch {
+    return url;
+  }
+}
 
 /**
  * PPV delivery via Telegram MTProto — buffer-upload path.
@@ -158,7 +180,9 @@ async function fetchBuffer(
     controller.abort();
   }, timeoutMs);
   try {
-    const res = await fetch(url, { signal: controller.signal });
+    // Resolve our own storage objects to a signed url (private-bucket-ready).
+    const target = await toFetchableStorageUrl(url);
+    const res = await fetch(target, { signal: controller.signal });
     if (!res.ok) throw new Error(`${label}: HTTP ${res.status} for ${url}`);
     const ab = await res.arrayBuffer();
     return Buffer.from(ab);

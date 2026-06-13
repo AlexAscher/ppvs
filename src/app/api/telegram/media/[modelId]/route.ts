@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { Api } from "telegram";
+import bigInt from "big-integer";
 import { authorizeModelAccess } from "@/lib/telegram-authorize";
 import { withTelegramClient } from "@/lib/telegram-pool";
 import { buildPeer } from "@/lib/telegram-peer";
@@ -14,10 +15,18 @@ const cache: Map<string, { data: Buffer; mime: string; ts: number }> =
   globalThis.__ppvs_media_cache__ ?? new Map();
 globalThis.__ppvs_media_cache__ = cache;
 
-// Keep last 50 media items, evict oldest. Telegram media never changes
-// for a given (peerId, messageId) so we can cache aggressively.
-const CACHE_TTL_MS = 30 * 60 * 1000;
-const CACHE_MAX = 50;
+// Telegram media is immutable for a given (peerId, messageId) so we cache
+// aggressively. The box has 10+ GB free RAM, so we budget by TOTAL BYTES
+// rather than item count — one 80 MB video shouldn't evict 49 thumbnails.
+const CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2h
+const CACHE_BYTES_BUDGET = 1024 * 1024 * 1024; // 1 GB resident
+// Don't cache a single item bigger than this — a huge file would just churn
+// the budget. It still streams fine; it just won't be resident afterwards.
+const CACHE_ITEM_MAX = 80 * 1024 * 1024; // 80 MB
+// Stream (rather than buffer-then-send) documents at least this big so the
+// browser starts playing before the whole file arrives from Telegram.
+const STREAM_THRESHOLD = 3 * 1024 * 1024; // 3 MB
+const STREAM_REQUEST_SIZE = 512 * 1024; // 512 KB chunks (multiple of 4 KB)
 
 function cacheKey(
   modelId: string,
@@ -28,10 +37,24 @@ function cacheKey(
   return `${modelId}:${peerId}:${messageId}:${quality}`;
 }
 
-function evictIfNeeded() {
-  if (cache.size <= CACHE_MAX) return;
+function cacheBytes(): number {
+  let n = 0;
+  for (const v of cache.values()) n += v.data.length;
+  return n;
+}
+
+/** Store an item, then evict oldest entries until under the byte budget. */
+function cachePut(key: string, data: Buffer, mime: string) {
+  if (data.length > CACHE_ITEM_MAX) return; // too big to keep resident
+  cache.set(key, { data, mime, ts: Date.now() });
+  if (cacheBytes() <= CACHE_BYTES_BUDGET) return;
   const sorted = Array.from(cache.entries()).sort((a, b) => a[1].ts - b[1].ts);
-  for (let i = 0; i < sorted.length - CACHE_MAX; i++) cache.delete(sorted[i][0]);
+  let total = cacheBytes();
+  for (const [k, v] of sorted) {
+    if (total <= CACHE_BYTES_BUDGET) break;
+    cache.delete(k);
+    total -= v.data.length;
+  }
 }
 
 /**
@@ -154,9 +177,23 @@ export async function GET(
       return respondWithMaybeRange(hit.data, hit.mime, rangeHeader);
     }
 
-    // 90s timeout — downloading a large media file from Telegram's CDN
-    // through the model's client can take a while on slow networks.
-    const result = await withTelegramClient(
+    // Deferred Response: the streaming path resolves this as soon as the
+    // headers are known, then keeps feeding bytes from a background reader.
+    // The buffer paths resolve it with a finished Response. We bump the op
+    // timeout to 300s because a slow full download can take a while.
+    let resolveResp!: (r: Response) => void;
+    const respPromise = new Promise<Response>((res) => {
+      resolveResp = res;
+    });
+    let settled = false;
+    const settle = (r: Response) => {
+      if (!settled) {
+        settled = true;
+        resolveResp(r);
+      }
+    };
+
+    const work = withTelegramClient(
       modelId,
       auth.model.session_string,
       auth.model.api_id,
@@ -165,12 +202,14 @@ export async function GET(
         const peer = buildPeer(peerId, accessHash);
         const fetched = await tg.getMessages(peer, { ids: [messageId] });
         const msg = fetched.find((m): m is Api.Message => m instanceof Api.Message);
-        if (!msg || !msg.media) return null;
+        if (!msg || !msg.media) {
+          settle(Response.json({ error: "Media not found" }, { status: 404 }));
+          return;
+        }
 
-        let buf: Buffer | string | undefined;
+        // ── thumb: small (≤150 KB) → buffer + cache, unchanged behaviour ──
         if (quality === "thumb") {
-          // Photo: download a mid-size PhotoSize ('x'/'y') instead of the
-          // full original — ~100 KB instead of multi-MB.
+          let buf: Buffer | string | undefined;
           if (
             msg.media instanceof Api.MessageMediaPhoto &&
             msg.media.photo instanceof Api.Photo
@@ -179,10 +218,7 @@ export async function GET(
             buf = target
               ? await tg.downloadMedia(msg, { thumb: target })
               : await tg.downloadMedia(msg);
-          }
-          // Video / document: download the cover thumb (PhotoSize on
-          // doc.thumbs) instead of the multi-MB video file.
-          else if (
+          } else if (
             msg.media instanceof Api.MessageMediaDocument &&
             msg.media.document instanceof Api.Document
           ) {
@@ -193,22 +229,115 @@ export async function GET(
           } else {
             buf = await tg.downloadMedia(msg);
           }
-        } else {
-          buf = await tg.downloadMedia(msg);
+          if (!buf || typeof buf === "string") {
+            settle(Response.json({ error: "Media not found" }, { status: 404 }));
+            return;
+          }
+          const mime = mimeFor(msg, true);
+          cachePut(k, buf as Buffer, mime);
+          settle(respondWithMaybeRange(buf as Buffer, mime, rangeHeader));
+          return;
         }
 
-        if (!buf || typeof buf === "string") return null;
-        return { buf: buf as Buffer, mime: mimeFor(msg, quality === "thumb") };
+        // ── full quality ──
+        const doc =
+          msg.media instanceof Api.MessageMediaDocument &&
+          msg.media.document instanceof Api.Document
+            ? msg.media.document
+            : null;
+        const total = doc ? Number(doc.size) : 0;
+        // Only stream from byte 0 — Telegram requires 4 KB-aligned offsets, so
+        // mid-file seeks (start>0) take the buffer path instead (which caches
+        // the whole file, making the seek instant the second time).
+        const fromStart = !rangeHeader || /^bytes=0-?$/.test(rangeHeader.trim());
+
+        if (doc && total >= STREAM_THRESHOLD && fromStart) {
+          const mime = mimeFor(msg, false);
+          const loc = new Api.InputDocumentFileLocation({
+            id: doc.id,
+            accessHash: doc.accessHash,
+            fileReference: doc.fileReference,
+            thumbSize: "",
+          });
+          const collected: Buffer[] = [];
+          let collectedBytes = 0;
+          let aborted = false;
+          const body = new ReadableStream<Uint8Array>({
+            async start(controller) {
+              try {
+                for await (const chunk of tg.iterDownload({
+                  file: loc,
+                  offset: bigInt.zero,
+                  limit: total,
+                  requestSize: STREAM_REQUEST_SIZE,
+                })) {
+                  if (aborted) break;
+                  const u = chunk instanceof Buffer ? chunk : Buffer.from(chunk);
+                  controller.enqueue(new Uint8Array(u));
+                  if (collectedBytes + u.length <= CACHE_ITEM_MAX) {
+                    collected.push(u);
+                    collectedBytes += u.length;
+                  }
+                }
+                if (!aborted) {
+                  controller.close();
+                  // Cache the assembled file so re-opens + seeks are instant.
+                  if (collectedBytes === total && total > 0) {
+                    cachePut(k, Buffer.concat(collected, total), mime);
+                  }
+                }
+              } catch (e) {
+                try {
+                  controller.error(e);
+                } catch {
+                  /* already errored */
+                }
+              }
+            },
+            cancel() {
+              // Browser closed the tab / aborted — stop pulling from Telegram.
+              aborted = true;
+            },
+          });
+          const headers: Record<string, string> = {
+            "Content-Type": mime,
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "private, max-age=300",
+            "Content-Length": String(total),
+          };
+          let status = 200;
+          if (rangeHeader) {
+            status = 206;
+            headers["Content-Range"] = `bytes 0-${total - 1}/${total}`;
+          }
+          settle(new Response(body, { status, headers }));
+          // Return immediately — the stream feeds in the background. Keeping
+          // fn short avoids holding the pool's per-op timeout for the whole
+          // download.
+          return;
+        }
+
+        // ── full quality, buffer path (small files, or seeks at start>0) ──
+        const buf = await tg.downloadMedia(msg);
+        if (!buf || typeof buf === "string") {
+          settle(Response.json({ error: "Media not found" }, { status: 404 }));
+          return;
+        }
+        const mime = mimeFor(msg, false);
+        cachePut(k, buf as Buffer, mime);
+        settle(respondWithMaybeRange(buf as Buffer, mime, rangeHeader));
       },
-      90_000,
+      300_000,
     );
+    work.catch((e) => {
+      console.error(
+        "[telegram/media GET] op error:",
+        e instanceof Error ? e.message : e,
+      );
+      settle(Response.json({ error: "Media error" }, { status: 500 }));
+    });
 
-    if (!result) return Response.json({ error: "Media not found" }, { status: 404 });
-
-    cache.set(k, { data: result.buf, mime: result.mime, ts: Date.now() });
-    evictIfNeeded();
-
-    return respondWithMaybeRange(result.buf, result.mime, rangeHeader);
+    return await respPromise;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed";
     console.error("[telegram/media GET] error:", message);

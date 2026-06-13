@@ -203,7 +203,10 @@ export function PpvFormModal({
         </div>
 
         <div className="space-y-4">
-          <PpvMediaInput initialUrl={existing?.media_url ?? null} onFileChange={setFile} />
+          <PpvMediaInput
+            initialUrl={existing ? `/api/ppv/file/${existing.id}` : null}
+            onFileChange={setFile}
+          />
 
           <div>
             <label className="text-[12px] text-[#9ca3af] font-medium mb-1.5 block">Name</label>

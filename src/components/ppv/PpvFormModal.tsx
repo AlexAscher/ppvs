@@ -4,7 +4,7 @@ import { useState } from "react";
 import { X, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { uploadPpvMedia, deletePpvMedia } from "@/lib/ppv-storage";
-import { PpvItem, PpvTag } from "./types";
+import { PpvGroup, PpvItem, PpvTag } from "./types";
 import { PpvMediaInput } from "./PpvMediaInput";
 import { TagSelector } from "./TagSelector";
 
@@ -15,6 +15,9 @@ type Props = {
   groupId: string | null;
   existing: PpvItem | null;
   allTags: PpvTag[];
+  /** All groups belonging to the current creator. Drives the
+   *  "Move to group / + Add to group" picker in edit mode. */
+  allGroups?: PpvGroup[];
   onClose: () => void;
   onSave: (ppv: PpvItem) => void;
   onDelete?: (id: string) => void;
@@ -27,6 +30,7 @@ export function PpvFormModal({
   groupId,
   existing,
   allTags,
+  allGroups,
   onClose,
   onSave,
   onDelete,
@@ -35,6 +39,12 @@ export function PpvFormModal({
   const [file, setFile] = useState<File | null>(null);
   const [name, setName] = useState(existing?.name ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
+  // Group assignment — editable. On add: defaults to whatever the caller
+  // passed (could be null, or a specific group). On edit: defaults to the
+  // PPV's current group_id.
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(
+    existing?.group_id ?? groupId ?? null,
+  );
   // Price is no longer set by the agency — chatters pick a price (or 0 for
   // free) when sending. We default to 0 in the DB so legacy code that still
   // reads ppvs.price gets a deterministic value. Existing rows keep their old
@@ -84,7 +94,7 @@ export function PpvFormModal({
           .insert({
             agency_user_id: agencyUserId,
             model_id: modelId,
-            group_id: groupId,
+            group_id: selectedGroupId,
             name: name.trim(),
             description: description.trim() || null,
             price: priceNum,
@@ -102,6 +112,9 @@ export function PpvFormModal({
           name: name.trim(),
           description: description.trim() || null,
           price: priceNum,
+          // Move-to-group: persist the picker's value so editing can drop
+          // the PPV out of its current folder or into another one.
+          group_id: selectedGroupId,
         };
         // Only overwrite media columns when a new file was uploaded —
         // editing name/price without changing the file shouldn't wipe them.
@@ -130,7 +143,7 @@ export function PpvFormModal({
       onSave({
         id: savedId,
         model_id: modelId,
-        group_id: groupId,
+        group_id: selectedGroupId,
         name: name.trim(),
         description: description.trim() || null,
         price: priceNum,
@@ -212,6 +225,36 @@ export function PpvFormModal({
               className="w-full px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#4b5563] focus:border-[#6366f1] focus:outline-none transition-colors resize-none"
             />
           </div>
+
+          {/* Group picker — drives both "+ Add to group" (when currently
+              standalone) and "Move to group" (when already in one). The
+              `<select>` plus the explicit "Standalone" option covers both
+              flows in one control. Hidden if the creator has no groups
+              yet (nothing to pick from). */}
+          {!!allGroups && allGroups.length > 0 && (
+            <div>
+              <label className="text-[12px] text-[#9ca3af] font-medium mb-1.5 block">
+                {selectedGroupId ? "Group" : "+ Add to group"}
+              </label>
+              <select
+                value={selectedGroupId ?? ""}
+                onChange={(e) => setSelectedGroupId(e.target.value || null)}
+                className="w-full px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white focus:border-[#6366f1] focus:outline-none transition-colors"
+              >
+                <option value="">— Standalone (no group) —</option>
+                {allGroups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+              </select>
+              {existing && existing.group_id !== selectedGroupId && (
+                <p className="text-[11px] text-[#6366f1] mt-1.5">
+                  Will be moved on save.
+                </p>
+              )}
+            </div>
+          )}
 
           <div>
             <label className="text-[12px] text-[#9ca3af] font-medium mb-1.5 block">Tags</label>

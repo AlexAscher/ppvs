@@ -40,13 +40,20 @@ export function PPVsTab() {
   const [captionDraft, setCaptionDraft] = useState("");
 
   // Bulk upload: pick many files → each becomes a PPV named after the file.
+  // bulkInputRef is the *standalone* (group_id = null) trigger. Per-group
+  // uploads share the same handler but stash the target group_id in
+  // bulkTargetGroupId, set right before the file picker opens.
   const bulkInputRef = useRef<HTMLInputElement | null>(null);
   const [bulkUpload, setBulkUpload] = useState<{ done: number; total: number } | null>(null);
   const [bulkNotice, setBulkNotice] = useState("");
+  const [bulkTargetGroupId, setBulkTargetGroupId] = useState<string | null>(null);
 
   async function handleBulkFiles(e: React.ChangeEvent<HTMLInputElement>) {
     const all = Array.from(e.target.files ?? []);
     e.target.value = ""; // allow re-picking the same files
+    // Pop the target group_id locally so subsequent uploads start fresh.
+    const targetGroupId = bulkTargetGroupId;
+    setBulkTargetGroupId(null);
     if (!all.length || !agencyUserId || !selectedModelId) return;
     // Drop anything Telegram can't display (.jfif, .heic, …) before uploading.
     const files = all.filter((f) => validatePpvFile(f).ok);
@@ -67,17 +74,27 @@ export function PPVsTab() {
           .insert({
             agency_user_id: agencyUserId,
             model_id: selectedModelId,
-            group_id: null,
+            group_id: targetGroupId,
             name: baseName,
             description: null,
             price: 0,
             media_url: uploaded.mediaUrl,
             preview_url: uploaded.previewUrl,
           })
-          .select("id, model_id, group_id, name, description, price, media_url, preview_url, created_at")
+          .select("id, model_id, group_id, name, description, price, media_url, preview_url, review_status, review_notes, created_at")
           .single();
         if (data) {
-          setStandalonePpvs((prev) => [{ ...(data as PpvItem), tags: [] }, ...prev]);
+          const item = { ...(data as PpvItem), tags: [] };
+          if (targetGroupId) {
+            // Drop into the target group's items list (top of the array).
+            setGroups((prev) =>
+              prev.map((g) =>
+                g.id === targetGroupId ? { ...g, items: [item, ...g.items] } : g,
+              ),
+            );
+          } else {
+            setStandalonePpvs((prev) => [item, ...prev]);
+          }
         }
       } catch {
         /* skip this file, keep going */
@@ -181,22 +198,41 @@ export function PPVsTab() {
   const filteredGroups = groups.filter((g) => matchesFilter(g.tags) || g.items.some((it) => matchesFilter(it.tags)));
 
   function handlePpvSaved(saved: PpvItem) {
-    if (saved.group_id) {
-      setGroups((prev) =>
-        prev.map((g) =>
-          g.id !== saved.group_id ? g : {
+    // When a PPV's group_id changes (move-to-group / +add-to-group / drop
+    // out to standalone), we strip the OLD location and write to the NEW
+    // one. Otherwise the moved item would show up in both places until
+    // the next full reload.
+    setGroups((prev) =>
+      prev.map((g) => {
+        const wasIn = g.items.some((it) => it.id === saved.id);
+        const isIn = g.id === saved.group_id;
+        if (isIn) {
+          // New (or unchanged) home for the item — upsert.
+          return {
             ...g,
-            items: g.items.some((it) => it.id === saved.id)
+            items: wasIn
               ? g.items.map((it) => (it.id === saved.id ? saved : it))
               : [saved, ...g.items],
-          },
-        ),
-      );
-    } else {
-      setStandalonePpvs((prev) =>
-        prev.some((it) => it.id === saved.id) ? prev.map((it) => (it.id === saved.id ? saved : it)) : [saved, ...prev],
-      );
-    }
+          };
+        }
+        if (wasIn) {
+          // Item moved out of this group.
+          return { ...g, items: g.items.filter((it) => it.id !== saved.id) };
+        }
+        return g;
+      }),
+    );
+    setStandalonePpvs((prev) => {
+      const wasIn = prev.some((it) => it.id === saved.id);
+      const isIn = saved.group_id == null;
+      if (isIn) {
+        return wasIn
+          ? prev.map((it) => (it.id === saved.id ? saved : it))
+          : [saved, ...prev];
+      }
+      // Item moved into a group → drop from standalone.
+      return wasIn ? prev.filter((it) => it.id !== saved.id) : prev;
+    });
     setPpvForm(null);
   }
 
@@ -417,6 +453,12 @@ export function PPVsTab() {
                     group={g}
                     onEdit={() => setEditingGroup(g)}
                     onAddItem={() => setPpvForm({ kind: "add", groupId: g.id })}
+                    onBulkUpload={() => {
+                      // Stash the target group, then click the hidden file
+                      // input. handleBulkFiles reads bulkTargetGroupId.
+                      setBulkTargetGroupId(g.id);
+                      bulkInputRef.current?.click();
+                    }}
                     onItemClick={(item) => setPpvForm({ kind: "edit", ppv: item })}
                     selectMode={selectMode}
                     selectedIds={selectedIds}
@@ -556,6 +598,7 @@ export function PPVsTab() {
           groupId={ppvForm.kind === "add" ? ppvForm.groupId : ppvForm.ppv.group_id}
           existing={ppvForm.kind === "edit" ? ppvForm.ppv : null}
           allTags={tags}
+          allGroups={groups}
           onClose={() => setPpvForm(null)}
           onSave={handlePpvSaved}
           onDelete={ppvForm.kind === "edit" ? handlePpvDeleted : undefined}
@@ -654,6 +697,7 @@ function GroupCard({
   group,
   onEdit,
   onAddItem,
+  onBulkUpload,
   onItemClick,
   selectMode = false,
   selectedIds,
@@ -662,6 +706,9 @@ function GroupCard({
   group: PpvGroup;
   onEdit: () => void;
   onAddItem: () => void;
+  /** Wired by PPVsTab to fire a hidden file input that uploads many
+   *  files at once straight into this group (group_id pre-set). */
+  onBulkUpload?: () => void;
   onItemClick: (item: PpvItem) => void;
   selectMode?: boolean;
   selectedIds?: Set<string>;
@@ -699,13 +746,22 @@ function GroupCard({
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={onAddItem}
             className="px-3 py-1.5 bg-[#1f2937] border border-[#374151] rounded-md text-[12px] font-medium text-white hover:bg-[#374151] transition-all flex items-center gap-1.5"
           >
             <Plus className="w-3.5 h-3.5" />Add media
           </button>
+          {onBulkUpload && (
+            <button
+              onClick={onBulkUpload}
+              title="Bulk upload many files into this group"
+              className="px-3 py-1.5 bg-[#1f2937] border border-[#374151] rounded-md text-[12px] font-medium text-white hover:bg-[#374151] transition-all flex items-center gap-1.5"
+            >
+              <Upload className="w-3.5 h-3.5" />Bulk
+            </button>
+          )}
           <button
             onClick={onEdit}
             className="p-1.5 text-[#6b7280] hover:text-white hover:bg-[#2a2d35] rounded-md transition-colors"

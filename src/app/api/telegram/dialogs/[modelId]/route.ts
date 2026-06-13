@@ -3,7 +3,7 @@ import { Api } from "telegram";
 import { authorizeModelAccess } from "@/lib/telegram-authorize";
 import { withTelegramClient } from "@/lib/telegram-pool";
 import { createAdminSupabaseClient } from "@/lib/supabase-server";
-import { recordFanRead } from "@/lib/fan-activity";
+import { recordFanRead, recordIncomingMessageAt } from "@/lib/fan-activity";
 
 // Throttle the background fan-capture: dialogs are polled every ~10s while a
 // chatter is viewing, but we only need to persist usernames occasionally.
@@ -15,12 +15,19 @@ declare global {
    *  higher than the cached one, the fan just read more of our outgoing
    *  messages → bump fans.last_read_at via recordFanRead(). */
   var __ppvs_last_outbox_max__: Map<string, number> | undefined;
+  /** Per-(model,peer) last-seen INCOMING message timestamp (unix sec).
+   *  When the dialog's most-recent message is from the fan and its date
+   *  advances, we bump fans.last_response_at to it. */
+  var __ppvs_last_incoming_date__: Map<string, number> | undefined;
 }
 const fanCaptureTs: Map<string, number> = globalThis.__ppvs_fan_capture_ts__ ?? new Map();
 globalThis.__ppvs_fan_capture_ts__ = fanCaptureTs;
 const lastOutboxMax: Map<string, number> =
   globalThis.__ppvs_last_outbox_max__ ?? new Map();
 globalThis.__ppvs_last_outbox_max__ = lastOutboxMax;
+const lastIncomingDate: Map<string, number> =
+  globalThis.__ppvs_last_incoming_date__ ?? new Map();
+globalThis.__ppvs_last_incoming_date__ = lastIncomingDate;
 const FAN_CAPTURE_THROTTLE_MS = 60_000;
 
 export type DialogItem = {
@@ -63,6 +70,18 @@ function getUserStatus(status: Api.TypeUserStatus | undefined): string | null {
   return null;
 }
 
+/** Per-dialog side info we collect inside the gramJS callback and act on
+ *  after mapping — separated so the DB-bump logic doesn't touch wire-format
+ *  details (Api.User, msg.out, etc.). */
+type BumpInfo = {
+  peerId: string;
+  /** Date (unix sec) of the most-recent message in the dialog, or 0. */
+  msgDate: number;
+  /** Whether the most-recent message is OUR outgoing one. */
+  msgOutgoing: boolean;
+  readOutboxMaxId: number;
+};
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ modelId: string }> }
@@ -72,7 +91,7 @@ export async function GET(
     const auth = await authorizeModelAccess(modelId);
     if ("errorResponse" in auth) return auth.errorResponse;
 
-    const result = await withTelegramClient(
+    const { result, bumpInfos } = await withTelegramClient(
       modelId,
       auth.model.session_string,
       auth.model.api_id,
@@ -80,6 +99,7 @@ export async function GET(
       async (tg) => {
         const dialogs = await tg.getDialogs({ limit: 50 });
         const items: DialogItem[] = [];
+        const bumps: BumpInfo[] = [];
         for (const d of dialogs) {
           const entity = d.entity;
           let type: DialogItem["type"];
@@ -119,6 +139,10 @@ export async function GET(
             return "";
           })();
 
+          const readOutboxMaxId = Number(
+            (d as { dialog?: { readOutboxMaxId?: number } }).dialog?.readOutboxMaxId ?? 0,
+          );
+
           items.push({
             id,
             type,
@@ -129,28 +153,62 @@ export async function GET(
             unreadCount: d.unreadCount ?? 0,
             accessHash,
             status,
-            readOutboxMaxId:
-              Number((d as { dialog?: { readOutboxMaxId?: number } }).dialog?.readOutboxMaxId ?? 0),
+            readOutboxMaxId,
           });
+
+          // Collect bump info for user dialogs only — fan activity columns
+          // are per-fan, not per-group/channel.
+          if (type === "user") {
+            const msgOutgoing =
+              !!msg && typeof (msg as { out?: boolean }).out === "boolean"
+                ? !!(msg as { out?: boolean }).out
+                : false;
+            bumps.push({
+              peerId: id,
+              msgDate: msg?.date ?? 0,
+              msgOutgoing,
+              readOutboxMaxId,
+            });
+          }
         }
-        return items;
+        return { result: items, bumpInfos: bumps };
       },
     );
 
-    // Detect "fan just read more of our outgoing messages" per dialog.
-    // Telegram surfaces this via the dialog's `readOutboxMaxId` — when the
-    // value advances we know the fan opened the chat AFTER our last send.
-    // Bumps fans.last_read_at via recordFanRead (fire-and-forget, capped
-    // per-process by in-memory map). Skips dialogs we've never seen so
-    // initial app boot doesn't bump everyone to "just read now".
-    for (const d of result) {
-      if (d.type !== "user" || !d.readOutboxMaxId || d.readOutboxMaxId <= 0) continue;
-      const key = `${modelId}:${d.id}`;
-      const prev = lastOutboxMax.get(key);
-      if (prev !== undefined && d.readOutboxMaxId > prev) {
-        recordFanRead(modelId, d.id);
+    // Walk the per-dialog bump info and update fans.last_response_at /
+    // fans.last_read_at when something advances. This is the source of
+    // truth for both columns — the gramJS NewMessage handler can miss
+    // events when the client wasn't yet connected, but the dialog list
+    // always reflects Telegram's current state. So even legacy fans get
+    // a value the first time the chatter opens the inbox after deploy.
+    for (const b of bumpInfos) {
+      // last_response_at — most-recent message is from the fan and newer
+      // than what we last persisted for this (model,peer).
+      if (!b.msgOutgoing && b.msgDate > 0) {
+        const key = `${modelId}:${b.peerId}`;
+        const prev = lastIncomingDate.get(key);
+        if (prev === undefined || b.msgDate > prev) {
+          recordIncomingMessageAt(
+            modelId,
+            b.peerId,
+            new Date(b.msgDate * 1000).toISOString(),
+          );
+          lastIncomingDate.set(key, b.msgDate);
+        }
       }
-      lastOutboxMax.set(key, d.readOutboxMaxId);
+      // last_read_at — fan read more of our outgoing messages. We also
+      // seed on first sight (prev === undefined) when readOutboxMaxId > 0
+      // so currently-active fans don't show "—" forever just because our
+      // in-memory cache was empty at deploy time. Subsequent polls only
+      // fire on advance.
+      if (b.readOutboxMaxId > 0) {
+        const key = `${modelId}:${b.peerId}`;
+        const prev = lastOutboxMax.get(key);
+        if (prev === undefined || b.readOutboxMaxId > prev) {
+          recordFanRead(modelId, b.peerId);
+        }
+        lastOutboxMax.set(key, b.readOutboxMaxId);
+      }
     }
 
     // Background: persist every fan (user dialog) so the admin panel has a

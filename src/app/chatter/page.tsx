@@ -296,32 +296,31 @@ export default function ChatterPage() {
         user.email?.split("@")[0] ||
         "User";
       setDisplayName(name);
-      // Hydrate the quick-emoji bar from this user's metadata. First-time
-      // users with no saved list get the spicy default set (matches the
-      // PayAndView competitor bar so the chatter doesn't have to set it
-      // up from scratch). Users on the OLD 6-item seed get auto-upgraded
-      // to the new 16-item set so the bar matches the screenshot the
-      // agency expects.
+      // Hydrate the quick-emoji bar from this user's metadata. We bump
+      // `quick_emojis_v` whenever the shipped default changes so existing
+      // accounts pick up the new bar on next login without us having to
+      // detect the exact bytes of the previous seed (which got fragile —
+      // some legacy users had 5-item arrays that didn't match either
+      // historic default exactly).
+      const EMOJI_BAR_VERSION = 2;
       const NEW_DEFAULT = [
         "😍", "😈", "🍆", "🍑", "🥵", "💋",
         "🥰", "🤤", "💕", "👅", "😘", "💦",
         "😊", "🍓", "💘", "🥺",
       ];
-      const OLD_DEFAULT = ["😍", "❤️", "🔥", "💋", "💦", "🍑"];
+      const savedVersion = Number(user.user_metadata?.quick_emojis_v ?? 0);
       const saved = user.user_metadata?.quick_emojis;
-      const looksLikeOldSeed =
+      if (
+        savedVersion >= EMOJI_BAR_VERSION &&
         Array.isArray(saved) &&
-        saved.length === OLD_DEFAULT.length &&
-        saved.every((e, i) => e === OLD_DEFAULT[i]);
-      if (Array.isArray(saved) && !looksLikeOldSeed) {
+        saved.length > 0
+      ) {
         setQuickEmojis(saved as string[]);
       } else {
         setQuickEmojis(NEW_DEFAULT);
-        // Persist the new default into user_metadata so the upgrade isn't
-        // re-run on every login.
-        if (looksLikeOldSeed) {
-          void supabase.auth.updateUser({ data: { quick_emojis: NEW_DEFAULT } });
-        }
+        void supabase.auth.updateUser({
+          data: { quick_emojis: NEW_DEFAULT, quick_emojis_v: EMOJI_BAR_VERSION },
+        });
       }
 
       if (r === "agency") {
@@ -1656,14 +1655,18 @@ export default function ChatterPage() {
             // Persist into user_metadata so the bar follows the chatter
             // across devices. Best-effort.
             try {
-              await supabase.auth.updateUser({ data: { quick_emojis: next } });
+              await supabase.auth.updateUser({
+                data: { quick_emojis: next, quick_emojis_v: 2 },
+              });
             } catch { /* ignore */ }
           }}
           onRemoveQuickEmoji={async (em) => {
             const next = quickEmojis.filter((e) => e !== em);
             setQuickEmojis(next);
             try {
-              await supabase.auth.updateUser({ data: { quick_emojis: next } });
+              await supabase.auth.updateUser({
+                data: { quick_emojis: next, quick_emojis_v: 2 },
+              });
             } catch { /* ignore */ }
           }}
           scheduleAt={scheduleAt}

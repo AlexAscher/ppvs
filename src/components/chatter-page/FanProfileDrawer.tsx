@@ -323,13 +323,25 @@ export function FanProfileDrawer({
               className="w-full px-3 py-2 bg-[#1f2937]/60 border border-[#374151] rounded-md text-[12px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1]"
             />
             <div className="grid grid-cols-2 gap-2">
+              {/* Birthdate: plain text input so the placeholder isn't
+                  swapped to the OS locale's date format (e.g. "дд.мм.гггг"
+                  on a Russian system). Auto-inserts hyphens as the chatter
+                  types digits and clamps to YYYY-MM-DD. */}
               <input
-                type="date"
-                lang="en"
+                type="text"
                 value={birthdate ?? ""}
-                onChange={(e) => setBirthdate(e.target.value)}
-                placeholder="Birthdate"
+                onChange={(e) => {
+                  const digits = e.target.value.replace(/\D/g, "").slice(0, 8);
+                  let masked = digits;
+                  if (digits.length > 4) masked = `${digits.slice(0, 4)}-${digits.slice(4)}`;
+                  if (digits.length > 6)
+                    masked = `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6)}`;
+                  setBirthdate(masked);
+                }}
+                placeholder="YYYY-MM-DD"
                 title="Birthdate (YYYY-MM-DD)"
+                inputMode="numeric"
+                maxLength={10}
                 className="px-3 py-2 bg-[#1f2937]/60 border border-[#374151] rounded-md text-[12px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1]"
               />
               <input

@@ -88,8 +88,19 @@ export async function POST(
     // `replyToMsgId` makes the message render as a reply. `quoteText` (newer
     // Telegram protocol) attaches a highlighted snippet from the original
     // message — shown inside the reply preview on client.
-    const { peerId, accessHash, text, replyToMsgId, quoteText } = await req.json();
+    const { peerId, accessHash, text, replyToMsgId, quoteText, scheduleAt } = await req.json();
     if (!peerId || !text) return Response.json({ error: "peerId and text required" }, { status: 400 });
+    // scheduleAt is a UNIX timestamp in SECONDS. Telegram needs it ≥ now+1
+    // and ≤ now + 1 year. Anything outside is treated as immediate.
+    const NOW = Math.floor(Date.now() / 1000);
+    const MAX_SCHEDULE_AHEAD = 365 * 24 * 3600;
+    const scheduleSec =
+      typeof scheduleAt === "number" &&
+      Number.isFinite(scheduleAt) &&
+      scheduleAt > NOW &&
+      scheduleAt - NOW <= MAX_SCHEDULE_AHEAD
+        ? Math.floor(scheduleAt)
+        : null;
 
     const auth = await authorizeModelAccess(modelId);
     if ("errorResponse" in auth) return auth.errorResponse;
@@ -119,8 +130,15 @@ export async function POST(
                 replyToMsgId,
                 quoteText,
               }),
+              scheduleDate: scheduleSec ?? undefined,
             }),
           );
+          if (scheduleSec) {
+            // Scheduled messages don't appear in the regular getMessages
+            // until they fire — return a synthetic record so the optimistic
+            // bubble can be cleaned up.
+            return { id: 0, message: text, date: scheduleSec } as Api.Message;
+          }
           // Fetch the latest outgoing message to mirror sendMessage's return
           // shape — gives the client a real id to replace its optimistic.
           const recent = await tg.getMessages(peer, { limit: 1 });
@@ -130,9 +148,10 @@ export async function POST(
           return { id: 0, message: text, date: Math.floor(Date.now() / 1000) } as Api.Message;
         }
 
-        type SendArgs = { message: string; replyTo?: number };
+        type SendArgs = { message: string; replyTo?: number; schedule?: number };
         const args: SendArgs = { message: text };
         if (hasReply) args.replyTo = replyToMsgId;
+        if (scheduleSec) args.schedule = scheduleSec;
         const msg = await tg.sendMessage(peer, args);
         return msg;
       },

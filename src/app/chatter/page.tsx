@@ -169,6 +169,13 @@ export default function ChatterPage() {
   const [inputText, setInputText] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  // Per-chatter quick-emoji bar (above the input). Loaded from
+  // user_metadata.quick_emojis on mount, written back via auth.updateUser
+  // whenever the user adds / removes one.
+  const [quickEmojis, setQuickEmojis] = useState<string[]>([]);
+  // Scheduled-send timestamp (UNIX seconds). Null = send now. Cleared on
+  // a successful send so the next message goes immediately by default.
+  const [scheduleAt, setScheduleAt] = useState<number | null>(null);
   // Non-error transient banner — used for "PPV delivering…" / "✅ Delivered".
   const [notice, setNotice] = useState("");
 
@@ -289,6 +296,14 @@ export default function ChatterPage() {
         user.email?.split("@")[0] ||
         "User";
       setDisplayName(name);
+      // Hydrate the quick-emoji bar from this user's metadata. First-time
+      // users with no saved list get a sensible default seeded.
+      const saved = user.user_metadata?.quick_emojis;
+      if (Array.isArray(saved)) {
+        setQuickEmojis(saved as string[]);
+      } else {
+        setQuickEmojis(["😍", "❤️", "🔥", "💋", "💦", "🍑"]);
+      }
 
       if (r === "agency") {
         // Try with session_status; if that column doesn't exist yet (no
@@ -889,6 +904,7 @@ export default function ChatterPage() {
     text: string,
     replyToMsgId?: number,
     quoteText?: string | null,
+    scheduleAtSec?: number | null,
   ): Promise<ApiMessage | null> {
     sendInFlightRef.current = true;
     try {
@@ -900,6 +916,7 @@ export default function ChatterPage() {
           accessHash: dialog.accessHash,
           text,
           replyToMsgId,
+          scheduleAt: scheduleAtSec ?? undefined,
           quoteText,
         }),
       });
@@ -1011,20 +1028,33 @@ export default function ChatterPage() {
       ...prev,
       { id: optimisticId, text, date: Math.floor(Date.now() / 1000), isOutgoing: true },
     ]);
+    // Snapshot the schedule before clearing — we want each send to be
+    // explicit, not have the timer linger across messages.
+    const sendSchedule = scheduleAt;
+    setScheduleAt(null);
     try {
-      const real = await sendTelegramMessage(modelId, dialog, text, replyId, quote);
+      const real = await sendTelegramMessage(modelId, dialog, text, replyId, quote, sendSchedule);
       // Replace optimistic with real message so subsequent polls de-dupe by id.
       if (real) {
         setApiMessages((prev) =>
           prev.map((m) => (m.id === optimisticId ? real : m)),
         );
+      } else if (sendSchedule) {
+        // Scheduled sends never appear in the live chat history (they sit
+        // in Telegram's "Scheduled" tab on the model's account until they
+        // fire). Drop the optimistic so the UI doesn't show a ghost.
+        setApiMessages((prev) => prev.filter((m) => m.id !== optimisticId));
+        setNotice(`📅 Scheduled for ${new Date(sendSchedule * 1000).toLocaleString("en-US")}`);
+        setTimeout(() => setNotice((n) => (n.startsWith("📅") ? "" : n)), 5000);
       }
       void fetchDialogs(modelId, false);
     } catch (e: unknown) {
       setError(e instanceof Error ? `Send failed: ${e.message}` : "Send failed");
       setInputText(text);
-      // remove the optimistic message on failure
+      // remove the optimistic message on failure + restore the schedule
+      // so the chatter doesn't have to set it up again.
       setApiMessages((prev) => prev.filter((m) => m.id !== optimisticId));
+      if (sendSchedule) setScheduleAt(sendSchedule);
     } finally {
       setSending(false);
     }
@@ -1599,6 +1629,26 @@ export default function ChatterPage() {
           sending={sending}
           fanTags={fanTags}
           onToggleTag={handleToggleTag}
+          quickEmojis={quickEmojis}
+          onAddQuickEmoji={async (em) => {
+            if (quickEmojis.includes(em)) return;
+            const next = [...quickEmojis, em].slice(0, 30);
+            setQuickEmojis(next);
+            // Persist into user_metadata so the bar follows the chatter
+            // across devices. Best-effort.
+            try {
+              await supabase.auth.updateUser({ data: { quick_emojis: next } });
+            } catch { /* ignore */ }
+          }}
+          onRemoveQuickEmoji={async (em) => {
+            const next = quickEmojis.filter((e) => e !== em);
+            setQuickEmojis(next);
+            try {
+              await supabase.auth.updateUser({ data: { quick_emojis: next } });
+            } catch { /* ignore */ }
+          }}
+          scheduleAt={scheduleAt}
+          onChangeScheduleAt={setScheduleAt}
           selectedFanGroupIds={selectedDialog ? (groupIdsByPeer[selectedDialog.id] ?? []) : []}
           onToggleFanGroup={async (groupId) => {
             if (!selectedDialog || !selectedModelId) return;

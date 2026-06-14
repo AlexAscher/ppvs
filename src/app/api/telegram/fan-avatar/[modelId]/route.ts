@@ -43,7 +43,18 @@ export async function GET(
       session_status: string | null;
     };
     const m = model as ModelRow | null;
-    if (!m || m.agency_user_id !== user.id) return new Response("Not found", { status: 404 });
+    if (!m) return new Response("Not found", { status: 404 });
+
+    // Allow agency owner OR assigned chatter.
+    if (m.agency_user_id !== user.id) {
+      const { data: link } = await admin
+        .from("agency_chatters")
+        .select("id")
+        .eq("model_id", modelId)
+        .eq("chatter_id", user.id)
+        .maybeSingle();
+      if (!link) return new Response("Not found", { status: 404 });
+    }
 
     const path = `fans/${modelId}/${peerId}.jpg`;
     const publicUrl = admin.storage.from("avatars").getPublicUrl(path).data.publicUrl;

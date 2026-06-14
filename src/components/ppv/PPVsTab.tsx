@@ -454,8 +454,8 @@ export function PPVsTab() {
             <span>
               Every PPV you upload is reviewed before it goes live. Once it&apos;s
               <span className="text-emerald-400 font-medium"> approved</span>, it
-              becomes available to send to your fans from the chat. Items still
-              <span className="text-[#f59e0b] font-medium"> pending</span> review
+              becomes available to send to your fans from the chat. Items still{" "}
+              <span className="text-[#f59e0b] font-medium">pending</span>{" "}review
               can&apos;t be sent yet.
             </span>
           </div>

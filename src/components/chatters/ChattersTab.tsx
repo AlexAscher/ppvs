@@ -1,21 +1,23 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Mail, ChevronDown } from "lucide-react";
+import { Plus, Mail } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { InviteChatterModal } from "./InviteChatterModal";
 import { ChatterStatsModal } from "./ChatterStatsModal";
-import { AgencyChatter, ChatterModel, Invitation } from "./types";
+import { ChatterModelMultiSelect } from "./ChatterModelMultiSelect";
+import { AgencyChatterGroup, ChatterModel, Invitation } from "./types";
 
 export function ChattersTab() {
   const supabase = createClient();
   const [models, setModels] = useState<ChatterModel[]>([]);
-  const [chatters, setChatters] = useState<AgencyChatter[]>([]);
+  const [chatters, setChatters] = useState<AgencyChatterGroup[]>([]);
   const [pendingInvites, setPendingInvites] = useState<Invitation[]>([]);
   const [showInvite, setShowInvite] = useState(false);
-  const [selectedChatter, setSelectedChatter] = useState<AgencyChatter | null>(null);
+  const [selectedChatter, setSelectedChatter] = useState<AgencyChatterGroup | null>(null);
   const [loading, setLoading] = useState(true);
-  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+  // Per-chatter busy flag while an assignment toggle is in flight.
+  const [busyChatterId, setBusyChatterId] = useState<string | null>(null);
   // Presence: chatter_id -> last_seen ISO. Polled every 30s.
   const [presence, setPresence] = useState<Record<string, string>>({});
   // Earnings: chatter_id -> { net, sales }. Loaded once on mount + refreshed
@@ -84,21 +86,34 @@ export function ChattersTab() {
       .select("id, chatter_id, model_id, joined_at, invitation_id, invitations:invitation_id(chatter_email)")
       .eq("agency_id", user.id);
 
-    const list: AgencyChatter[] = ((ac ?? []) as unknown as {
+    // Collapse the per-model rows into one entry per chatter — a chatter can
+    // be assigned to several models, and we show them as a single line with
+    // a multi-select of creators.
+    const byChatter = new Map<string, AgencyChatterGroup>();
+    for (const row of (ac ?? []) as unknown as {
       id: string;
       chatter_id: string;
       model_id: string | null;
       joined_at: string;
       invitations: { chatter_email: string } | null;
-    }[]).map((row) => ({
-      id: row.id,
-      chatter_id: row.chatter_id,
-      chatter_email: row.invitations?.chatter_email ?? "(unknown)",
-      model_id: row.model_id,
-      model: row.model_id ? modelMap.get(row.model_id) ?? null : null,
-      joined_at: row.joined_at,
-    }));
-    setChatters(list);
+    }[]) {
+      const existing = byChatter.get(row.chatter_id);
+      const email = row.invitations?.chatter_email;
+      if (existing) {
+        if (row.model_id) existing.modelIds.push(row.model_id);
+        // Keep the earliest join date + any known email.
+        if (row.joined_at < existing.joined_at) existing.joined_at = row.joined_at;
+        if (email && existing.chatter_email === "(unknown)") existing.chatter_email = email;
+      } else {
+        byChatter.set(row.chatter_id, {
+          chatter_id: row.chatter_id,
+          chatter_email: email ?? "(unknown)",
+          joined_at: row.joined_at,
+          modelIds: row.model_id ? [row.model_id] : [],
+        });
+      }
+    }
+    setChatters([...byChatter.values()]);
 
     const { data: inv } = await supabase
       .from("invitations")
@@ -116,22 +131,34 @@ export function ChattersTab() {
 
   useEffect(() => { load(); }, [load]);
 
-  async function handleReassign(chatterId: string, newModelId: string) {
-    setOpenDropdownId(null);
-    const res = await fetch(`/api/chatters/${chatterId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ modelId: newModelId }),
-    });
-    if (!res.ok) return;
-    const modelMap = new Map(models.map((m) => [m.id, m]));
+  async function handleToggleModel(chatterId: string, modelId: string, assign: boolean) {
+    // Optimistic update, rolled back if the request fails.
+    const snapshot = chatters;
     setChatters((prev) =>
       prev.map((c) =>
-        c.id === chatterId
-          ? { ...c, model_id: newModelId, model: modelMap.get(newModelId) ?? null }
+        c.chatter_id === chatterId
+          ? {
+              ...c,
+              modelIds: assign
+                ? [...new Set([...c.modelIds, modelId])]
+                : c.modelIds.filter((id) => id !== modelId),
+            }
           : c,
       ),
     );
+    setBusyChatterId(chatterId);
+    try {
+      const res = await fetch("/api/chatters/assignments", {
+        method: assign ? "POST" : "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chatterId, modelId }),
+      });
+      if (!res.ok) setChatters(snapshot); // rollback
+    } catch {
+      setChatters(snapshot);
+    } finally {
+      setBusyChatterId(null);
+    }
   }
 
   async function handleCancelInvite(inviteId: string) {
@@ -230,7 +257,7 @@ export function ChattersTab() {
                 .toUpperCase();
               return (
                 <div
-                  key={c.id}
+                  key={c.chatter_id}
                   className="grid grid-cols-[1fr_240px_120px_140px] gap-4 px-4 py-3 border-b border-[#2a2d35] last:border-b-0 hover:bg-[#1f2937]/20 transition-colors cursor-pointer"
                   onClick={() => setSelectedChatter(c)}
                 >
@@ -258,40 +285,12 @@ export function ChattersTab() {
                     </div>
                   </div>
                   <div className="flex items-center" onClick={(e) => e.stopPropagation()}>
-                    <div className="relative w-full">
-                      <button
-                        onClick={() => setOpenDropdownId(openDropdownId === c.id ? null : c.id)}
-                        className="w-full px-3 py-2 bg-[#1f2937] border border-[#374151] rounded-lg text-[12px] text-white hover:border-[#4b5563] transition-colors flex items-center justify-between gap-2"
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          {c.model?.avatar_url ? (
-                            <img src={c.model.avatar_url} alt={c.model.name} className="w-5 h-5 rounded-full object-cover shrink-0" />
-                          ) : (
-                            <div className="w-5 h-5 rounded-full bg-gradient-to-br from-[#6366f1] to-[#4f46e5] shrink-0" />
-                          )}
-                          <span className="truncate">{c.model?.name ?? "—"}</span>
-                        </div>
-                        <ChevronDown className="w-3.5 h-3.5 text-[#6b7280] shrink-0" />
-                      </button>
-                      {openDropdownId === c.id && (
-                        <div className="absolute top-full left-0 right-0 mt-1 bg-[#1f2937] border border-[#374151] rounded-lg shadow-xl overflow-hidden z-20 max-h-[220px] overflow-y-auto">
-                          {models.map((m) => (
-                            <button
-                              key={m.id}
-                              onClick={() => handleReassign(c.id, m.id)}
-                              className={`w-full px-3 py-2 text-left text-[12px] hover:bg-[#374151] transition-colors flex items-center gap-2 ${c.model_id === m.id ? "bg-[#374151] text-[#6366f1]" : "text-white"}`}
-                            >
-                              {m.avatar_url ? (
-                                <img src={m.avatar_url} alt={m.name} className="w-5 h-5 rounded-full object-cover shrink-0" />
-                              ) : (
-                                <div className="w-5 h-5 rounded-full bg-gradient-to-br from-[#6366f1] to-[#4f46e5] shrink-0" />
-                              )}
-                              <span className="truncate">{m.name}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    <ChatterModelMultiSelect
+                      models={models}
+                      assignedIds={c.modelIds}
+                      busy={busyChatterId === c.chatter_id}
+                      onToggle={(modelId, assign) => handleToggleModel(c.chatter_id, modelId, assign)}
+                    />
                   </div>
                   <div className="flex items-center">
                     <span className="px-2.5 py-1 bg-[#10b981]/20 text-[#10b981] rounded-full text-[11px] font-semibold">active</span>
@@ -322,7 +321,7 @@ export function ChattersTab() {
                 .toUpperCase();
               const p = presenceLabel(c.chatter_id);
               return (
-                <div key={c.id} className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-4">
+                <div key={c.chatter_id} className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-4">
                   <div className="flex items-center gap-3 cursor-pointer" onClick={() => setSelectedChatter(c)}>
                     <div className="relative shrink-0">
                       <div className="w-10 h-10 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-full flex items-center justify-center text-white font-semibold text-[13px]">
@@ -356,41 +355,13 @@ export function ChattersTab() {
                   </div>
 
                   <div className="mt-3 pt-3 border-t border-[#2a2d35]" onClick={(e) => e.stopPropagation()}>
-                    <div className="text-[10px] text-[#6b7280] uppercase tracking-wider mb-1.5">Assigned creator</div>
-                    <div className="relative">
-                      <button
-                        onClick={() => setOpenDropdownId(openDropdownId === `m-${c.id}` ? null : `m-${c.id}`)}
-                        className="w-full px-3 py-2 bg-[#1f2937] border border-[#374151] rounded-lg text-[12px] text-white hover:border-[#4b5563] transition-colors flex items-center justify-between gap-2"
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          {c.model?.avatar_url ? (
-                            <img src={c.model.avatar_url} alt={c.model.name} className="w-5 h-5 rounded-full object-cover shrink-0" />
-                          ) : (
-                            <div className="w-5 h-5 rounded-full bg-gradient-to-br from-[#6366f1] to-[#4f46e5] shrink-0" />
-                          )}
-                          <span className="truncate">{c.model?.name ?? "—"}</span>
-                        </div>
-                        <ChevronDown className="w-3.5 h-3.5 text-[#6b7280] shrink-0" />
-                      </button>
-                      {openDropdownId === `m-${c.id}` && (
-                        <div className="absolute top-full left-0 right-0 mt-1 bg-[#1f2937] border border-[#374151] rounded-lg shadow-xl overflow-hidden z-20 max-h-[220px] overflow-y-auto">
-                          {models.map((m) => (
-                            <button
-                              key={m.id}
-                              onClick={() => handleReassign(c.id, m.id)}
-                              className={`w-full px-3 py-2 text-left text-[12px] hover:bg-[#374151] transition-colors flex items-center gap-2 ${c.model_id === m.id ? "bg-[#374151] text-[#6366f1]" : "text-white"}`}
-                            >
-                              {m.avatar_url ? (
-                                <img src={m.avatar_url} alt={m.name} className="w-5 h-5 rounded-full object-cover shrink-0" />
-                              ) : (
-                                <div className="w-5 h-5 rounded-full bg-gradient-to-br from-[#6366f1] to-[#4f46e5] shrink-0" />
-                              )}
-                              <span className="truncate">{m.name}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    <div className="text-[10px] text-[#6b7280] uppercase tracking-wider mb-1.5">Assigned creators</div>
+                    <ChatterModelMultiSelect
+                      models={models}
+                      assignedIds={c.modelIds}
+                      busy={busyChatterId === c.chatter_id}
+                      onToggle={(modelId, assign) => handleToggleModel(c.chatter_id, modelId, assign)}
+                    />
                   </div>
                 </div>
               );
@@ -412,19 +383,12 @@ export function ChattersTab() {
         <ChatterStatsModal
           chatter={selectedChatter}
           models={models}
+          busy={busyChatterId === selectedChatter.chatter_id}
+          onToggleModel={(modelId, assign) => handleToggleModel(selectedChatter.chatter_id, modelId, assign)}
           onClose={() => setSelectedChatter(null)}
-          onReassigned={(newModelId) => {
-            const modelMap = new Map(models.map((m) => [m.id, m]));
-            setChatters((prev) =>
-              prev.map((c) =>
-                c.id === selectedChatter.id
-                  ? { ...c, model_id: newModelId, model: newModelId ? modelMap.get(newModelId) ?? null : null }
-                  : c,
-              ),
-            );
-          }}
           onDeleted={() => {
-            setChatters((prev) => prev.filter((c) => c.id !== selectedChatter.id));
+            setChatters((prev) => prev.filter((c) => c.chatter_id !== selectedChatter.chatter_id));
+            setSelectedChatter(null);
           }}
         />
       )}

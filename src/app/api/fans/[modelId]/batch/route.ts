@@ -40,7 +40,7 @@ export async function GET(
     if (error) return Response.json({ error: error.message }, { status: 500 });
 
     const tags: Record<string, string[]> = {};
-    const spent: Record<string, number> = {};
+    const spentTotal: Record<string, number> = {};
     type Row = { peer_id: string; tags: string[] | null; total_spent: number | string | null };
     for (const row of (data ?? []) as Row[]) {
       if (row.tags && row.tags.length > 0) {
@@ -48,7 +48,50 @@ export async function GET(
       }
       const n = Number(row.total_spent ?? 0);
       if (Number.isFinite(n) && n > 0) {
-        spent[row.peer_id] = n;
+        spentTotal[row.peer_id] = n;
+      }
+    }
+
+    // Agency owner sees total_spent for every fan.
+    // Chatters see their own contribution: sum of tips + PPV sends they initiated.
+    const { data: modelRow } = await admin
+      .from("models")
+      .select("agency_user_id")
+      .eq("id", modelId)
+      .maybeSingle();
+    const isOwner = (modelRow as { agency_user_id?: string } | null)?.agency_user_id === auth.userId;
+
+    let spent: Record<string, number>;
+    if (isOwner) {
+      spent = spentTotal;
+    } else {
+      // Chatter: sum paid tips + paid PPV sends where chatter_id = this user.
+      spent = {};
+      const [tipsRes, ppvRes] = await Promise.all([
+        admin
+          .from("tips")
+          .select("peer_id, amount")
+          .eq("model_id", modelId)
+          .eq("chatter_id", auth.userId)
+          .eq("status", "paid")
+          .in("peer_id", peerIds),
+        admin
+          .from("ppv_sends")
+          .select("peer_id, total_price")
+          .eq("model_id", modelId)
+          .eq("chatter_id", auth.userId)
+          .in("status", ["paid", "delivered"])
+          .in("peer_id", peerIds),
+      ]);
+      type TipRow = { peer_id: string; amount: number | string | null };
+      for (const r of (tipsRes.data ?? []) as TipRow[]) {
+        const n = Number(r.amount ?? 0);
+        if (Number.isFinite(n) && n > 0) spent[r.peer_id] = (spent[r.peer_id] ?? 0) + n;
+      }
+      type PpvRow = { peer_id: string; total_price: number | string | null };
+      for (const r of (ppvRes.data ?? []) as PpvRow[]) {
+        const n = Number(r.total_price ?? 0);
+        if (Number.isFinite(n) && n > 0) spent[r.peer_id] = (spent[r.peer_id] ?? 0) + n;
       }
     }
 

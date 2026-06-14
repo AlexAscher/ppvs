@@ -1097,6 +1097,9 @@ function AgencyVaultPanel({ agencyId }: { agencyId?: string | null }) {
   const [err, setErr] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  // Which models to show (empty = all). Chips below the header let the admin
+  // narrow a busy vault to specific creators.
+  const [modelFilter, setModelFilter] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -1148,9 +1151,37 @@ function AgencyVaultPanel({ agencyId }: { agencyId?: string | null }) {
     {} as Record<string, number>,
   );
 
+  // Unique models present in the loaded items — drives the model filter
+  // chips. In the cross-agency view we prefix the agency so two creators
+  // with the same name stay distinguishable.
+  const availableModels = (() => {
+    const map = new Map<string, { id: string; label: string }>();
+    for (const p of items ?? []) {
+      if (map.has(p.model.id)) continue;
+      const label = crossAgency
+        ? `${p.agency.name || p.agency.email || "Agency"} · ${p.model.name}`
+        : p.model.name;
+      map.set(p.model.id, { id: p.model.id, label });
+    }
+    return [...map.values()].sort((a, b) => a.label.localeCompare(b.label));
+  })();
+
+  const visibleItems = (items ?? []).filter(
+    (p) => modelFilter.size === 0 || modelFilter.has(p.model.id),
+  );
+
+  function toggleModel(id: string) {
+    setModelFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   return (
     <Panel
-      title={`Vault 🔒 — ${(items ?? []).length} item${(items ?? []).length === 1 ? "" : "s"}`}
+      title={`Vault 🔒 — ${visibleItems.length} item${visibleItems.length === 1 ? "" : "s"}`}
       right={
         <div className="flex bg-[#0d1117] border border-[#2a2d35] rounded-lg p-0.5 text-[12px]">
           {(["pending", "approved", "rejected", "all"] as ReviewStatusFilter[]).map((f) => (
@@ -1171,17 +1202,53 @@ function AgencyVaultPanel({ agencyId }: { agencyId?: string | null }) {
     >
       {err && <ErrorBanner msg={err} />}
 
+      {/* Model filter chips — pick which creators to show. */}
+      {availableModels.length > 1 && (
+        <div className="flex flex-wrap items-center gap-1.5 mb-3">
+          <button
+            type="button"
+            onClick={() => setModelFilter(new Set())}
+            className={`px-2.5 py-1 rounded-md text-[11px] font-medium border transition-colors ${
+              modelFilter.size === 0
+                ? "bg-[#6366f1] text-white border-[#6366f1]"
+                : "bg-transparent text-[#9ca3af] border-[#2a2d35] hover:text-white hover:border-[#4b5563]"
+            }`}
+          >
+            All creators
+          </button>
+          {availableModels.map((m) => {
+            const on = modelFilter.has(m.id);
+            return (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => toggleModel(m.id)}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-medium border transition-colors ${
+                  on
+                    ? "bg-[#6366f1] text-white border-[#6366f1]"
+                    : "bg-transparent text-[#9ca3af] border-[#2a2d35] hover:text-white hover:border-[#4b5563]"
+                }`}
+              >
+                {m.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {items === null ? (
         <div className="py-6 text-center text-[13px] text-[#6b7280]">Loading…</div>
-      ) : items.length === 0 ? (
+      ) : visibleItems.length === 0 ? (
         <div className="py-6 text-center text-[13px] text-[#6b7280]">
-          {crossAgency
-            ? "No PPVs match this filter across any agency."
-            : "No PPVs match this filter for this agency."}
+          {modelFilter.size > 0
+            ? "No PPVs for the selected creators in this filter."
+            : crossAgency
+              ? "No PPVs match this filter across any agency."
+              : "No PPVs match this filter for this agency."}
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-          {items.map((p) => {
+          {visibleItems.map((p) => {
             const isVideo = !!p.media_url && /\.(mp4|mov|webm|m4v|mkv)(\?|$)/i.test(p.media_url);
             return (
               <button

@@ -368,32 +368,45 @@ export default function ChatterPage() {
           setSelectedModelId(list[0].id);
         }
       } else {
+        // A chatter can be assigned to several models — load every one so
+        // the model selector at the top of the page lists all of them.
         const { data: ac } = await supabase
           .from("agency_chatters")
           .select("model_id")
-          .eq("chatter_id", user.id)
-          .maybeSingle();
+          .eq("chatter_id", user.id);
         if (cancelled) return;
-        const modelId = (ac as { model_id: string | null } | null)?.model_id ?? null;
-        if (modelId) {
+        const modelIds = [
+          ...new Set(
+            ((ac ?? []) as { model_id: string | null }[])
+              .map((r) => r.model_id)
+              .filter((id): id is string => !!id),
+          ),
+        ];
+        if (modelIds.length > 0) {
           const withStatus = await supabase
             .from("models")
             .select("id, name, username, avatar_url, session_status")
-            .eq("id", modelId)
-            .maybeSingle();
-          let row = (withStatus.data ?? null) as Model | null;
+            .in("id", modelIds);
+          let rows = (withStatus.data ?? null) as Model[] | null;
           if (withStatus.error) {
             const base = await supabase
               .from("models")
               .select("id, name, username, avatar_url")
-              .eq("id", modelId)
-              .maybeSingle();
-            row = (base.data ?? null) as Model | null;
+              .in("id", modelIds);
+            rows = (base.data ?? null) as Model[] | null;
           }
           if (cancelled) return;
-          if (row) {
-            setModels([row]);
-            setSelectedModelId(row.id);
+          const list = rows ?? [];
+          if (list.length > 0) {
+            setModels(list);
+            const deep = initialDeepLinkRef.current;
+            const wanted = deep.modelId && list.find((m) => m.id === deep.modelId);
+            if (wanted) {
+              setSelectedModelId(wanted.id);
+              deepLinkPeerRef.current = deep.peerId;
+            } else {
+              setSelectedModelId(list[0].id);
+            }
           }
         }
       }
@@ -1244,6 +1257,7 @@ export default function ChatterPage() {
           ppvIds: ordered,
           totalPrice: priceForSend,
           expiresInHours: priceForSend > 0 ? expiresInHours : 0,
+          scheduleDate: scheduleAt ?? undefined,
         }),
       });
       let data: { ok?: boolean; error?: string; code?: string; payUrl?: string } = {};
@@ -1258,7 +1272,15 @@ export default function ChatterPage() {
       setCaption("");
       setPriceInput("");
       setExpiresInHours(0);
-      setNotice(priceForSend > 0 ? "Sending PPV to fan…" : "Sending free content to fan…");
+      const wasScheduled = !!scheduleAt;
+      setScheduleAt(null);
+      setNotice(
+        wasScheduled
+          ? "PPV scheduled ✓"
+          : priceForSend > 0
+            ? "Sending PPV to fan…"
+            : "Sending free content to fan…",
+      );
       const sentCode = data.code;
       const modelIdForRefresh = selectedModelId;
       if (sentCode) {
@@ -1321,6 +1343,7 @@ export default function ChatterPage() {
           peerUsername: selectedDialog.username,
           amount,
           message: tipMessage.trim() || null,
+          scheduleDate: scheduleAt ?? undefined,
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {
@@ -1329,10 +1352,12 @@ export default function ChatterPage() {
         tipUrl?: string;
       };
       if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+      const wasScheduled = !!scheduleAt;
       setTipAmount("");
       setTipMessage("");
+      setScheduleAt(null);
       void fetchDialogs(selectedModelId, false);
-      setNotice(`✅ Tip request sent ($${amount.toFixed(2)})`);
+      setNotice(wasScheduled ? `✅ Tip scheduled ($${amount.toFixed(2)})` : `✅ Tip request sent ($${amount.toFixed(2)})`);
       setTimeout(
         () => setNotice((n) => (n.startsWith("✅ Tip") ? "" : n)),
         4_000,
@@ -1898,6 +1923,8 @@ export default function ChatterPage() {
           notesList={fanNotes}
           onDeleteNote={handleDeleteNote}
           stats={stats}
+          scheduleAt={scheduleAt}
+          onChangeScheduleAt={setScheduleAt}
         />
         </div>
       </div>
@@ -1932,7 +1959,7 @@ export default function ChatterPage() {
         modelId={selectedModelId}
         open={quickReplyOpen}
         onClose={() => setQuickReplyOpen(false)}
-        canManage={role === "agency"}
+        canManage={true}
         onPick={(body) => {
           // Insert at end of current input, preceded by a single space if
           // user already typed something. Don't auto-send — user may want

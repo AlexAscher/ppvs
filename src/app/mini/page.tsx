@@ -212,7 +212,7 @@ export default function MiniAppPage() {
               <div className="text-[18px] font-bold text-white">Send a tip</div>
             </>
           )}
-          {boot.caption && (
+          {boot.kind !== "tip" && boot.caption && (
             <div className="text-[13px] text-[#9ca3af] mt-2 max-w-[400px] mx-auto">
               {boot.caption}
             </div>

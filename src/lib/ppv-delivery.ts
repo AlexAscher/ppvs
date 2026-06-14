@@ -381,6 +381,7 @@ export async function sendBlurredPreviewWithLink(
   payUrl: string,
   totalPrice: number,
   onBackfillPreview?: (ppvId: string, jpeg: Buffer) => Promise<void>,
+  scheduleDate?: number,
 ): Promise<void> {
   const peer = buildPeer(peerId, accessHash);
 
@@ -452,6 +453,7 @@ export async function sendBlurredPreviewWithLink(
         message: messageCaption,
         formattingEntities,
         linkPreview: false,
+        schedule: scheduleDate,
       });
     });
     return;
@@ -479,6 +481,7 @@ export async function sendBlurredPreviewWithLink(
             file: chunk[0],
             caption: chunkCaption,
             formattingEntities: includeCaption ? formattingEntities : undefined,
+            scheduleDate,
           });
         } else {
           // Multi-file path — go through messages.SendMultiMedia directly
@@ -529,7 +532,7 @@ export async function sendBlurredPreviewWithLink(
               randomId: generateRandomLong(),
             }),
           );
-          await tg.invoke(new Api.messages.SendMultiMedia({ peer, multiMedia: singles }));
+          await tg.invoke(new Api.messages.SendMultiMedia({ peer, multiMedia: singles, scheduleDate }));
         }
       });
       anyDelivered = true;
@@ -551,6 +554,7 @@ export async function sendBlurredPreviewWithLink(
           message: messageCaption,
           formattingEntities,
           linkPreview: false,
+          schedule: scheduleDate,
         });
       });
       captionDelivered = true;
@@ -608,13 +612,8 @@ export async function sendOriginalsAlbum(
   items: OriginalItem[],
   caption: string,
   onCache?: (ppvId: string, serialized: string) => Promise<void>,
-  /**
-   * Force every item through the upload (album) path instead of using
-   * cached file_ids for individual sends. Used by free-PPV sends where
-   * the chatter expects a single album message regardless of cache state.
-   * Default false keeps the after-payment delivery fast (cache-first).
-   */
   forceAlbum: boolean = false,
+  scheduleDate?: number,
 ): Promise<DeliveryResult> {
   const peer = buildPeer(peerId, accessHash);
   const filtered = items.filter((it) => !!it.mediaUrl);
@@ -656,6 +655,7 @@ export async function sendOriginalsAlbum(
             media: toInputMedia(cached),
             message: captionForThis,
             randomId: generateRandomLong(),
+            scheduleDate,
           }),
         );
       });
@@ -730,6 +730,7 @@ export async function sendOriginalsAlbum(
           const sent = await tg.sendFile(peer, {
             file: chunk[0].file,
             caption: chunkCaption,
+            scheduleDate,
           });
           const cf = extractCachedFile(sent as Api.Message);
           if (cf && onCache) {
@@ -739,6 +740,7 @@ export async function sendOriginalsAlbum(
           const sent = (await tg.sendFile(peer, {
             file: chunk.map((c) => c.file),
             caption: chunkCaption,
+            scheduleDate,
           })) as unknown as Api.Message | Api.Message[];
           const arr = Array.isArray(sent) ? sent : [sent];
           if (arr.length === chunk.length && onCache) {

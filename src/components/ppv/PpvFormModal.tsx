@@ -150,6 +150,7 @@ export function PpvFormModal({
         media_url: mediaUrl,
         created_at: createdAt,
         tags: tagsForResult,
+        review_status: mode === "add" ? "pending" : (existing?.review_status ?? "pending"),
       });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Save failed");

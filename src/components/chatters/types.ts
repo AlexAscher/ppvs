@@ -14,6 +14,15 @@ export type AgencyChatter = {
   joined_at: string;
 };
 
+/** One row per chatter, aggregating all of their model assignments. */
+export type AgencyChatterGroup = {
+  chatter_id: string;
+  chatter_email: string;
+  joined_at: string;
+  /** Assigned (non-null) model ids — a chatter can serve several models. */
+  modelIds: string[];
+};
+
 export type Invitation = {
   id: string;
   agency_id: string;

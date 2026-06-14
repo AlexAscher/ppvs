@@ -75,14 +75,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // check if this chatter is already in an agency
-    const { data: existingChatter } = await admin
+    // Check if this chatter is already in an agency. A chatter may now have
+    // several rows (multi-model), so fetch the list rather than .single().
+    // If they're already on THIS agency, point the agency at the multi-model
+    // selector instead of the invite flow.
+    const { data: existingRows } = await admin
       .from("agency_chatters")
-      .select("id")
-      .eq("chatter_id", target.id)
-      .maybeSingle();
-    if (existingChatter) {
-      return Response.json({ error: "This user is already part of an agency" }, { status: 409 });
+      .select("agency_id")
+      .eq("chatter_id", target.id);
+    const existing = (existingRows ?? []) as { agency_id: string }[];
+    if (existing.some((r) => r.agency_id === user.id)) {
+      return Response.json(
+        { error: "This chatter is already on your team — assign extra models from the Creator column." },
+        { status: 409 },
+      );
+    }
+    if (existing.length > 0) {
+      return Response.json({ error: "This user is already part of another agency" }, { status: 409 });
     }
 
     // check for existing pending invitation from same agency to same email

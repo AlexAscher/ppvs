@@ -1,8 +1,10 @@
 "use client";
 
-import { Check, Folder, ChevronLeft, Trash2, Plus, Music } from "lucide-react";
+import { Check, Folder, ChevronLeft, Trash2, Plus, Music, Clock, Smile } from "lucide-react";
 import { useState } from "react";
 import type { FanNote } from "@/lib/fan-types";
+import { SchedulePopover, formatScheduleShort } from "./SchedulePopover";
+import { EmojiPicker } from "../chatter-page/EmojiPicker";
 
 function formatNoteDate(iso: string): string {
   const d = new Date(iso);
@@ -92,6 +94,9 @@ interface ActionPanelProps {
   notesList: FanNote[];
   onDeleteNote: (id: string) => void;
   stats: StatsView | null;
+  /** Schedule send (UNIX seconds). Shared by PPV + Tip actions. */
+  scheduleAt?: number | null;
+  onChangeScheduleAt?: (ts: number | null) => void;
 }
 
 export type StatsView = {
@@ -143,8 +148,13 @@ export function ActionPanel({
   notesList,
   onDeleteNote,
   stats,
+  scheduleAt = null,
+  onChangeScheduleAt,
 }: ActionPanelProps) {
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  const [ppvScheduleOpen, setPpvScheduleOpen] = useState(false);
+  const [tipScheduleOpen, setTipScheduleOpen] = useState(false);
+  const [tipEmojiOpen, setTipEmojiOpen] = useState(false);
   const currentFolder = currentFolderId
     ? ppvGroups.find((g) => g.id === currentFolderId) ?? null
     : null;
@@ -431,26 +441,61 @@ export function ActionPanel({
                     referenced it. The data still lives in /api/ppv/pricing-stats
                     so we can resurrect it later if needed. */}
 
-                <button
-                  onClick={onSendPpv}
-                  disabled={!hasRecipient || sending}
-                  className={`w-full py-3 text-white rounded-lg font-semibold text-[13px] transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed ${
-                    isFree
-                      ? "bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 shadow-emerald-500/20"
-                      : "bg-gradient-to-r from-[#6366f1] to-[#4f46e5] hover:from-[#5558e3] hover:to-[#4338ca] shadow-[#6366f1]/20"
-                  }`}
-                >
-                  {sending
-                    ? "Sending…"
-                    : isFree
-                      ? `🎁 Send free to ${recipientLabel}`
-                      : `Send PPV to ${recipientLabel}`}
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={onSendPpv}
+                    disabled={!hasRecipient || sending}
+                    className={`flex-1 py-3 text-white rounded-lg font-semibold text-[13px] transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed ${
+                      isFree
+                        ? "bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 shadow-emerald-500/20"
+                        : "bg-gradient-to-r from-[#6366f1] to-[#4f46e5] hover:from-[#5558e3] hover:to-[#4338ca] shadow-[#6366f1]/20"
+                    }`}
+                  >
+                    {sending
+                      ? "Sending…"
+                      : scheduleAt
+                        ? `Schedule · ${formatScheduleShort(scheduleAt)}`
+                        : isFree
+                          ? `🎁 Send free to ${recipientLabel}`
+                          : `Send PPV to ${recipientLabel}`}
+                  </button>
+                  {onChangeScheduleAt && (
+                    <div className="relative shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setPpvScheduleOpen((v) => !v)}
+                        disabled={!hasRecipient || sending}
+                        title={scheduleAt ? "Edit schedule" : "Schedule send"}
+                        className={`w-11 h-full flex items-center justify-center rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                          scheduleAt
+                            ? "bg-[#6366f1]/20 text-[#6366f1] ring-1 ring-[#6366f1]"
+                            : "bg-[#1f2937] text-[#9ca3af] hover:text-white hover:bg-[#374151]"
+                        }`}
+                        aria-label="Schedule send"
+                      >
+                        <Clock className="w-5 h-5" />
+                      </button>
+                      {ppvScheduleOpen && (
+                        <SchedulePopover
+                          current={scheduleAt}
+                          align="left"
+                          onPick={(ts) => {
+                            onChangeScheduleAt(ts);
+                            setPpvScheduleOpen(false);
+                          }}
+                          onClose={() => setPpvScheduleOpen(false)}
+                        />
+                      )}
+                    </div>
+                  )}
+                </div>
 
                 <div className="text-[10px] text-[#6b7280] text-center leading-relaxed">
-                  {isFree
-                    ? "Free send: originals go straight to fan's Telegram, no pay link."
-                    : "Sends blurred preview + pay link to fan's Telegram. Unlocks on payment."}
+                  {scheduleAt
+                    ? `Will be delivered at ${formatScheduleShort(scheduleAt)}.`
+                    : isFree
+                      ? "Free send: originals go straight to fan's Telegram, no pay link."
+                      : "Sends blurred preview + pay link to fan's Telegram. Unlocks on payment."}
                 </div>
               </div>
             )}
@@ -488,20 +533,77 @@ export function ActionPanel({
               placeholder="Custom amount..."
               className="w-full px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[10px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1]"
             />
-            <textarea
-              value={tipMessage}
-              onChange={(e) => onTipMessageChange(e.target.value)}
-              placeholder="Optional message..."
-              className="w-full px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[10px] text-white placeholder:text-[#6b7280] resize-none focus:outline-none focus:border-[#6366f1]"
-              rows={2}
-            />
-            <button
-              onClick={onSendTip}
-              disabled={!hasRecipient || !tipAmount || sending}
-              className="w-full py-3 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white rounded-lg font-semibold text-[11px] hover:from-[#5558e3] hover:to-[#4338ca] transition-all shadow-lg shadow-[#6366f1]/20 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {sending ? "Sending…" : `Request tip from ${recipientLabel}`}
-            </button>
+            <div className="relative">
+              <textarea
+                value={tipMessage}
+                onChange={(e) => onTipMessageChange(e.target.value)}
+                placeholder="Optional message..."
+                className="w-full px-4 py-2.5 pr-10 bg-[#1f2937] border border-[#374151] rounded-lg text-[10px] text-white placeholder:text-[#6b7280] resize-none focus:outline-none focus:border-[#6366f1]"
+                rows={2}
+              />
+              <button
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setTipEmojiOpen((v) => !v);
+                }}
+                title="Add emoji"
+                aria-label="Add emoji"
+                className={`absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-md transition-colors ${
+                  tipEmojiOpen ? "text-[#6366f1]" : "text-[#9ca3af] hover:text-white"
+                }`}
+              >
+                <Smile className="w-4 h-4" />
+              </button>
+              {tipEmojiOpen && (
+                <EmojiPicker
+                  onSelect={(em) => onTipMessageChange(tipMessage + em)}
+                  onClose={() => setTipEmojiOpen(false)}
+                />
+              )}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={onSendTip}
+                disabled={!hasRecipient || !tipAmount || sending}
+                className="flex-1 py-3 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white rounded-lg font-semibold text-[11px] hover:from-[#5558e3] hover:to-[#4338ca] transition-all shadow-lg shadow-[#6366f1]/20 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {sending
+                  ? "Sending…"
+                  : scheduleAt
+                    ? `Schedule · ${formatScheduleShort(scheduleAt)}`
+                    : `Request tip from ${recipientLabel}`}
+              </button>
+              {onChangeScheduleAt && (
+                <div className="relative shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setTipScheduleOpen((v) => !v)}
+                    disabled={!hasRecipient || sending}
+                    title={scheduleAt ? "Edit schedule" : "Schedule send"}
+                    className={`w-11 h-full flex items-center justify-center rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                      scheduleAt
+                        ? "bg-[#6366f1]/20 text-[#6366f1] ring-1 ring-[#6366f1]"
+                        : "bg-[#1f2937] text-[#9ca3af] hover:text-white hover:bg-[#374151]"
+                    }`}
+                    aria-label="Schedule tip"
+                  >
+                    <Clock className="w-5 h-5" />
+                  </button>
+                  {tipScheduleOpen && (
+                    <SchedulePopover
+                      current={scheduleAt}
+                      align="left"
+                      onPick={(ts) => {
+                        onChangeScheduleAt(ts);
+                        setTipScheduleOpen(false);
+                      }}
+                      onClose={() => setTipScheduleOpen(false)}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
 

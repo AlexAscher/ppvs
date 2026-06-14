@@ -165,18 +165,24 @@ async function checkChatterAccess(
 
   try {
     const admin = createAdminSupabaseClient();
+    // Scope to the exact (chatter, model, agency) tuple. A chatter can be
+    // assigned to several models, so we must NOT use a chatter-only
+    // .single() query — that errors on multiple rows and would lock the
+    // chatter out of every model.
     const { data: link } = await runWithTimeout(
       Promise.resolve(
         admin
           .from("agency_chatters")
-          .select("model_id, agency_id")
+          .select("id")
           .eq("chatter_id", chatterId)
+          .eq("model_id", modelId)
+          .eq("agency_id", agencyId)
           .maybeSingle(),
       ),
       AUTH_TIMEOUT_MS,
       "checkChatterAccess",
     );
-    const ok = !!link && link.model_id === modelId && link.agency_id === agencyId;
+    const ok = !!link;
     if (ok) accessCache.set(key, { ts: Date.now() });
     return ok;
   } catch (e) {

@@ -14,6 +14,7 @@ type TipSendBody = {
   peerUsername?: string | null;
   amount: number;
   message?: string | null;
+  scheduleDate?: number | null;
 };
 
 /**
@@ -38,6 +39,8 @@ export async function POST(req: NextRequest) {
     const peerUsername = typeof raw?.peerUsername === "string" ? raw.peerUsername : null;
     const message =
       typeof raw?.message === "string" ? raw.message.trim().slice(0, 500) : null;
+    const scheduleDate =
+      typeof raw?.scheduleDate === "number" && raw.scheduleDate > 0 ? raw.scheduleDate : undefined;
 
     if (!modelId || !peerId || amount <= 0) {
       return Response.json({ error: "modelId, peerId and amount required" }, { status: 400 });
@@ -125,6 +128,7 @@ export async function POST(req: NextRequest) {
             message: tipText,
             formattingEntities: [tipEntity],
             linkPreview: false,
+            schedule: scheduleDate,
           });
         },
         30_000,

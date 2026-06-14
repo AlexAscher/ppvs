@@ -29,6 +29,8 @@ type SendBody = {
   totalPrice?: number;
   /** Urgency timer: hours until the pay link expires. 0/undefined = never. */
   expiresInHours?: number;
+  /** Unix timestamp (seconds) to schedule Telegram delivery. */
+  scheduleDate?: number | null;
 };
 
 type PpvRow = {
@@ -61,10 +63,12 @@ export async function POST(req: NextRequest) {
     // Urgency timer. Clamp 0 < hours ≤ 720 (30 days); anything else = no expiry.
     const rawHours = typeof raw?.expiresInHours === "number" ? raw.expiresInHours : 0;
     const expiresInHours = Number.isFinite(rawHours) && rawHours > 0 ? Math.min(rawHours, 720) : 0;
+    const rawSchedule = typeof raw?.scheduleDate === "number" ? raw.scheduleDate : 0;
+    const scheduleDate = rawSchedule > 0 ? rawSchedule : undefined;
     if (!modelId || !peerId || ppvIds.length === 0 || ppvIds.length > 50) {
       return Response.json({ error: "modelId, peerId and ppvIds (1–50) required" }, { status: 400 });
     }
-    const body: SendBody = { modelId, peerId, ppvIds, caption, accessHash, peerUsername, totalPrice: chatterPrice };
+    const body: SendBody = { modelId, peerId, ppvIds, caption, accessHash, peerUsername, totalPrice: chatterPrice, scheduleDate };
 
     const auth = await authorizeModelAccess(body.modelId);
     if ("errorResponse" in auth) return auth.errorResponse;
@@ -214,6 +218,7 @@ export async function POST(req: NextRequest) {
       payUrl,
       totalPrice,
       isFreeSend,
+      scheduleDate,
     };
 
     // Upload a freshly-generated blur as the item's preview_url so the next
@@ -280,6 +285,7 @@ export async function POST(req: NextRequest) {
                   }
                 },
                 true, // forceAlbum
+                sendCtx.scheduleDate,
               );
             } else {
               await sendBlurredPreviewWithLink(
@@ -291,6 +297,7 @@ export async function POST(req: NextRequest) {
                 sendCtx.payUrl,
                 sendCtx.totalPrice,
                 backfillPreview,
+                sendCtx.scheduleDate,
               );
             }
           },

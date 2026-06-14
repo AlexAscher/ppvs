@@ -484,14 +484,13 @@ export default function LandingPage() {
               <h2 className="text-white mb-5" style={{ fontSize: "38px", fontWeight: 800, lineHeight: 1.15, letterSpacing: "-0.02em" }}>
                 Fan pays. Content delivers.<br />You do nothing.
               </h2>
-              <p className="mb-8" style={{ fontSize: "16px", color: "#8b95a8", lineHeight: 1.8, maxWidth: "480px" }}>
-                Your chatter picks content from the vault and sends a blurred preview with a payment link directly into the fan&apos;s Telegram DM. The fan pays by card or crypto — no account, no registration. The moment payment confirms, our system automatically sends the same file unblurred to the fan. Your chatter never has to follow up.
-              </p>
               <div className="flex flex-col gap-3">
                 {[
-                  "Fan pays by Visa, Mastercard, or crypto",
-                  "Content unlocks automatically on payment",
-                  "Your chatter is notified instantly",
+                  "Your chatter sends a PPV offer.",
+                  "The fan pays by card or crypto.",
+                  "Content unlocks automatically.",
+                  "Your chatter gets notified instantly.",
+                  "No manual follow-up required.",
                 ].map((line, i) => (
                   <div key={i} className="flex items-center gap-3" style={{ fontSize: "14px", color: "#d1d5db" }}>
                     <span style={{ color: OF_BLUE, fontWeight: 700 }}>✓</span>
@@ -525,14 +524,13 @@ export default function LandingPage() {
               <h2 className="text-white mb-5" style={{ fontSize: "38px", fontWeight: 800, lineHeight: 1.15, letterSpacing: "-0.02em" }}>
                 Your money. Your wallet.<br />No middlemen.
               </h2>
-              <p className="mb-8" style={{ fontSize: "16px", color: "#8b95a8", lineHeight: 1.8, maxWidth: "480px" }}>
-                Every sale goes straight to your ppvs.io balance. Withdraw anytime to USDT, BTC, or ETH — no KYC, no bank transfer, no waiting period. Minimum withdrawal is $20. Most payouts land in your wallet within minutes.
-              </p>
               <div className="flex flex-col gap-3">
                 {[
-                  "No KYC required to withdraw",
-                  "USDT, BTC, ETH supported",
-                  "$20 minimum · no maximum",
+                  "Get paid instantly.",
+                  "Withdraw anytime in USDT, BTC or ETH.",
+                  "No payout schedules.",
+                  "No waiting periods.",
+                  "No middlemen.",
                 ].map((line, i) => (
                   <div key={i} className="flex items-center gap-3" style={{ fontSize: "14px", color: "#d1d5db" }}>
                     <span style={{ color: OF_BLUE, fontWeight: 700 }}>✓</span>
@@ -550,10 +548,10 @@ export default function LandingPage() {
         <div className="max-w-[880px] mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-white mb-4" style={{ fontSize: "36px", fontWeight: 800, letterSpacing: "-0.02em" }}>
-              No monthly fees. Ever. 💎
+              Keep more. Pay less. 💎
             </h2>
-            <p style={{ fontSize: "16px", color: "#6b7280", maxWidth: "480px", margin: "0 auto", lineHeight: 1.7 }}>
-              We take 10% of what flows through the platform. That&apos;s it. If you don&apos;t earn, we don&apos;t earn.
+            <p style={{ fontSize: "16px", color: "#6b7280", maxWidth: "520px", margin: "0 auto", lineHeight: 1.7 }}>
+              Our platform fee is just 10% — about half the industry standard. No subscriptions, no setup fees, and no contracts.
             </p>
           </div>
 
@@ -565,15 +563,12 @@ export default function LandingPage() {
               </div>
               <div className="mb-5">
                 <div className="text-white mb-2" style={{ fontSize: "22px", fontWeight: 700 }}>Free forever</div>
-                <div style={{ fontSize: "14px", color: "#6b7280", lineHeight: 1.6 }}>The platform is always free. We only take a cut when a fan pays.</div>
+                <div style={{ fontSize: "14px", color: "#6b7280", lineHeight: 1.6 }}>We only make money when you make money.</div>
               </div>
-              <div className="mb-2 flex items-baseline gap-2">
+              <div className="mb-8 flex items-baseline gap-2">
                 <span className="text-white" style={{ fontSize: "44px", fontWeight: 800, letterSpacing: "-0.03em" }}>10%</span>
-                <span style={{ fontSize: "14px", color: "#6b7280" }}>of every sale · nothing else</span>
+                <span style={{ fontSize: "14px", color: "#6b7280" }}>of sales</span>
               </div>
-              <p className="mb-8" style={{ fontSize: "13px", color: "#4b5563", lineHeight: 1.7 }}>
-                No subscription. No setup fee. No hidden charges. We take 10% of each transaction — card or crypto — and you keep the rest. Payouts in USDT, BTC, or ETH with no KYC required.
-              </p>
               <div className="flex flex-col gap-3 mb-8 flex-1">
                 {[
                   "Unlimited creators & chatters",
@@ -628,46 +623,6 @@ export default function LandingPage() {
               <button disabled className="w-full py-4 rounded-xl transition-all" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "#6b7280", fontSize: "15px", fontWeight: 600, cursor: "not-allowed" }}>
                 Join waitlist →
               </button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── INSTAGRAM TIP SECTION ── */}
-      <section style={{ background: "#0d1117", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-        <div className="max-w-[1200px] mx-auto px-8 py-16">
-          <div className="flex items-center gap-16">
-            {/* Left text */}
-            <div className="flex-1">
-              <div className="mb-3 inline-block px-3 py-1 rounded-full" style={{ background: "rgba(0,175,240,0.1)", border: "1px solid rgba(0,175,240,0.2)", fontSize: "10px", fontWeight: 700, letterSpacing: "0.14em", color: OF_BLUE, textTransform: "uppercase" }}>
-                The smartest agencies know this
-              </div>
-              <h2 className="text-white mb-4" style={{ fontSize: "30px", fontWeight: 800, lineHeight: 1.15, letterSpacing: "-0.02em" }}>
-                No links. More reach. More fans.
-              </h2>
-              <p className="mb-6" style={{ fontSize: "14px", color: "#8b95a8", lineHeight: 1.75, maxWidth: "480px" }}>
-                Instagram suppresses profiles that put links in their bio — your posts get shown to fewer people and the account dies faster. The agencies growing the fastest write their Telegram username directly in the bio as plain text.
-              </p>
-              <p className="mb-6" style={{ fontSize: "14px", color: "#8b95a8", lineHeight: 1.75, maxWidth: "480px" }}>
-                No clickable link means no suppression. Instagram treats the profile like any normal account — better reach, longer lifespan, more fans landing in Telegram every day. Once they&apos;re in Telegram, ppvs.io takes care of the rest.
-              </p>
-              <div className="flex flex-col gap-2.5">
-                {[
-                  "No link = no suppression from Instagram algorithm",
-                  "Profile stays active longer and reaches more people",
-                  "Fans land in Telegram — your chatters take it from there",
-                ].map((line, i) => (
-                  <div key={i} className="flex items-start gap-3" style={{ fontSize: "13px", color: "#d1d5db" }}>
-                    <span style={{ color: OF_BLUE, fontWeight: 700 }}>✓</span>
-                    {line}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Right: half-size grey image */}
-            <div style={{ width: "320px", flexShrink: 0 }}>
-              <GreyImageBox label="Instagram profile — bio with t3l3gram username visible" minHeight={280} />
             </div>
           </div>
         </div>

@@ -393,6 +393,7 @@ export function ActionPanel({
                     </button>
                     {captionEmojiOpen && (
                       <EmojiPicker
+                        anchored
                         onSelect={(em) => onCaptionChange(caption + em)}
                         onClose={() => setCaptionEmojiOpen(false)}
                       />
@@ -580,6 +581,7 @@ export function ActionPanel({
               </button>
               {tipEmojiOpen && (
                 <EmojiPicker
+                  anchored
                   onSelect={(em) => onTipMessageChange(tipMessage + em)}
                   onClose={() => setTipEmojiOpen(false)}
                 />

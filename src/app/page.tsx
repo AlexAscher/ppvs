@@ -18,7 +18,6 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   LockOpen,
-  Zap,
   Check,
   ArrowRight,
   ChevronRight,
@@ -35,56 +34,76 @@ const BOOK_DEMO_HREF = "https://t.me/manimayn";
 const agencyFeatures = [
   {
     id: "agency-dashboard",
-    label: "Dashboard",
-    desc: "See your total earnings, per-model breakdowns, per-chatter performance, and conversion rates — all in one view, updated in real time.",
+    emoji: "📊",
+    label: "Agency Dashboard",
+    tagline: "Track your entire operation.",
+    desc: "Monitor revenue, creator performance, chatter performance, and conversion rates in real time from a single dashboard.",
   },
   {
     id: "agency-vault",
+    emoji: "🔒",
     label: "Vault",
-    desc: "Upload your photos, videos, and bundles once, tag them by model and content type, and every chatter on your team can find and send the right content instantly.",
+    tagline: "Organize content once. Sell it forever.",
+    desc: "Upload photos, videos, and bundles, then tag everything by creator and content type so your team can find and send the right content instantly.",
   },
   {
     id: "agency-creators",
+    emoji: "🎭",
     label: "Creators",
-    desc: "Add models, connect their Telegram accounts, and manage everything from one place — no logging in and out of different accounts.",
+    tagline: "Manage every creator in one place.",
+    desc: "Connect Telegram accounts, organize content, and switch between creators without constantly logging in and out of different accounts.",
   },
   {
     id: "agency-chatters",
+    emoji: "💬",
     label: "Chatters",
-    desc: "Your chatters see live Telegram DMs, pick content from the vault, and send PPVs without ever leaving the platform.",
+    tagline: "Give chatters everything they need to sell.",
+    desc: "View live Telegram conversations, send PPVs, request tips, and manage fan information without leaving the platform.",
   },
   {
     id: "agency-wallet",
+    emoji: "💰",
     label: "Wallet",
-    desc: "Your balance updates after every sale — withdraw to USDT, BTC, or ETH anytime with no KYC and a $20 minimum.",
+    tagline: "Get paid instantly.",
+    desc: "Revenue appears in your balance after every sale. Withdraw to USDT, BTC, or ETH anytime with no KYC and a low minimum withdrawal.",
   },
 ];
 
 const chatterFeatures = [
   {
-    id: "chatter-creators",
-    label: "Creators",
-    desc: "Switch between model accounts in one click — unread notifications appear per model so nothing gets missed across your whole roster.",
+    id: "chatter-workspace",
+    emoji: "💬",
+    label: "Sales Workspace",
+    tagline: "Everything your chatter needs to get sales.",
+    desc: "Chat with fans in real time, access vault, request tips, manage fan information, and switch between models.",
   },
   {
     id: "chatter-vault",
-    label: "Vault",
-    desc: "Filter the vault by tag, select one item or bundle multiple together, and the total price calculates automatically before sending.",
+    emoji: "💸",
+    label: "Sell PPVs",
+    tagline: "Send paid content in seconds.",
+    desc: "Filter content by tag, bundle multiple items together, and let pricing calculate automatically before sending.",
   },
   {
     id: "chatter-tips",
-    label: "Tips",
-    desc: "Send a custom tip request with a personal message directly into the fan's Telegram DM — one click, no manual link generation.",
+    emoji: "🎁",
+    label: "Request Tips",
+    tagline: "Ask for tips with one click.",
+    desc: "Send custom tip requests and personal messages directly into Telegram chats.",
   },
   {
     id: "chatter-notes",
-    label: "Notes",
-    desc: "Leave private notes on any fan and tag them with emoji based on their spend — so every chatter knows exactly who they're dealing with before they type a word.",
+    emoji: "📋",
+    label: "Fan Information",
+    tagline: "Know who's worth your attention.",
+    desc: "View spending history, leave notes, and tag fans so every chatter has context before starting a conversation.",
   },
   {
     id: "chatter-dashboard",
-    label: "Dashboard",
-    desc: "Chatters see their own total sales in real time — commission arrangements with the agency stay completely private.",
+    emoji: "📊",
+    label: "Chatter Dashboard",
+    tagline: "See performance in real time.",
+    desc: "View personal sales, conversion metrics, and earnings.",
   },
 ];
 
@@ -137,6 +156,94 @@ function FaqItem({ q, a }: { q: string; a: string }) {
   );
 }
 
+// Brand marks for the payment-method marquee. Kept as compact inline SVGs so
+// there are no extra image assets to host. Crypto coins use their official
+// colours + symbol glyph; card networks use their real marks/wordmarks.
+function PayIcon({ name }: { name: string }) {
+  const S = 18;
+  switch (name) {
+    case "Visa":
+      return (
+        <svg width="34" height="12" viewBox="0 0 48 16" aria-hidden>
+          <text x="0" y="13" fontFamily="Arial, Helvetica, sans-serif" fontSize="15" fontStyle="italic" fontWeight="800" fill="#2563eb" letterSpacing="0.5">VISA</text>
+        </svg>
+      );
+    case "Mastercard":
+      return (
+        <svg width={S} height={S} viewBox="0 0 24 24" aria-hidden>
+          <circle cx="9" cy="12" r="6.2" fill="#EB001B" />
+          <circle cx="15" cy="12" r="6.2" fill="#F79E1B" fillOpacity="0.95" />
+          <path d="M12 7.1a6.2 6.2 0 0 1 0 9.8 6.2 6.2 0 0 1 0-9.8z" fill="#FF5F00" />
+        </svg>
+      );
+    case "Apple Pay":
+      return (
+        <svg width={S} height={S} viewBox="0 0 24 24" fill="#e5e7eb" aria-hidden>
+          <path d="M17.05 12.9c-.03-2.6 2.13-3.85 2.22-3.91-1.21-1.77-3.1-2.02-3.77-2.05-1.6-.16-3.13.94-3.94.94-.81 0-2.07-.92-3.4-.9-1.75.03-3.36 1.02-4.26 2.58-1.82 3.15-.46 7.8 1.3 10.36.86 1.25 1.88 2.66 3.22 2.6 1.3-.05 1.78-.84 3.35-.84 1.56 0 2 .84 3.37.82 1.39-.03 2.27-1.27 3.12-2.53.98-1.45 1.39-2.85 1.41-2.92-.03-.01-2.71-1.04-2.74-4.12zM14.6 5.3c.72-.87 1.2-2.08 1.07-3.3-1.03.04-2.29.69-3.03 1.56-.66.77-1.24 2-1.08 3.18 1.15.09 2.33-.58 3.04-1.44z" />
+        </svg>
+      );
+    case "Google Pay":
+      return (
+        <svg width={S} height={S} viewBox="0 0 24 24" aria-hidden>
+          <path fill="#4285F4" d="M21.6 12.2c0-.6-.05-1.2-.16-1.8H12v3.4h5.4a4.6 4.6 0 0 1-2 3v2.5h3.2c1.9-1.7 3-4.3 3-7.1z" />
+          <path fill="#34A853" d="M12 22c2.7 0 5-.9 6.6-2.4l-3.2-2.5c-.9.6-2 1-3.4 1-2.6 0-4.8-1.7-5.6-4.1H3.1v2.6A10 10 0 0 0 12 22z" />
+          <path fill="#FBBC04" d="M6.4 14a6 6 0 0 1 0-4V7.4H3.1a10 10 0 0 0 0 9.2z" />
+          <path fill="#EA4335" d="M12 5.9c1.5 0 2.8.5 3.8 1.5l2.8-2.8A10 10 0 0 0 3.1 7.4L6.4 10c.8-2.4 3-4.1 5.6-4.1z" />
+        </svg>
+      );
+    case "Bitcoin":
+      return (
+        <svg width={S} height={S} viewBox="0 0 24 24" aria-hidden>
+          <circle cx="12" cy="12" r="12" fill="#F7931A" />
+          <text x="12" y="17" textAnchor="middle" fontSize="14" fontWeight="700" fill="#fff">₿</text>
+        </svg>
+      );
+    case "USDT":
+      return (
+        <svg width={S} height={S} viewBox="0 0 24 24" aria-hidden>
+          <circle cx="12" cy="12" r="12" fill="#26A17B" />
+          <text x="12" y="17" textAnchor="middle" fontSize="13" fontWeight="700" fill="#fff">₮</text>
+        </svg>
+      );
+    case "Ethereum":
+      return (
+        <svg width={S} height={S} viewBox="0 0 24 24" aria-hidden>
+          <circle cx="12" cy="12" r="12" fill="#627EEA" />
+          <g fill="#fff">
+            <path d="M12 4v5.9l5 2.2z" fillOpacity="0.6" />
+            <path d="M12 4 7 12.1l5-2.2z" />
+            <path d="M12 16.9V21l5-7z" fillOpacity="0.6" />
+            <path d="M12 21v-4.1L7 14z" />
+            <path d="M12 15.9l5-2.9-5-2.2z" fillOpacity="0.2" />
+            <path d="M7 13l5 2.9v-5.1z" fillOpacity="0.6" />
+          </g>
+        </svg>
+      );
+    case "USDC":
+      return (
+        <svg width={S} height={S} viewBox="0 0 24 24" aria-hidden>
+          <circle cx="12" cy="12" r="12" fill="#2775CA" />
+          <text x="12" y="17" textAnchor="middle" fontSize="13" fontWeight="700" fill="#fff">$</text>
+        </svg>
+      );
+    case "Litecoin":
+      return (
+        <svg width={S} height={S} viewBox="0 0 24 24" aria-hidden>
+          <circle cx="12" cy="12" r="12" fill="#345D9D" />
+          <text x="12" y="17" textAnchor="middle" fontSize="14" fontWeight="700" fill="#fff">Ł</text>
+        </svg>
+      );
+    case "Binance Pay":
+      return (
+        <svg width={S} height={S} viewBox="0 0 126 126" fill="#F0B90B" aria-hidden>
+          <path d="M38.7 53.2 63 28.9l24.3 24.3 14.1-14.1L63 .7 24.6 39.1zM.7 63l14.1-14.1L28.9 63 14.8 77.1zM38.7 72.8 63 97.1l24.3-24.3 14.1 14L63 125.3 24.6 86.9zM97.1 63l14.1-14.1L125.3 63l-14.1 14.1zM77.3 63 63 48.6 52.4 59.2l-1.2 1.2-2.5 2.5L63 77.4z" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+}
+
 function GreyImageBox({ label, minHeight = 320 }: { label: string; minHeight?: number }) {
   return (
     <div className="w-full rounded-2xl flex flex-col items-center justify-center" style={{ background: "#1a1f2a", border: "1px solid rgba(255,255,255,0.07)", minHeight }}>
@@ -180,9 +287,9 @@ export default function LandingPage() {
   const loginLabel = authed ? "Dashboard" : "Login";
   const startHref = authed ? "/dashboard" : "/signup";
   const startNavLabel = authed ? "Open dashboard" : "Get Started";
-  const startHeroLabel = authed ? "Open dashboard" : "Start earning 💸";
-  const startPricingLabel = authed ? "Open dashboard" : "Start earning 💸";
-  const startCtaLabel = authed ? "Open dashboard" : "Start earning";
+  const startHeroLabel = authed ? "Open dashboard" : "Start Selling PPVs 💸";
+  const startPricingLabel = authed ? "Open dashboard" : "Start Selling PPVs 💸";
+  const startCtaLabel = authed ? "Open dashboard" : "Start Selling PPVs";
 
   return (
     <div style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif' }}>
@@ -212,12 +319,12 @@ export default function LandingPage() {
           </div>
 
           <h1 className="text-white mb-6" style={{ fontSize: "60px", fontWeight: 800, lineHeight: 1.12, letterSpacing: "-0.03em" }}>
-            Stop leaving money on the table —<br />
-            <span style={{ color: OF_BLUE }}>sell inside Telegram.</span>
+            Turn Telegram chats into{" "}
+            <span style={{ color: OF_BLUE }}>revenue.</span>
           </h1>
 
           <p className="mb-10 mx-auto" style={{ fontSize: "18px", color: "#8b95a8", maxWidth: "600px", lineHeight: 1.7 }}>
-            ppvs.io is the all-in-one management platform for agencies monetizing inside Telegram — for a flat fee of 10%.
+            Sell PPVs, manage chatters, and get paid instantly. No monthly fees — just a 10% platform fee.
           </p>
 
           <div className="flex flex-col items-center gap-4">
@@ -229,7 +336,7 @@ export default function LandingPage() {
                 Book a demo →
               </a>
             </div>
-            <p style={{ fontSize: "13px", color: "#4b5563" }}>Free forever · No KYC · No monthly fees</p>
+            <p style={{ fontSize: "13px", color: "#4b5563" }}>No subscriptions · No contracts · No KYC</p>
           </div>
 
           {/* Video placeholder */}
@@ -257,20 +364,14 @@ export default function LandingPage() {
         `}</style>
         <div className="ppv-marquee">
           {[
-            { label: "Visa", symbol: "💳" }, { label: "Mastercard", symbol: "💳" },
-            { label: "Apple Pay", symbol: "🍎" }, { label: "Google Pay", symbol: "🔵" },
-            { label: "Bitcoin", symbol: "₿" }, { label: "USDT", symbol: "💵" },
-            { label: "Ethereum", symbol: "⟠" }, { label: "USDC", symbol: "🔵" },
-            { label: "Litecoin", symbol: "⚡" }, { label: "Binance Pay", symbol: "🟡" },
-            { label: "Visa", symbol: "💳" }, { label: "Mastercard", symbol: "💳" },
-            { label: "Apple Pay", symbol: "🍎" }, { label: "Google Pay", symbol: "🔵" },
-            { label: "Bitcoin", symbol: "₿" }, { label: "USDT", symbol: "💵" },
-            { label: "Ethereum", symbol: "⟠" }, { label: "USDC", symbol: "🔵" },
-            { label: "Litecoin", symbol: "⚡" }, { label: "Binance Pay", symbol: "🟡" },
-          ].map((item, i) => (
+            "Visa", "Mastercard", "Apple Pay", "Google Pay", "Bitcoin",
+            "USDT", "Ethereum", "USDC", "Litecoin", "Binance Pay",
+            "Visa", "Mastercard", "Apple Pay", "Google Pay", "Bitcoin",
+            "USDT", "Ethereum", "USDC", "Litecoin", "Binance Pay",
+          ].map((label, i) => (
             <div key={i} className="flex items-center gap-2 mx-3 px-5 py-2 rounded-full" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", whiteSpace: "nowrap" }}>
-              <span style={{ fontSize: "14px" }}>{item.symbol}</span>
-              <span style={{ fontSize: "13px", fontWeight: 500, color: "#9ca3af" }}>{item.label}</span>
+              <span className="flex items-center justify-center shrink-0"><PayIcon name={label} /></span>
+              <span style={{ fontSize: "13px", fontWeight: 500, color: "#9ca3af" }}>{label}</span>
             </div>
           ))}
         </div>
@@ -281,9 +382,9 @@ export default function LandingPage() {
         <div className="max-w-[1200px] mx-auto">
           <div className="mb-14">
             <h2 className="text-white mb-3" style={{ fontSize: "36px", fontWeight: 800, letterSpacing: "-0.02em" }}>
-              One platform. Every tool your agency needs. 📈
+              Everything you need to run a Telegram OFM agency. 📈
             </h2>
-            <p style={{ fontSize: "16px", color: "#6b7280" }}>Built specifically for OFM agencies running Telegram.</p>
+            <p style={{ fontSize: "16px", color: "#6b7280" }}>Manage creators, chatters, content, sales, and payouts from one dashboard.</p>
           </div>
 
           {/* Interactive feature selector */}
@@ -291,7 +392,7 @@ export default function LandingPage() {
             {/* Left: feature list */}
             <div className="flex flex-col gap-8 shrink-0" style={{ width: "260px" }}>
               <div>
-                <div className="mb-3" style={{ fontSize: "10px", fontWeight: 700, letterSpacing: "0.14em", color: "#4b5563", textTransform: "uppercase" }}>Agency</div>
+                <div className="mb-3" style={{ fontSize: "10px", fontWeight: 700, letterSpacing: "0.14em", color: "#4b5563", textTransform: "uppercase" }}>For Agency Owners</div>
                 <div className="flex flex-col gap-1">
                   {agencyFeatures.map((f) => {
                     const isActive = activeFeature === f.id;
@@ -308,7 +409,10 @@ export default function LandingPage() {
                           fontWeight: isActive ? 600 : 400,
                         }}
                       >
-                        {f.label}
+                        <span className="flex items-center gap-2">
+                          <span style={{ fontSize: "15px" }}>{f.emoji}</span>
+                          {f.label}
+                        </span>
                         <ChevronRight className="w-3.5 h-3.5 opacity-40" />
                       </button>
                     );
@@ -316,7 +420,7 @@ export default function LandingPage() {
                 </div>
               </div>
               <div>
-                <div className="mb-3" style={{ fontSize: "10px", fontWeight: 700, letterSpacing: "0.14em", color: "#4b5563", textTransform: "uppercase" }}>Chatter</div>
+                <div className="mb-3" style={{ fontSize: "10px", fontWeight: 700, letterSpacing: "0.14em", color: "#4b5563", textTransform: "uppercase" }}>For Chatters</div>
                 <div className="flex flex-col gap-1">
                   {chatterFeatures.map((f) => {
                     const isActive = activeFeature === f.id;
@@ -333,7 +437,10 @@ export default function LandingPage() {
                           fontWeight: isActive ? 600 : 400,
                         }}
                       >
-                        {f.label}
+                        <span className="flex items-center gap-2">
+                          <span style={{ fontSize: "15px" }}>{f.emoji}</span>
+                          {f.label}
+                        </span>
                         <ChevronRight className="w-3.5 h-3.5 opacity-40" />
                       </button>
                     );
@@ -345,11 +452,12 @@ export default function LandingPage() {
             {/* Right: image + feature info */}
             <div className="flex-1 rounded-2xl flex flex-col overflow-hidden" style={{ background: "#141924", border: `1px solid rgba(0,175,240,0.2)` }}>
               <div className="flex-1 flex items-center justify-center px-12 py-12 text-center" style={{ background: "#181d28" }}>
-                <div className="flex flex-col items-center gap-4">
-                  <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: "rgba(0,175,240,0.12)", border: "1px solid rgba(0,175,240,0.25)" }}>
-                    <Zap className="w-6 h-6" style={{ color: OF_BLUE }} />
+                <div className="flex flex-col items-center gap-3">
+                  <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: "rgba(0,175,240,0.12)", border: "1px solid rgba(0,175,240,0.25)", fontSize: "26px" }}>
+                    {currentFeature.emoji}
                   </div>
                   <div className="text-white" style={{ fontSize: "22px", fontWeight: 700 }}>{currentFeature.label}</div>
+                  <div className="text-white" style={{ fontSize: "15px", fontWeight: 600 }}>{currentFeature.tagline}</div>
                   <div style={{ color: "#8b95a8", fontSize: "15px", maxWidth: "420px", lineHeight: 1.7 }}>{currentFeature.desc}</div>
                 </div>
               </div>

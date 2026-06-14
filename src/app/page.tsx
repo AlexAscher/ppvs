@@ -19,7 +19,6 @@ import Link from "next/link";
 import {
   LockOpen,
   Check,
-  ArrowRight,
   ChevronRight,
   Bot,
   ChevronDown,
@@ -289,7 +288,7 @@ export default function LandingPage() {
   const startNavLabel = authed ? "Open dashboard" : "Get Started";
   const startHeroLabel = authed ? "Open dashboard" : "Start Selling PPVs 💸";
   const startPricingLabel = authed ? "Open dashboard" : "Start Selling PPVs 💸";
-  const startCtaLabel = authed ? "Open dashboard" : "Start Selling PPVs";
+  const startCtaLabel = authed ? "Open dashboard" : "Start Selling PPVs 💸";
 
   return (
     <div style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif' }}>
@@ -658,14 +657,13 @@ export default function LandingPage() {
       <section className="py-28 px-8" style={{ background: "#080b12", borderTop: "1px solid rgba(0,175,240,0.1)" }}>
         <div className="max-w-[640px] mx-auto text-center">
           <h2 className="text-white mb-5" style={{ fontSize: "42px", fontWeight: 800, letterSpacing: "-0.025em", lineHeight: 1.1 }}>
-            Your fans are waiting.<br />Start earning. 💸
+            Ready to start selling inside Telegram?
           </h2>
           <p className="mb-10" style={{ fontSize: "17px", color: "#6b7280", lineHeight: 1.75, maxWidth: "520px", margin: "0 auto 40px" }}>
-            No setup fee. No monthly cost. No KYC. Just connect your Telegram, upload your vault, and your chatters can start selling today.
+            Join the agencies using ppvs.io to handle PPV sales, manage chatters, and grow revenue.
           </p>
           <Link href={startHref} className="inline-flex items-center gap-2 px-9 py-4 rounded-xl text-white transition-all hover:opacity-90" style={{ background: OF_BLUE, fontSize: "16px", fontWeight: 700 }}>
             {startCtaLabel}
-            <ArrowRight className="w-5 h-5" />
           </Link>
           <p className="mt-4" style={{ fontSize: "13px", color: "#374151" }}>No credit card · No KYC · No monthly fees</p>
         </div>
@@ -674,12 +672,15 @@ export default function LandingPage() {
       {/* ── FOOTER ── */}
       <footer className="py-14 px-8" style={{ background: "#080b12", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
         <div className="max-w-[1200px] mx-auto">
-          <div style={{ display: "grid", gridTemplateColumns: "1.8fr 1fr 1fr", gap: "48px", marginBottom: "40px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr 1fr 1fr", gap: "48px", marginBottom: "40px" }}>
             <div>
-              <div className="mb-5">
+              <div className="mb-4">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={LOGO_SRC} alt="ppvs.io" style={{ height: "26px", width: "auto", objectFit: "contain" }} />
               </div>
+              <p style={{ fontSize: "13px", color: "#4b5563", lineHeight: 1.7, maxWidth: "300px" }}>
+                A software that lets OFM agencies sell PPVs inside Telegram.
+              </p>
             </div>
             <div>
               <div className="text-white mb-5" style={{ fontSize: "13px", fontWeight: 700, letterSpacing: "0.06em" }}>Product</div>
@@ -695,6 +696,14 @@ export default function LandingPage() {
               <div className="flex flex-col gap-3">
                 <a href={BOOK_DEMO_HREF} target="_blank" rel="noopener noreferrer" className="transition-colors hover:text-white" style={{ fontSize: "14px", color: "#4b5563" }}>Contact</a>
                 <a href={BOOK_DEMO_HREF} target="_blank" rel="noopener noreferrer" className="transition-colors hover:text-white" style={{ fontSize: "14px", color: "#4b5563" }}>Book a demo</a>
+              </div>
+            </div>
+            <div>
+              <div className="text-white mb-5" style={{ fontSize: "13px", fontWeight: 700, letterSpacing: "0.06em" }}>Legal</div>
+              <div className="flex flex-col gap-3">
+                <Link href="/terms" className="transition-colors hover:text-white" style={{ fontSize: "14px", color: "#4b5563" }}>Terms of Service</Link>
+                <Link href="/privacy" className="transition-colors hover:text-white" style={{ fontSize: "14px", color: "#4b5563" }}>Privacy Policy</Link>
+                <Link href="/dmca" className="transition-colors hover:text-white" style={{ fontSize: "14px", color: "#4b5563" }}>DMCA</Link>
               </div>
             </div>
           </div>

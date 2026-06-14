@@ -155,6 +155,7 @@ export function ActionPanel({
   const [ppvScheduleOpen, setPpvScheduleOpen] = useState(false);
   const [tipScheduleOpen, setTipScheduleOpen] = useState(false);
   const [tipEmojiOpen, setTipEmojiOpen] = useState(false);
+  const [captionEmojiOpen, setCaptionEmojiOpen] = useState(false);
   const currentFolder = currentFolderId
     ? ppvGroups.find((g) => g.id === currentFolderId) ?? null
     : null;
@@ -368,13 +369,35 @@ export function ActionPanel({
                   <label className="text-[11px] text-[#9ca3af] font-medium mb-2 block">
                     Message Caption
                   </label>
-                  <textarea
-                    value={caption}
-                    onChange={(e) => onCaptionChange(e.target.value)}
-                    placeholder="Add a message to send with the PPV..."
-                    className="w-full px-3 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[12px] text-white placeholder:text-[#6b7280] resize-none focus:outline-none focus:border-[#6366f1]"
-                    rows={2}
-                  />
+                  <div className="relative">
+                    <textarea
+                      value={caption}
+                      onChange={(e) => onCaptionChange(e.target.value)}
+                      placeholder="Add a message to send with the PPV..."
+                      className="w-full px-3 py-2.5 pr-10 bg-[#1f2937] border border-[#374151] rounded-lg text-[12px] text-white placeholder:text-[#6b7280] resize-none focus:outline-none focus:border-[#6366f1]"
+                      rows={2}
+                    />
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setCaptionEmojiOpen((v) => !v);
+                      }}
+                      title="Add emoji"
+                      aria-label="Add emoji"
+                      className={`absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-md transition-colors ${
+                        captionEmojiOpen ? "text-[#6366f1]" : "text-[#9ca3af] hover:text-white"
+                      }`}
+                    >
+                      <Smile className="w-4 h-4" />
+                    </button>
+                    {captionEmojiOpen && (
+                      <EmojiPicker
+                        onSelect={(em) => onCaptionChange(caption + em)}
+                        onClose={() => setCaptionEmojiOpen(false)}
+                      />
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-between">
@@ -478,7 +501,7 @@ export function ActionPanel({
                       {ppvScheduleOpen && (
                         <SchedulePopover
                           current={scheduleAt}
-                          align="left"
+                          align="right"
                           onPick={(ts) => {
                             onChangeScheduleAt(ts);
                             setPpvScheduleOpen(false);

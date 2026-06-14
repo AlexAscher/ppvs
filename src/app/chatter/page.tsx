@@ -1458,6 +1458,36 @@ export default function ChatterPage() {
     [dialogsByModel, selectedModelId],
   );
 
+  // Live spent bump — listen for the toaster's `ppvs:payment` broadcast and
+  // increment the local `fanSpentByPeer` badge + open Fan Profile drawer's
+  // total without re-fetching anything. The toaster already paid for the
+  // /api/notifications/pulse round-trip, so this costs zero extra server
+  // load. Server data still wins on next poll — this is only the immediate
+  // "no manual refresh needed" UX.
+  useEffect(() => {
+    const handler = (evt: Event) => {
+      const detail = (evt as CustomEvent<{
+        modelId: string;
+        peerId: string;
+        amount: number;
+      }>).detail;
+      if (!detail || !selectedModelId || detail.modelId !== selectedModelId) return;
+      const add = Number(detail.amount) || 0;
+      if (add <= 0) return;
+      setFanSpentByPeer((prev) => ({
+        ...prev,
+        [detail.peerId]: (prev[detail.peerId] ?? 0) + add,
+      }));
+      setFan((prev) =>
+        prev && prev.peer_id === detail.peerId
+          ? { ...prev, total_spent: Number(prev.total_spent ?? 0) + add }
+          : prev,
+      );
+    };
+    window.addEventListener("ppvs:payment", handler);
+    return () => window.removeEventListener("ppvs:payment", handler);
+  }, [selectedModelId]);
+
   const filteredDialogs = useMemo((): ChatListItem[] => {
     const q = search.trim().toLowerCase();
     let list = q

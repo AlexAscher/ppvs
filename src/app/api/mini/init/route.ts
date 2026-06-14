@@ -33,6 +33,7 @@ type TipRow = {
   message: string | null;
   peer_username: string | null;
   status: string;
+  model_id: string | null;
 };
 
 export async function POST(req: NextRequest) {
@@ -108,11 +109,24 @@ export async function POST(req: NextRequest) {
 
   const { data: tipRaw } = await admin
     .from("tips")
-    .select("amount, message, peer_username, status")
+    .select("amount, message, peer_username, status, model_id")
     .eq("code", code)
     .maybeSingle();
   if (tipRaw) {
     const tip = tipRaw as TipRow;
+    // Resolve the CREATOR's @ for the success screen. `peer_username` is
+    // the FAN's handle (Telegram peer = the user the tip link was sent
+    // to), so using it in "Tip delivered to @x" wrongly shows the buyer
+    // their own username. We want the model's @.
+    let creatorUsername: string | null = null;
+    if (tip.model_id) {
+      const { data: m } = await admin
+        .from("models")
+        .select("username")
+        .eq("id", tip.model_id)
+        .maybeSingle();
+      creatorUsername = (m as { username: string | null } | null)?.username ?? null;
+    }
     return Response.json({
       kind: "tip",
       code,
@@ -120,6 +134,7 @@ export async function POST(req: NextRequest) {
       total: Number(tip.amount ?? 0),
       caption: tip.message ?? "",
       recipient: tip.peer_username,
+      creatorUsername,
       status: tip.status,
       trusted,
     });

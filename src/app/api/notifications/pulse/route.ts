@@ -21,6 +21,10 @@ export type NotificationEvent = {
   id: string;
   kind: "tip_paid" | "ppv_paid";
   amount: number;
+  /** Telegram peer id of the fan who paid — used by the client to bump
+   *  that fan's `spent` badge live without re-fetching anything. */
+  peerId: string;
+  modelId: string;
   /** Telegram @username of the fan who paid, or null. */
   peerUsername: string | null;
   /** Model the payment landed on (for multi-creator agencies). */
@@ -56,14 +60,14 @@ export async function GET(req: NextRequest) {
   const [tipsRes, ppvsRes] = await Promise.all([
     admin
       .from("tips")
-      .select("id, model_id, chatter_id, amount, peer_username, paid_at")
+      .select("id, model_id, peer_id, chatter_id, amount, peer_username, paid_at")
       .eq("status", "paid")
       .gt("paid_at", since)
       .order("paid_at", { ascending: false })
       .limit(20),
     admin
       .from("ppv_sends")
-      .select("id, model_id, chatter_id, total_price, peer_username, paid_at, status")
+      .select("id, model_id, peer_id, chatter_id, total_price, peer_username, paid_at, status")
       .in("status", ["paid", "delivered"])
       .gt("paid_at", since)
       .order("paid_at", { ascending: false })
@@ -73,6 +77,7 @@ export async function GET(req: NextRequest) {
   type TipRowDB = {
     id: string;
     model_id: string;
+    peer_id: string;
     chatter_id: string | null;
     amount: number | string;
     peer_username: string | null;
@@ -81,6 +86,7 @@ export async function GET(req: NextRequest) {
   type SendRowDB = {
     id: string;
     model_id: string;
+    peer_id: string;
     chatter_id: string | null;
     total_price: number | string;
     peer_username: string | null;
@@ -95,6 +101,8 @@ export async function GET(req: NextRequest) {
       id: `tip_${t.id}`,
       kind: "tip_paid",
       amount: Number(t.amount ?? 0),
+      peerId: t.peer_id,
+      modelId: t.model_id,
       peerUsername: t.peer_username,
       modelName: modelById.get(t.model_id)?.name ?? null,
       paidAt: t.paid_at,
@@ -107,6 +115,8 @@ export async function GET(req: NextRequest) {
       id: `ppv_${s.id}`,
       kind: "ppv_paid",
       amount: Number(s.total_price ?? 0),
+      peerId: s.peer_id,
+      modelId: s.model_id,
       peerUsername: s.peer_username,
       modelName: modelById.get(s.model_id)?.name ?? null,
       paidAt: s.paid_at,

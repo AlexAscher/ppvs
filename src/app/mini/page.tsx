@@ -38,6 +38,9 @@ type InitResponse =
       total: number;
       caption: string;
       recipient: string | null;
+      /** The creator/model's @ — shown on the success receipt. Distinct
+       *  from `recipient`, which is the FAN the tip-link was sent to. */
+      creatorUsername: string | null;
       status: string;
       trusted: boolean;
     };
@@ -319,8 +322,19 @@ function Shell({ children }: { children: React.ReactNode }) {
 }
 
 function DeliveredScreen({ boot }: { boot: InitResponse }) {
-  const recipient = boot.recipient;
   const tg = typeof window !== "undefined" ? window.Telegram?.WebApp : undefined;
+  // PPV success: "Content is flying to YOUR chat" — `recipient` is the
+  // buyer's own handle, which is correct here.
+  // Tip success: "Tip delivered to @CREATOR" — we use the model's @, not
+  // the buyer's, otherwise the receipt reads as if the buyer tipped
+  // themselves. Falls back to a generic line when the @ isn't set.
+  const ppvLine = `Content is flying to your Telegram chat${
+    boot.kind === "ppv" && boot.recipient ? ` @${boot.recipient}` : ""
+  } 💌`;
+  const tipCreator = boot.kind === "tip" ? boot.creatorUsername : null;
+  const tipLine = tipCreator
+    ? `Tip delivered to @${tipCreator} — they'll be smiling 🥰`
+    : `Tip delivered — they'll be smiling 🥰`;
 
   return (
     <Shell>
@@ -332,9 +346,7 @@ function DeliveredScreen({ boot }: { boot: InitResponse }) {
         </div>
         <div className="text-[22px] font-bold text-white mb-2">Payment received 🎉</div>
         <div className="text-[13px] text-[#9ca3af] mb-6">
-          {boot.kind === "ppv"
-            ? `Content is flying to your Telegram chat${recipient ? ` @${recipient}` : ""} 💌`
-            : `Tip delivered${recipient ? ` to @${recipient}` : ""} — they'll be smiling 🥰`}
+          {boot.kind === "ppv" ? ppvLine : tipLine}
         </div>
         <button
           onClick={() => tg?.close?.()}

@@ -380,9 +380,11 @@ function OverviewView({ onOpenAgency }: { onOpenAgency: (id: string) => void }) 
                 <div className="py-6 text-center text-[13px] text-[#6b7280]">{data ? "No sales yet." : "Loading…"}</div>
               ) : (
                 data!.topAgencies.map((a) => (
-                  <button
+                  <a
                     key={a.id}
-                    onClick={() => onOpenAgency(a.id)}
+                    href={`/admin?agency=${encodeURIComponent(a.id)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="w-full flex items-center gap-3 p-3 bg-[#1f2937]/30 rounded-lg hover:bg-[#1f2937]/60 transition-colors text-left"
                   >
                     <Avatar name={a.name} />
@@ -391,7 +393,7 @@ function OverviewView({ onOpenAgency }: { onOpenAgency: (id: string) => void }) 
                       <div className="text-[11px] text-[#6b7280]">{a.sales} sales · fee {money(a.fee)}</div>
                     </div>
                     <div className="text-[14px] font-bold text-[#6366f1] shrink-0">{money(a.gmv)}</div>
-                  </button>
+                  </a>
                 ))
               )}
             </div>
@@ -522,9 +524,11 @@ function AgenciesView({ onOpen }: { onOpen: (id: string) => void }) {
               </div>
             ) : (
               filtered.map((a) => (
-                <button
+                <a
                   key={a.id}
-                  onClick={() => onOpen(a.id)}
+                  href={`/admin?agency=${encodeURIComponent(a.id)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="w-full grid grid-cols-[2fr_repeat(6,1fr)] gap-3 p-4 border-b border-[#2a2d35] last:border-b-0 hover:bg-[#1f2937]/30 transition-colors text-left items-center"
                 >
                   <div className="flex items-center gap-3 min-w-0">
@@ -540,7 +544,7 @@ function AgenciesView({ onOpen }: { onOpen: (id: string) => void }) {
                   <div className="text-right text-[13px] text-[#d1d5db]">{a.sales}</div>
                   <div className="text-right text-[13px] font-bold text-[#6366f1]">{money(a.gmv)}</div>
                   <div className="text-right text-[13px] text-[#10b981]">{money(a.fee)}</div>
-                </button>
+                </a>
               ))
             )}
           </div>
@@ -556,6 +560,10 @@ function AgencyDetail({ agencyId, onBack }: { agencyId: string; onBack: () => vo
   const [err, setErr] = useState("");
   const [fanQ, setFanQ] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
+  // Multi-select model filter for the All Fans panel. Empty = all models.
+  // Names (not ids) because `data.fans[i].modelName` is what we filter on
+  // and it's what's shown in the chip UI.
+  const [fanModelFilter, setFanModelFilter] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -579,14 +587,16 @@ function AgencyDetail({ agencyId, onBack }: { agencyId: string; onBack: () => vo
   const fans = useMemo(() => {
     if (!data) return [];
     const s = fanQ.trim().toLowerCase();
-    if (!s) return data.fans;
-    return data.fans.filter(
-      (f) =>
+    return data.fans.filter((f) => {
+      if (fanModelFilter.size > 0 && !fanModelFilter.has(f.modelName)) return false;
+      if (!s) return true;
+      return (
         (f.username ?? "").toLowerCase().includes(s) ||
         f.name.toLowerCase().includes(s) ||
-        f.modelName.toLowerCase().includes(s),
-    );
-  }, [data, fanQ]);
+        f.modelName.toLowerCase().includes(s)
+      );
+    });
+  }, [data, fanQ, fanModelFilter]);
 
   const feePct = data ? Math.round(data.feePct * 100) : 10;
 
@@ -771,6 +781,46 @@ function AgencyDetail({ agencyId, onBack }: { agencyId: string; onBack: () => vo
               label="⬇ Ranked by spend"
             />
           </div>
+          {/* Multi-select model chips. Empty selection = all models. Click
+              toggles; "All" clears. We key on modelName since that's what
+              `AdminAgencyFan` carries — keeps the filter dead simple. */}
+          {data && data.models.length > 1 && (
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              <button
+                onClick={() => setFanModelFilter(new Set())}
+                className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors ${
+                  fanModelFilter.size === 0
+                    ? "bg-[#6366f1] text-white"
+                    : "bg-[#1f2937] text-[#9ca3af] border border-[#374151] hover:text-white"
+                }`}
+              >
+                All models
+              </button>
+              {data.models.map((m) => {
+                const active = fanModelFilter.has(m.name);
+                return (
+                  <button
+                    key={m.id}
+                    onClick={() => {
+                      setFanModelFilter((prev) => {
+                        const n = new Set(prev);
+                        if (n.has(m.name)) n.delete(m.name);
+                        else n.add(m.name);
+                        return n;
+                      });
+                    }}
+                    className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors ${
+                      active
+                        ? "bg-[#6366f1] text-white"
+                        : "bg-[#1f2937] text-[#9ca3af] border border-[#374151] hover:text-white"
+                    }`}
+                  >
+                    {m.name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[480px] overflow-y-auto pr-1">
             {fans.length === 0 ? (
               <div className="py-6 text-center text-[13px] text-[#6b7280] md:col-span-2">
@@ -881,10 +931,11 @@ function SettingsView() {
 }
 
 // ─── Shell ──────────────────────────────────────────────────────────────────
-type Tab = "overview" | "agencies" | "settings";
+type Tab = "overview" | "agencies" | "vault" | "settings";
 const NAV: { id: Tab; label: string; emoji: string }[] = [
   { id: "overview", label: "Overview", emoji: "📊" },
   { id: "agencies", label: "Agencies", emoji: "🏢" },
+  { id: "vault", label: "Vault", emoji: "🔒" },
   { id: "settings", label: "Settings", emoji: "⚙️" },
 ];
 
@@ -892,6 +943,20 @@ export function AdminClient() {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("overview");
   const [selectedAgency, setSelectedAgency] = useState<string | null>(null);
+
+  // Deep link: /admin?agency=ID opens the agency drilldown directly in this
+  // tab. Used by the "open in new browser tab" links from the agency table
+  // and the Top Agencies leaderboard. UUID-shape guard keeps a random query
+  // string from being treated as an id.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sp = new URLSearchParams(window.location.search);
+    const id = sp.get("agency");
+    if (id && /^[0-9a-f-]{36}$/i.test(id)) {
+      setSelectedAgency(id);
+      setTab("agencies");
+    }
+  }, []);
 
   function openAgency(id: string) {
     setSelectedAgency(id);
@@ -983,6 +1048,19 @@ export function AdminClient() {
             ) : (
               <AgenciesView onOpen={(id) => setSelectedAgency(id)} />
             ))}
+          {tab === "vault" && (
+            <div className="p-4 md:p-6">
+              <div className="max-w-[1400px] mx-auto space-y-6">
+                <div>
+                  <h1 className="text-[24px] font-bold text-white mb-1">Vault moderation 🔒</h1>
+                  <p className="text-[13px] text-[#9ca3af]">
+                    Cross-agency review queue. Click an item to preview + approve / reject; the agency name links to its drilldown in a new tab.
+                  </p>
+                </div>
+                <AgencyVaultPanel />
+              </div>
+            </div>
+          )}
           {tab === "settings" && <SettingsView />}
         </main>
       </div>
@@ -1009,7 +1087,10 @@ type AdminPpv = {
 
 type ReviewStatusFilter = "all" | "pending" | "approved" | "rejected";
 
-function AgencyVaultPanel({ agencyId }: { agencyId: string }) {
+function AgencyVaultPanel({ agencyId }: { agencyId?: string | null }) {
+  // agencyId === null/undefined → cross-agency review queue (the top-level
+  // Vault tab). When set, scope to that agency's drilldown.
+  const crossAgency = !agencyId;
   const [items, setItems] = useState<AdminPpv[] | null>(null);
   const [filter, setFilter] = useState<ReviewStatusFilter>("pending");
   const [openPpv, setOpenPpv] = useState<AdminPpv | null>(null);
@@ -1021,7 +1102,8 @@ function AgencyVaultPanel({ agencyId }: { agencyId: string }) {
     let cancelled = false;
     (async () => {
       try {
-        const qs = new URLSearchParams({ agencyId });
+        const qs = new URLSearchParams();
+        if (agencyId) qs.set("agencyId", agencyId);
         if (filter !== "all") qs.set("status", filter);
         const res = await fetch(`/api/admin/ppvs?${qs.toString()}`);
         const j = (await res.json()) as { items?: AdminPpv[]; error?: string };
@@ -1093,7 +1175,9 @@ function AgencyVaultPanel({ agencyId }: { agencyId: string }) {
         <div className="py-6 text-center text-[13px] text-[#6b7280]">Loading…</div>
       ) : items.length === 0 ? (
         <div className="py-6 text-center text-[13px] text-[#6b7280]">
-          No PPVs match this filter for this agency.
+          {crossAgency
+            ? "No PPVs match this filter across any agency."
+            : "No PPVs match this filter for this agency."}
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
@@ -1128,7 +1212,11 @@ function AgencyVaultPanel({ agencyId }: { agencyId: string }) {
                 </div>
                 <div className="absolute bottom-0 inset-x-0 p-2 bg-gradient-to-t from-black/85 to-transparent">
                   <div className="text-[11px] font-semibold text-white truncate">{p.name}</div>
-                  <div className="text-[9px] text-[#9ca3af] truncate">{p.model.name}</div>
+                  <div className="text-[9px] text-[#9ca3af] truncate">
+                    {crossAgency
+                      ? `${p.agency.name || p.agency.email || "Agency"} · ${p.model.name}`
+                      : p.model.name}
+                  </div>
                 </div>
               </button>
             );
@@ -1174,7 +1262,15 @@ function AdminPpvLightbox({
           <div className="min-w-0">
             <div className="text-[15px] font-semibold text-white truncate">{ppv.name}</div>
             <div className="text-[11px] text-[#9ca3af] truncate">
-              {ppv.agency.name || ppv.agency.email || "Agency"} · {ppv.model.name}
+              <a
+                href={`/admin?agency=${encodeURIComponent(ppv.agency.id)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[#a5a8ff] hover:underline"
+              >
+                {ppv.agency.name || ppv.agency.email || "Agency"}
+              </a>{" "}
+              · {ppv.model.name}
               {ppv.group ? ` · ${ppv.group.name}` : ""} · uploaded {fmtDate(ppv.created_at)}
             </div>
           </div>

@@ -21,9 +21,21 @@ type PulseEvent = {
   id: string;
   kind: "tip_paid" | "ppv_paid";
   amount: number;
+  peerId: string;
+  modelId: string;
   peerUsername: string | null;
   modelName: string | null;
   paidAt: string;
+};
+
+/** Custom DOM event the toaster fires when a new payment lands. Pages that
+ *  show per-fan spending (chatter page's dialog list + open Fan Profile)
+ *  listen and bump their local state — no extra server round-trip. */
+export type PpvsPaymentEventDetail = {
+  modelId: string;
+  peerId: string;
+  amount: number;
+  kind: "tip_paid" | "ppv_paid";
 };
 
 const POLL_MS = 8_000;
@@ -72,9 +84,22 @@ export function NotificationToaster() {
           sinceRef.current = newest;
           // Show newest first, cap the stack at 4 visible.
           setToasts((prev) => [...fresh.reverse(), ...prev].slice(0, 4));
+          // Broadcast for any page that wants to bump live state without a
+          // round-trip — the chatter list/spent badge + Fan Profile drawer
+          // both listen for `ppvs:payment`.
           for (const e of fresh) {
             const tm = setTimeout(() => dismiss(e.id), TOAST_TTL_MS);
             timersRef.current.set(e.id, tm);
+            window.dispatchEvent(
+              new CustomEvent<PpvsPaymentEventDetail>("ppvs:payment", {
+                detail: {
+                  modelId: e.modelId,
+                  peerId: e.peerId,
+                  amount: e.amount,
+                  kind: e.kind,
+                },
+              }),
+            );
           }
         } else if (data.now) {
           // Keep the cursor moving forward even on quiet polls so the

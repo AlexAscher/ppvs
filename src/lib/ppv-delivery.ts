@@ -1,4 +1,3 @@
-import { randomBytes } from "node:crypto";
 import sharp from "sharp";
 import { Api, TelegramClient } from "telegram";
 import { CustomFile } from "telegram/client/uploads";
@@ -74,24 +73,11 @@ const PREVIEW_FETCH_TIMEOUT_MS = 20_000;
 const SLOW_BLUR_TIMEOUT_MS = 45_000;
 const SLOW_BLUR_ATTEMPTS = 2;
 
-/**
- * Crypto-strong URL-safe code for /pay/{code}. 12 chars from a 33-char
- * alphabet → 33^12 ≈ 1.6e18 — not enumerable. Rejection sampling avoids
- * modulo bias (33 ≠ a power of 2).
- */
-export function generatePpvCode(): string {
-  const alphabet = "abcdefghijkmnopqrstuvwxyz23456789";
-  const TARGET = 12;
-  const out: string[] = [];
-  while (out.length < TARGET) {
-    const buf = randomBytes(32);
-    for (let i = 0; i < buf.length && out.length < TARGET; i++) {
-      const v = buf[i] & 0x3f; // 0..63 — 33 fits in 6 bits
-      if (v < alphabet.length) out.push(alphabet[v]);
-    }
-  }
-  return out.join("");
-}
+// Pay/tip code generator lives in its own dependency-light module so it can be
+// unit-tested without pulling sharp/telegram/supabase. Re-exported here so the
+// existing `import { generatePpvCode } from "@/lib/ppv-delivery"` callers keep
+// working unchanged.
+export { generatePpvCode } from "@/lib/ppv-code";
 
 function isLikelyVideoUrl(url: string): boolean {
   const u = url.toLowerCase().split("?")[0];

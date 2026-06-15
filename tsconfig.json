@@ -36,6 +36,8 @@
     "Create_prompt_design_1",
     "src/app/chatter/Create_prompt_design_1",
     "Create_prompt_design_1_backup",
-    "Full_Dashboard"
+    "Full_Dashboard",
+    "tests",
+    "vitest.config.ts"
   ]
 }

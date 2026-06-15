@@ -63,7 +63,7 @@ All server routes use the admin (service_role) client; auth is enforced per-rout
 
 **Tips:** `tips/send` (creates tip + TG link, `scheduleDate`), `tips/deliver` (mark paid — currently NO real Malum charge).
 
-**Payments/payouts:** `payments/malum/create` (open Malum checkout), `webhooks/malum` (COMPLETED → mark paid + deliver), `payouts` (GET balance/list, POST request withdrawal — manual), `payout/report`, `payout/export` (CSV), `payout/splits`.
+**Payments/payouts:** `payments/malum/create` (open Malum checkout), `webhooks/malum` (COMPLETED → mark paid + deliver), `payouts` (GET balance/list, POST request withdrawal — manual), `payout/report` (live — feeds the dashboard read-only "Agency split" card). (`payout/splits` + `payout/export` were deleted with the Settings split-config UI.)
 
 **Fans:** `fans/[modelId]` (profile CRUD), `.../notes`, `.../stats`, `.../history`, `.../engagement`, `.../timezone`, `fans/[modelId]/batch` (tags + spent for many peers; spent is per-chatter for chatters, total for agency).
 
@@ -100,7 +100,7 @@ All server routes use the admin (service_role) client; auth is enforced per-rout
 - **`chatter-page/`** — shared/legacy pieces: `EmojiPicker` (9-category full picker, `anchored` prop for fixed positioning), `QuickReplyModal` (templates, `canManage`), `FanProfileDrawer`, `MessageContextMenu`, `FanGroupsSection`, etc. (Note: `chatter-page/TelegramChat` + `ActionPanel` are the older variant.)
 - **`ppv/`** — `PPVsTab` (vault: groups, tags, bulk ops, moderation badges), `PpvFormModal`, `CreateGroupModal`, `EditGroupModal`, `TagManagerModal`, `PpvMediaInput`, `EmojiPicker` (ppv's own small one).
 - **`chatters/`** — `ChattersTab` (one row per chatter, multi-model select), `ChatterModelMultiSelect` (fixed-position checklist), `ChatterStatsModal`, `InviteChatterModal`, `ChatterDashboardLayout`.
-- **`settings/`** — `SettingsTab`, `PayoutSection`, `SalesAlertsSection`, `EcoModeSection`, `AutoRepliesSection`.
+- **`settings/`** — `SettingsTab`, `SalesAlertsSection`, `EcoModeSection`, `AutoRepliesSection`. (No payout/split section — removed.)
 - **`admin/AdminClient.tsx`** — whole admin panel (overview, agencies, Vault w/ model filter).
 - **`inbox/InboxTab`**, **`legal/LegalShell`**, **`NotificationToaster`** (payment toasts via `ppvs:payment` CustomEvent), `AppLayout`, `GlobalSearch`, `GlobalEmojiSwap`, `ui/Toggle`, `ui/NumberField`.
 
@@ -141,7 +141,7 @@ Exact schema lives in `supabase/migrations/*.sql`. Core tables:
 - **Fans** — profile (bio/birthday/location/timezone), notes, emoji tags, spend history, engagement, buying-power. "Spent" badge per-chatter for chatters / total for agency.
 - **Chatters/team** — invite by email; assign to **multiple** creators (multi-select); per-chatter earnings; presence (online/last-active); private stats.
 - **Payments (Malum)** — see §9.
-- **Payouts/splits** — agency Wallet balance = Σ `agencyNet(paid sales)` − non-rejected payouts; request withdrawal (manual today). Splits report (model/chatter/agency) for accounting + CSV export.
+- **Payouts** — agency Wallet balance = Σ `agencyNet(paid sales)` − non-rejected payouts; request withdrawal (manual today). Dashboard shows a **read-only "Agency split" card** (gross / fee / agency cut / owed to creators / owed to chatters + per-pair table) via `/api/payout/report`. The split **config UI was removed** (Settings → Payout & Split section deleted, batch 20) — so splits are NOT configurable from the UI and use defaults (`agency_settings` default or hardcoded 50/20/30); the read-only card just visualizes them. `/api/payout/splits` + `/api/payout/export` (CSV) + `PayoutSection.tsx` + `reportToCsv` are gone.
 - **Sales Alerts** — connect a TG bot + channel; fires on each paid PPV/tip.
 - **Eco mode** — reduces polling cadence; messages stay instant.
 - **Auto-reply** — per-model delayed auto-replies.

@@ -1275,7 +1275,7 @@ function WalletTab() {
               Agency split 🧮
             </h2>
             <p className="text-[13px] text-[#9ca3af] mb-4">
-              All-time, aggregated across every model. Configure the split in Settings → Payout.
+              All-time, aggregated across every model.
             </p>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
               <div className="bg-[#0f131a] border border-[#2a2d35] rounded-lg p-4">

@@ -232,6 +232,13 @@ function PayIcon({ name }: { name: string }) {
           <text x="12" y="17" textAnchor="middle" fontSize="14" fontWeight="700" fill="#fff">Ł</text>
         </svg>
       );
+    case "Monero":
+      return (
+        <svg width={S} height={S} viewBox="0 0 24 24" aria-hidden>
+          <circle cx="12" cy="12" r="12" fill="#FF6600" />
+          <text x="12" y="17" textAnchor="middle" fontSize="13" fontWeight="700" fill="#fff">ɱ</text>
+        </svg>
+      );
     case "Binance Pay":
       return (
         <svg width={S} height={S} viewBox="0 0 126 126" fill="#F0B90B" aria-hidden>
@@ -526,7 +533,7 @@ export default function LandingPage() {
               <div className="flex flex-col gap-3">
                 {[
                   "Get paid instantly.",
-                  "Withdraw anytime in USDT, BTC or ETH.",
+                  "Withdraw straight to your crypto wallet.",
                   "No payout schedules.",
                   "No waiting periods.",
                   "No middlemen.",
@@ -536,6 +543,28 @@ export default function LandingPage() {
                     {line}
                   </div>
                 ))}
+              </div>
+
+              {/* Withdrawal currencies */}
+              <div className="mt-7">
+                <div style={{ fontSize: "10px", fontWeight: 700, letterSpacing: "0.14em", color: "#4b5563", textTransform: "uppercase", marginBottom: "10px" }}>
+                  Withdraw in
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { name: "Bitcoin", label: "BTC" },
+                    { name: "Ethereum", label: "ETH" },
+                    { name: "Litecoin", label: "LTC" },
+                    { name: "Monero", label: "XMR" },
+                    { name: "USDT", label: "USDT" },
+                    { name: "USDC", label: "USDC" },
+                  ].map((c) => (
+                    <div key={c.label} className="flex items-center gap-2 px-3 py-1.5 rounded-full" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                      <span className="flex items-center justify-center shrink-0"><PayIcon name={c.name} /></span>
+                      <span style={{ fontSize: "12px", fontWeight: 500, color: "#9ca3af" }}>{c.label}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>

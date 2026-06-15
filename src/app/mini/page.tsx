@@ -212,11 +212,9 @@ export default function MiniAppPage() {
               <div className="text-[18px] font-bold text-white">Send a tip</div>
             </>
           )}
-          {boot.kind !== "tip" && boot.caption && (
-            <div className="text-[13px] text-[#9ca3af] mt-2 max-w-[400px] mx-auto">
-              {boot.caption}
-            </div>
-          )}
+          {/* The chatter's caption is intentionally NOT shown in the Mini
+              App — it already went out with the chat message; repeating it on
+              the checkout looks like a duplicate/leak. Applies to PPV + tip. */}
         </div>
 
         {/* Preview tiles (PPV only) */}

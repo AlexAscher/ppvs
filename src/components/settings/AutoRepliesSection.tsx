@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Upload, X, Image as ImageIcon, Film } from "lucide-react";
+import { ChevronDown, Upload, X, Image as ImageIcon, Film, Smile } from "lucide-react";
 import { createClient } from "@/lib/supabase";
+import { EmojiPicker } from "@/components/chatter-page/EmojiPicker";
 
 /**
  * Auto Replies — agency Settings section.
@@ -60,8 +61,14 @@ export function AutoRepliesSection() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [msg, setMsg] = useState("");
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [mediaBroke, setMediaBroke] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Clear the broken-preview flag whenever the attachment URL changes, so a
+  // fresh upload / model switch gets a clean attempt to render.
+  useEffect(() => { setMediaBroke(false); }, [config.mediaUrl]);
 
   // Load agency user + models on mount.
   useEffect(() => {
@@ -319,14 +326,34 @@ export function AutoRepliesSection() {
           {/* Message text */}
           <div>
             <label className={label}>Message</label>
-            <textarea
-              className={`${input} resize-none`}
-              rows={4}
-              maxLength={4096}
-              value={config.text}
-              onChange={(e) => setConfig((c) => ({ ...c, text: e.target.value }))}
-              placeholder="Hey 💋 thanks for the message! Stick around — got a lot to show you 🔥"
-            />
+            <div className="relative">
+              <textarea
+                className={`${input} resize-none pr-10`}
+                rows={4}
+                maxLength={4096}
+                value={config.text}
+                onChange={(e) => setConfig((c) => ({ ...c, text: e.target.value }))}
+                placeholder="Hey 💋 thanks for the message! Stick around — got a lot to show you 🔥"
+              />
+              <button
+                type="button"
+                onMouseDown={(e) => { e.preventDefault(); setEmojiOpen((v) => !v); }}
+                title="Add emoji"
+                aria-label="Add emoji"
+                className={`absolute top-2 right-2 w-7 h-7 flex items-center justify-center rounded-md transition-colors ${
+                  emojiOpen ? "text-[#00AFF0]" : "text-[#9ca3af] hover:text-white"
+                }`}
+              >
+                <Smile className="w-4 h-4" />
+              </button>
+              {emojiOpen && (
+                <EmojiPicker
+                  anchored
+                  onSelect={(em) => setConfig((c) => ({ ...c, text: c.text + em }))}
+                  onClose={() => setEmojiOpen(false)}
+                />
+              )}
+            </div>
             <div className="text-[10px] text-[#6b7280] mt-1 text-right">
               {config.text.length} / 4096
             </div>
@@ -344,12 +371,18 @@ export function AutoRepliesSection() {
                     muted
                     className="w-full h-full object-contain"
                   />
+                ) : mediaBroke ? (
+                  <div className="flex flex-col items-center gap-1 text-[#9ca3af] text-[11px] px-4 text-center">
+                    <ImageIcon className="w-6 h-6" />
+                    <span>Image saved — preview couldn&apos;t load here, but the fan still receives it.</span>
+                  </div>
                 ) : (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={config.mediaUrl}
                     alt="Auto-reply attachment"
                     className="w-full h-full object-contain"
+                    onError={() => setMediaBroke(true)}
                   />
                 )}
                 <button

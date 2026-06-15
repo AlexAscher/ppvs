@@ -60,13 +60,13 @@ function StatCard({
     <div
       className={`rounded-lg p-4 border transition-colors ${
         highlight
-          ? "bg-[#6366f1]/10 border-[#6366f1]/40"
+          ? "bg-[#00AFF0]/10 border-[#00AFF0]/40"
           : "bg-[#161a22] border-[#2a2d35] hover:border-[#374151]"
       }`}
     >
       <div className="text-[20px] mb-2">{emoji}</div>
       <div className="text-[11px] text-[#9ca3af] uppercase tracking-wider mb-1">{label}</div>
-      <div className={`text-[22px] font-bold ${highlight ? "text-[#6366f1]" : "text-white"}`}>{value}</div>
+      <div className={`text-[22px] font-bold ${highlight ? "text-[#00AFF0]" : "text-white"}`}>{value}</div>
     </div>
   );
 }
@@ -97,7 +97,7 @@ function Panel({
 
 function Avatar({ name, n }: { name: string; n?: number }) {
   return (
-    <div className="relative w-9 h-9 shrink-0 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-full flex items-center justify-center text-white font-semibold text-[12px]">
+    <div className="relative w-9 h-9 shrink-0 bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-full flex items-center justify-center text-white font-semibold text-[12px]">
       {initials(name) || "?"}
       {n != null && (
         <div className="absolute -top-1 -right-1 w-5 h-5 bg-[#f59e0b] rounded-full flex items-center justify-center text-[10px] font-bold">
@@ -161,15 +161,15 @@ function LineChart({
         >
           <defs>
             <linearGradient id="adminLineGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#6366f1" stopOpacity="0.3" />
-              <stop offset="100%" stopColor="#6366f1" stopOpacity="0" />
+              <stop offset="0%" stopColor="#00AFF0" stopOpacity="0.3" />
+              <stop offset="100%" stopColor="#00AFF0" stopOpacity="0" />
             </linearGradient>
           </defs>
           <path d={areaPath} fill="url(#adminLineGrad)" />
           <polyline
             points={linePoints}
             fill="none"
-            stroke="#6366f1"
+            stroke="#00AFF0"
             strokeWidth="0.6"
             strokeLinejoin="round"
             strokeLinecap="round"
@@ -188,11 +188,11 @@ function LineChart({
             onMouseEnter={() => setHover(i)}
             onMouseLeave={() => setHover(null)}
           >
-            <div className="w-3 h-3 bg-[#6366f1] rounded-full border-2 border-[#161a22] cursor-pointer hover:scale-150 transition-transform" />
+            <div className="w-3 h-3 bg-[#00AFF0] rounded-full border-2 border-[#161a22] cursor-pointer hover:scale-150 transition-transform" />
             {hover === i && (
               <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-[#1f2937] border border-[#374151] rounded-lg px-3 py-2 whitespace-nowrap shadow-xl z-10">
                 <div className="text-[11px] text-[#9ca3af]">{point.date}</div>
-                <div className="text-[14px] font-bold text-[#6366f1]">{money(point.value)}</div>
+                <div className="text-[14px] font-bold text-[#00AFF0]">{money(point.value)}</div>
               </div>
             )}
           </div>
@@ -238,7 +238,7 @@ function PeriodSwitcher({
           type="button"
           onClick={() => onChange(p)}
           className={`px-3 py-1 rounded-md transition-colors ${
-            value === p ? "bg-[#6366f1] text-white" : "text-[#9ca3af] hover:text-white"
+            value === p ? "bg-[#00AFF0] text-white" : "text-[#9ca3af] hover:text-white"
           }`}
         >
           {p === "1d" ? "1 Day" : p === "7d" ? "7 Days" : p === "30d" ? "30 Days" : "All Time"}
@@ -296,7 +296,7 @@ function FanRowItem({ fan }: { fan: AdminAgencyFan }) {
         </div>
       </div>
       <div className="text-right shrink-0">
-        <div className="text-[14px] font-bold text-[#6366f1]">{money(fan.spent)}</div>
+        <div className="text-[14px] font-bold text-[#00AFF0]">{money(fan.spent)}</div>
         <div className="text-[10px] text-[#6b7280]">{fmtDate(fan.lastSeen)}</div>
       </div>
     </div>
@@ -392,7 +392,7 @@ function OverviewView({ onOpenAgency }: { onOpenAgency: (id: string) => void }) 
                       <div className="text-[13px] font-medium text-white truncate">{a.name}</div>
                       <div className="text-[11px] text-[#6b7280]">{a.sales} sales · fee {money(a.fee)}</div>
                     </div>
-                    <div className="text-[14px] font-bold text-[#6366f1] shrink-0">{money(a.gmv)}</div>
+                    <div className="text-[14px] font-bold text-[#00AFF0] shrink-0">{money(a.gmv)}</div>
                   </a>
                 ))
               )}
@@ -414,7 +414,7 @@ function OverviewView({ onOpenAgency }: { onOpenAgency: (id: string) => void }) 
                         {m.agencyName} · {m.sales} sales
                       </div>
                     </div>
-                    <div className="text-[14px] font-bold text-[#6366f1] shrink-0">{money(m.gmv)}</div>
+                    <div className="text-[14px] font-bold text-[#00AFF0] shrink-0">{money(m.gmv)}</div>
                   </div>
                 ))
               )}
@@ -440,7 +440,7 @@ function OverviewView({ onOpenAgency }: { onOpenAgency: (id: string) => void }) 
                         {f.agencyName} · {f.modelName}
                       </div>
                     </div>
-                    <div className="text-[14px] font-bold text-[#6366f1] shrink-0">{money(f.spent)}</div>
+                    <div className="text-[14px] font-bold text-[#00AFF0] shrink-0">{money(f.spent)}</div>
                   </div>
                 ))
               )}
@@ -500,7 +500,7 @@ function AgenciesView({ onOpen }: { onOpen: (id: string) => void }) {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search by name or email…"
-            className="bg-[#1f2937] border border-[#374151] rounded-lg px-3.5 py-2 text-[13px] text-white placeholder:text-[#6b7280] outline-none focus:border-[#6366f1] w-full sm:w-[280px]"
+            className="bg-[#1f2937] border border-[#374151] rounded-lg px-3.5 py-2 text-[13px] text-white placeholder:text-[#6b7280] outline-none focus:border-[#00AFF0] w-full sm:w-[280px]"
           />
         </div>
 
@@ -542,7 +542,7 @@ function AgenciesView({ onOpen }: { onOpen: (id: string) => void }) {
                   <div className="text-right text-[13px] text-[#d1d5db]">{a.chatters}</div>
                   <div className="text-right text-[13px] text-[#d1d5db]">{a.fans}</div>
                   <div className="text-right text-[13px] text-[#d1d5db]">{a.sales}</div>
-                  <div className="text-right text-[13px] font-bold text-[#6366f1]">{money(a.gmv)}</div>
+                  <div className="text-right text-[13px] font-bold text-[#00AFF0]">{money(a.gmv)}</div>
                   <div className="text-right text-[13px] text-[#10b981]">{money(a.fee)}</div>
                 </a>
               ))
@@ -615,7 +615,7 @@ function AgencyDetail({ agencyId, onBack }: { agencyId: string; onBack: () => vo
 
         {/* Header */}
         <div className="flex items-center gap-4 flex-wrap">
-          <div className="w-14 h-14 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-2xl flex items-center justify-center text-white font-bold text-[20px] shrink-0">
+          <div className="w-14 h-14 bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-2xl flex items-center justify-center text-white font-bold text-[20px] shrink-0">
             {initials(data?.name ?? "Agency") || "A"}
           </div>
           <div className="min-w-0">
@@ -662,7 +662,7 @@ function AgencyDetail({ agencyId, onBack }: { agencyId: string; onBack: () => vo
                         {m.sales} sales · {m.fans} fans
                       </div>
                     </div>
-                    <div className="text-[14px] font-bold text-[#6366f1] shrink-0">{money(m.gmv)}</div>
+                    <div className="text-[14px] font-bold text-[#00AFF0] shrink-0">{money(m.gmv)}</div>
                   </div>
                 ))
               )}
@@ -681,7 +681,7 @@ function AgencyDetail({ agencyId, onBack }: { agencyId: string; onBack: () => vo
                       <div className="text-[13px] font-medium text-white truncate">{c.name}</div>
                       <div className="text-[11px] text-[#6b7280]">{c.sales} sales</div>
                     </div>
-                    <div className="text-[14px] font-bold text-[#6366f1] shrink-0">{money(c.gmv)}</div>
+                    <div className="text-[14px] font-bold text-[#00AFF0] shrink-0">{money(c.gmv)}</div>
                   </div>
                 ))
               )}
@@ -719,7 +719,7 @@ function AgencyDetail({ agencyId, onBack }: { agencyId: string; onBack: () => vo
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${statusColor(s.status)}`}>
                       {s.status}
                     </span>
-                    <div className="text-[14px] font-bold text-[#6366f1] shrink-0 w-[72px] text-right">{money(s.price)}</div>
+                    <div className="text-[14px] font-bold text-[#00AFF0] shrink-0 w-[72px] text-right">{money(s.price)}</div>
                   </div>
                 ))
               )}
@@ -761,7 +761,7 @@ function AgencyDetail({ agencyId, onBack }: { agencyId: string; onBack: () => vo
               value={fanQ}
               onChange={(e) => setFanQ(e.target.value)}
               placeholder="Search fans…"
-              className="bg-[#1f2937] border border-[#374151] rounded-lg px-3.5 py-2 text-[13px] text-white placeholder:text-[#6b7280] outline-none focus:border-[#6366f1] w-full sm:w-[260px]"
+              className="bg-[#1f2937] border border-[#374151] rounded-lg px-3.5 py-2 text-[13px] text-white placeholder:text-[#6b7280] outline-none focus:border-[#00AFF0] w-full sm:w-[260px]"
             />
           </div>
           {/* Export buttons — download the FULL list (server-side, no UI cap)
@@ -790,7 +790,7 @@ function AgencyDetail({ agencyId, onBack }: { agencyId: string; onBack: () => vo
                 onClick={() => setFanModelFilter(new Set())}
                 className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors ${
                   fanModelFilter.size === 0
-                    ? "bg-[#6366f1] text-white"
+                    ? "bg-[#00AFF0] text-white"
                     : "bg-[#1f2937] text-[#9ca3af] border border-[#374151] hover:text-white"
                 }`}
               >
@@ -811,7 +811,7 @@ function AgencyDetail({ agencyId, onBack }: { agencyId: string; onBack: () => vo
                     }}
                     className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors ${
                       active
-                        ? "bg-[#6366f1] text-white"
+                        ? "bg-[#00AFF0] text-white"
                         : "bg-[#1f2937] text-[#9ca3af] border border-[#374151] hover:text-white"
                     }`}
                   >
@@ -902,7 +902,7 @@ function SettingsView() {
                 value={pw}
                 onChange={(e) => setPw(e.target.value)}
                 placeholder="Minimum 8 characters"
-                className="w-full bg-[#1f2937] border border-[#374151] rounded-lg px-3.5 py-2.5 text-[14px] text-white placeholder:text-[#6b7280] outline-none focus:border-[#6366f1]"
+                className="w-full bg-[#1f2937] border border-[#374151] rounded-lg px-3.5 py-2.5 text-[14px] text-white placeholder:text-[#6b7280] outline-none focus:border-[#00AFF0]"
               />
             </div>
             <div>
@@ -912,14 +912,14 @@ function SettingsView() {
                 value={pw2}
                 onChange={(e) => setPw2(e.target.value)}
                 placeholder="Again"
-                className="w-full bg-[#1f2937] border border-[#374151] rounded-lg px-3.5 py-2.5 text-[14px] text-white placeholder:text-[#6b7280] outline-none focus:border-[#6366f1]"
+                className="w-full bg-[#1f2937] border border-[#374151] rounded-lg px-3.5 py-2.5 text-[14px] text-white placeholder:text-[#6b7280] outline-none focus:border-[#00AFF0]"
               />
             </div>
             {msg && <div className={`text-[12px] ${msg.ok ? "text-[#10b981]" : "text-red-400"}`}>{msg.text}</div>}
             <button
               onClick={save}
               disabled={busy || !pw || !pw2}
-              className="px-4 py-2.5 rounded-lg text-[13px] font-semibold bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white disabled:opacity-50"
+              className="px-4 py-2.5 rounded-lg text-[13px] font-semibold bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] text-white disabled:opacity-50"
             >
               {busy ? "Saving…" : "Update password"}
             </button>
@@ -977,11 +977,11 @@ export function AdminClient() {
       {/* Desktop sidebar */}
       <aside className="hidden md:flex w-[220px] bg-[#161a22] border-r border-[#2a2d35] flex-col shrink-0">
         <div className="h-[52px] border-b border-[#2a2d35] px-5 flex items-center gap-2">
-          <div className="w-8 h-8 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-lg flex items-center justify-center">
+          <div className="w-8 h-8 bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-lg flex items-center justify-center">
             <span className="text-white font-bold text-[14px]">P</span>
           </div>
           <div className="text-[15px] font-semibold">
-            ppvs<span className="text-[#6366f1]">.io</span>
+            ppvs<span className="text-[#00AFF0]">.io</span>
           </div>
           <span className="text-[12px] px-2 py-0.5 bg-[#ef4444]/15 text-[#ef4444] rounded-full font-medium">Admin</span>
         </div>
@@ -992,7 +992,7 @@ export function AdminClient() {
               onClick={() => switchTab(item.id)}
               className={`w-full px-4 py-2.5 rounded-lg flex items-center gap-3 transition-all ${
                 tab === item.id
-                  ? "bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white shadow-lg shadow-[#6366f1]/20"
+                  ? "bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] text-white shadow-lg shadow-[#00AFF0]/20"
                   : "text-[#9ca3af] hover:bg-[#1f2937] hover:text-white"
               }`}
             >
@@ -1015,7 +1015,7 @@ export function AdminClient() {
         {/* Mobile top bar */}
         <div className="md:hidden flex items-center gap-2 border-b border-[#2a2d35] bg-[#161a22] px-3 py-2 overflow-x-auto">
           <span className="text-[13px] font-semibold shrink-0">
-            ppvs<span className="text-[#6366f1]">.io</span>
+            ppvs<span className="text-[#00AFF0]">.io</span>
           </span>
           <span className="text-[10px] px-1.5 py-0.5 bg-[#ef4444]/15 text-[#ef4444] rounded-full font-medium shrink-0">
             Admin
@@ -1026,7 +1026,7 @@ export function AdminClient() {
               key={item.id}
               onClick={() => switchTab(item.id)}
               className={`px-3 py-1.5 rounded-lg text-[12px] font-medium shrink-0 ${
-                tab === item.id ? "bg-[#6366f1] text-white" : "text-[#9ca3af] bg-[#1f2937]"
+                tab === item.id ? "bg-[#00AFF0] text-white" : "text-[#9ca3af] bg-[#1f2937]"
               }`}
             >
               {item.label}
@@ -1190,7 +1190,7 @@ function AgencyVaultPanel({ agencyId }: { agencyId?: string | null }) {
               type="button"
               onClick={() => setFilter(f)}
               className={`px-3 py-1 rounded-md transition-colors capitalize ${
-                filter === f ? "bg-[#6366f1] text-white" : "text-[#9ca3af] hover:text-white"
+                filter === f ? "bg-[#00AFF0] text-white" : "text-[#9ca3af] hover:text-white"
               }`}
             >
               {f}
@@ -1210,7 +1210,7 @@ function AgencyVaultPanel({ agencyId }: { agencyId?: string | null }) {
             onClick={() => setModelFilter(new Set())}
             className={`px-2.5 py-1 rounded-md text-[11px] font-medium border transition-colors ${
               modelFilter.size === 0
-                ? "bg-[#6366f1] text-white border-[#6366f1]"
+                ? "bg-[#00AFF0] text-white border-[#00AFF0]"
                 : "bg-transparent text-[#9ca3af] border-[#2a2d35] hover:text-white hover:border-[#4b5563]"
             }`}
           >
@@ -1225,7 +1225,7 @@ function AgencyVaultPanel({ agencyId }: { agencyId?: string | null }) {
                 onClick={() => toggleModel(m.id)}
                 className={`px-2.5 py-1 rounded-md text-[11px] font-medium border transition-colors ${
                   on
-                    ? "bg-[#6366f1] text-white border-[#6366f1]"
+                    ? "bg-[#00AFF0] text-white border-[#00AFF0]"
                     : "bg-transparent text-[#9ca3af] border-[#2a2d35] hover:text-white hover:border-[#4b5563]"
                 }`}
               >
@@ -1254,7 +1254,7 @@ function AgencyVaultPanel({ agencyId }: { agencyId?: string | null }) {
               <button
                 key={p.id}
                 onClick={() => setOpenPpv(p)}
-                className="relative aspect-square rounded-lg overflow-hidden border border-[#2a2d35] hover:border-[#6366f1]/60 transition-colors bg-[#1f2937] text-left"
+                className="relative aspect-square rounded-lg overflow-hidden border border-[#2a2d35] hover:border-[#00AFF0]/60 transition-colors bg-[#1f2937] text-left"
               >
                 {p.media_url ? (
                   isVideo ? (
@@ -1333,7 +1333,7 @@ function AdminPpvLightbox({
                 href={`/admin?agency=${encodeURIComponent(ppv.agency.id)}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-[#a5a8ff] hover:underline"
+                className="text-[#5BC8F5] hover:underline"
               >
                 {ppv.agency.name || ppv.agency.email || "Agency"}
               </a>{" "}
@@ -1376,7 +1376,7 @@ function AdminPpvLightbox({
               rows={3}
               maxLength={2000}
               placeholder="Optional reason / context …"
-              className="w-full px-3 py-2 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] text-white placeholder:text-[#6b7280] resize-none focus:outline-none focus:border-[#6366f1]"
+              className="w-full px-3 py-2 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] text-white placeholder:text-[#6b7280] resize-none focus:outline-none focus:border-[#00AFF0]"
             />
           </div>
 

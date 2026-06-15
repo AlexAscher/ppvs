@@ -54,6 +54,9 @@ export type DashboardStats = {
   sales: number;
   avgOrder: number;
   payingFans: number;
+  /** Total fans recorded for the agency's models — the "chats started"
+   *  denominator behind the dashboard's Conversion Rate card. */
+  totalFans: number;
   activeChatters: number;
   availableBalance: number;
   pendingPayouts: number;
@@ -108,7 +111,7 @@ export async function GET(req: NextRequest) {
 
     const empty: DashboardStats = {
       netToday: 0, netWeek: 0, netMonth: 0, netAllTime: 0,
-      sales: 0, avgOrder: 0, payingFans: 0, activeChatters: 0,
+      sales: 0, avgOrder: 0, payingFans: 0, totalFans: 0, activeChatters: 0,
       availableBalance: 0, pendingPayouts: 0, chart: [], models: [], chatters: [], topFans: [],
       recentSales: [],
       partial,
@@ -301,9 +304,11 @@ export async function GET(req: NextRequest) {
       // Best-effort — empty list is fine if this single query times out.
     }
 
+    const totalFans = fans.length;
+
     const payload: DashboardStats = {
       netToday, netWeek, netMonth, netAllTime,
-      sales, avgOrder, payingFans, activeChatters,
+      sales, avgOrder, payingFans, totalFans, activeChatters,
       availableBalance, pendingPayouts,
       chart: chartBuckets.map((b) => ({ date: b.date, value: Math.round(b.value) })),
       models: modelStats,
@@ -421,8 +426,10 @@ async function computeViaRpc(
     }),
   );
 
-  // Recent sales + payouts + active-chatter count — small, run in parallel.
-  const [recentRes, payoutsRes, linksRes] = await Promise.all([
+  // Recent sales + payouts + active-chatter count + total-fans count —
+  // small, run in parallel. `totalFans` feeds the dashboard's Conversion
+  // Rate card (= payingFans ÷ totalFans). HEAD count keeps payload tiny.
+  const [recentRes, payoutsRes, linksRes, fansCountRes] = await Promise.all([
     withTimeout(
       Promise.resolve(
         admin
@@ -446,6 +453,16 @@ async function computeViaRpc(
       Q_TIMEOUT,
       "dashboard: chatters",
     ).catch(() => ({ data: [] as { chatter_id: string }[] })),
+    withTimeout(
+      Promise.resolve(
+        admin
+          .from("fans")
+          .select("id", { count: "exact", head: true })
+          .in("model_id", modelIds),
+      ),
+      Q_TIMEOUT,
+      "dashboard: total fans",
+    ).catch(() => ({ count: 0 as number | null })),
   ]);
 
   const recentSales: RecentSale[] = (
@@ -489,6 +506,7 @@ async function computeViaRpc(
     sales: core.sales,
     avgOrder: core.sales > 0 ? core.net_all / core.sales : 0,
     payingFans: core.paying_fans,
+    totalFans: (fansCountRes as { count: number | null }).count ?? 0,
     activeChatters: ((linksRes.data ?? []) as { chatter_id: string }[]).length,
     availableBalance: Math.max(0, core.net_all - paidOrPending),
     pendingPayouts,

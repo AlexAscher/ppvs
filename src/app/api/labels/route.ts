@@ -9,7 +9,7 @@ import { createSupabaseServerClient, createAdminSupabaseClient } from "@/lib/sup
 const PRESETS = [
   { name: "Negotiating", color: "#f59e0b" },
   { name: "Hot lead", color: "#ef4444" },
-  { name: "Follow-up", color: "#6366f1" },
+  { name: "Follow-up", color: "#00AFF0" },
   { name: "Cold", color: "#64748b" },
   { name: "Closed", color: "#10b981" },
 ];
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
     .insert({
       agency_user_id: user.id,
       name: body.name.trim().slice(0, 40),
-      color: body.color?.match(/^#[0-9a-f]{3,8}$/i) ? body.color : "#6366f1",
+      color: body.color?.match(/^#[0-9a-f]{3,8}$/i) ? body.color : "#00AFF0",
       position: 99,
     })
     .select("id, name, color, position")

@@ -71,11 +71,11 @@ function ChatterSidebar({
         }`}
       >
       <div className="h-[52px] border-b border-[#2a2d35] px-5 flex items-center gap-2">
-        <div className="w-8 h-8 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-lg flex items-center justify-center">
+        <div className="w-8 h-8 bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-lg flex items-center justify-center">
           <span className="text-white font-bold text-[14px]">P</span>
         </div>
         <div className="text-[15px] font-semibold">
-          ppvs<span className="text-[#6366f1]">.io</span>
+          ppvs<span className="text-[#00AFF0]">.io</span>
         </div>
         <span className="text-[12px] px-2 py-0.5 bg-[#10b981]/10 text-[#10b981] rounded-full font-medium">Chatter</span>
       </div>
@@ -88,7 +88,7 @@ function ChatterSidebar({
               onClick={() => onTabChange(item.id)}
               className={`w-full px-4 py-2.5 rounded-lg flex items-center gap-3 transition-all ${
                 activeTab === item.id
-                  ? "bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white shadow-lg shadow-[#6366f1]/20"
+                  ? "bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] text-white shadow-lg shadow-[#00AFF0]/20"
                   : "text-[#9ca3af] hover:bg-[#1f2937] hover:text-white"
               }`}
             >
@@ -127,7 +127,7 @@ function ChatterSidebar({
             showLogout ? "bg-[#1f2937]" : "hover:bg-[#1f2937]"
           }`}
         >
-          <div className="w-9 h-9 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-full flex items-center justify-center text-white font-semibold text-[13px] shrink-0">
+          <div className="w-9 h-9 bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-full flex items-center justify-center text-white font-semibold text-[13px] shrink-0">
             {userInitials}
           </div>
           <div className="flex-1 min-w-0">
@@ -172,9 +172,9 @@ function InvitationCard({
   }
 
   return (
-    <div className="bg-gradient-to-br from-[#6366f1]/10 to-[#4f46e5]/10 border border-[#6366f1]/30 rounded-lg p-6">
+    <div className="bg-gradient-to-br from-[#00AFF0]/10 to-[#00AFF0]/10 border border-[#00AFF0]/30 rounded-lg p-6">
       <div className="flex items-start gap-4">
-        <div className="w-12 h-12 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-lg flex items-center justify-center shrink-0">
+        <div className="w-12 h-12 bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-lg flex items-center justify-center shrink-0">
           <Mail className="w-6 h-6 text-white" />
         </div>
         <div className="flex-1 min-w-0">
@@ -183,7 +183,7 @@ function InvitationCard({
             <span className="font-semibold text-white">{invitation.agency_name}</span> invites you to join as a chatter
             {invitation.model && (
               <>
-                {" "}for model <span className="text-[#6366f1] font-semibold">{invitation.model.name}</span>
+                {" "}for model <span className="text-[#00AFF0] font-semibold">{invitation.model.name}</span>
               </>
             )}.
           </p>
@@ -368,7 +368,7 @@ function ChatterDashboardTab() {
                   {agency.model && (
                     <>
                       <span className="text-[#6b7280] mx-2">·</span>
-                      <span className="text-[#6366f1]">{agency.model.name}</span>
+                      <span className="text-[#00AFF0]">{agency.model.name}</span>
                     </>
                   )}
                 </div>
@@ -445,7 +445,7 @@ export function ChatterDashboardLayout() {
             <Menu className="w-5 h-5" />
           </button>
           <span className="text-[15px] font-semibold">
-            ppvs<span className="text-[#6366f1]">.io</span>
+            ppvs<span className="text-[#00AFF0]">.io</span>
           </span>
         </div>
         <div className="flex-1 flex min-h-0 overflow-hidden">

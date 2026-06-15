@@ -182,7 +182,7 @@ export function EmojiPicker({ onSelect, onClose, anchored = false }: EmojiPicker
             onClick={() => setActiveCategory(c.key)}
             className={`px-2 py-1.5 text-[18px] leading-none flex-shrink-0 border-b-2 transition-colors ${
               activeCategory === c.key
-                ? "border-[#6366f1]"
+                ? "border-[#00AFF0]"
                 : "border-transparent opacity-60 hover:opacity-100"
             }`}
           >

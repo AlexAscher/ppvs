@@ -37,7 +37,7 @@ export function EmojiPicker({ value, onChange }: Props) {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="w-10 h-10 rounded-lg bg-[#1f2937] border border-[#374151] hover:border-[#6366f1] transition-colors flex items-center justify-center text-[20px]"
+        className="w-10 h-10 rounded-lg bg-[#1f2937] border border-[#374151] hover:border-[#00AFF0] transition-colors flex items-center justify-center text-[20px]"
       >
         {value ?? <span className="text-[#6b7280] text-[14px]">+</span>}
       </button>
@@ -59,7 +59,7 @@ export function EmojiPicker({ value, onChange }: Props) {
               type="button"
               onClick={() => { onChange(e); setOpen(false); }}
               className={`w-9 h-9 rounded-md flex items-center justify-center text-[20px] transition-all ${
-                value === e ? "bg-[#6366f1]/20 ring-1 ring-[#6366f1]" : "hover:bg-[#2a2d35]"
+                value === e ? "bg-[#00AFF0]/20 ring-1 ring-[#00AFF0]" : "hover:bg-[#2a2d35]"
               }`}
             >
               {e}

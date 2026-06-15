@@ -25,7 +25,7 @@ export function ModelSelectorBar({
           onClick={() => onModelSelect(model.id)}
           className={`relative px-2.5 py-0.5 rounded-md text-[10px] font-medium border whitespace-nowrap transition-all ${
             selectedModel === model.id
-              ? "bg-[#6366f1] border-[#6366f1] text-white shadow-sm"
+              ? "bg-[#00AFF0] border-[#00AFF0] text-white shadow-sm"
               : "bg-transparent border-[#374151] text-[#9ca3af] hover:border-[#4b5563] hover:text-[#d1d5db]"
           }`}
         >

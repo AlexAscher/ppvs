@@ -170,16 +170,16 @@ function RadioRow({
       onClick={onChange}
       className={`w-full flex items-start gap-2.5 px-3 py-2 rounded-md text-left transition-colors ${
         checked
-          ? "bg-[#6366f1]/15 ring-1 ring-[#6366f1]"
+          ? "bg-[#00AFF0]/15 ring-1 ring-[#00AFF0]"
           : "bg-[#1f2937]/40 hover:bg-[#1f2937] ring-1 ring-[#2a2d35]"
       }`}
     >
       <div
         className={`mt-0.5 w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 ${
-          checked ? "border-[2px] border-[#6366f1]" : "border-[2px] border-[#4b5563]"
+          checked ? "border-[2px] border-[#00AFF0]" : "border-[2px] border-[#4b5563]"
         }`}
       >
-        {checked && <div className="w-2 h-2 rounded-full bg-[#6366f1]" />}
+        {checked && <div className="w-2 h-2 rounded-full bg-[#00AFF0]" />}
       </div>
       <div className="min-w-0">
         <div className="text-[12px] font-medium text-white">{label}</div>

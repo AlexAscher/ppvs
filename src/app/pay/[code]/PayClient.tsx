@@ -108,16 +108,16 @@ export function PayClient({
     <div className="min-h-screen flex items-center justify-center px-3 sm:px-4 bg-[#0d1117] py-6 sm:py-10">
       <div
         className="pointer-events-none fixed inset-0 z-0"
-        style={{ background: "radial-gradient(ellipse 70% 50% at 50% 0%, rgba(99,102,241,0.07) 0%, transparent 70%)" }}
+        style={{ background: "radial-gradient(ellipse 70% 50% at 50% 0%, rgba(0, 175, 240,0.07) 0%, transparent 70%)" }}
       />
 
       <div className="relative z-10 w-full max-w-[520px]">
         <div className="flex items-center justify-center gap-2 mb-6">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#6366f1] to-[#4f46e5] flex items-center justify-center text-white font-bold text-[15px]">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] flex items-center justify-center text-white font-bold text-[15px]">
             P
           </div>
           <span style={{ fontSize: 18, fontWeight: 700, color: "#e6edf3", letterSpacing: "-0.02em" }}>
-            ppvs<span style={{ color: "#6366f1" }}>.io</span>
+            ppvs<span style={{ color: "#00AFF0" }}>.io</span>
           </span>
         </div>
 
@@ -188,7 +188,7 @@ export function PayClient({
             )}
 
             <div className="flex items-baseline gap-1.5 mb-4 mt-2">
-              <span style={{ fontSize: 32, fontWeight: 800, color: "#6366f1", letterSpacing: "-0.03em" }}>
+              <span style={{ fontSize: 32, fontWeight: 800, color: "#00AFF0", letterSpacing: "-0.03em" }}>
                 ${basePrice.toFixed(2)}
               </span>
               <span style={{ fontSize: 13, color: "#8b949e" }}>one-time unlock</span>
@@ -204,7 +204,7 @@ export function PayClient({
               onClick={handlePay}
               disabled={state === "loading"}
               className="w-full py-[13px] rounded-[10px] text-[14px] font-semibold transition-all border-none cursor-pointer"
-              style={{ background: state === "loading" ? "#6366f160" : "#6366f1", color: "white" }}
+              style={{ background: state === "loading" ? "#00AFF060" : "#00AFF0", color: "white" }}
             >
               {state === "loading" ? "Unlocking..." : `Pay $${basePrice.toFixed(2)} & Unlock`}
             </button>
@@ -234,11 +234,11 @@ function ExpiredScreen({ recipient }: { recipient: string | null }) {
       />
       <div className="relative z-10 w-full max-w-[460px]">
         <div className="flex items-center justify-center gap-2 mb-6">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#6366f1] to-[#4f46e5] flex items-center justify-center text-white font-bold text-[15px]">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] flex items-center justify-center text-white font-bold text-[15px]">
             P
           </div>
           <span style={{ fontSize: 18, fontWeight: 700, color: "#e6edf3", letterSpacing: "-0.02em" }}>
-            ppvs<span style={{ color: "#6366f1" }}>.io</span>
+            ppvs<span style={{ color: "#00AFF0" }}>.io</span>
           </span>
         </div>
 
@@ -279,7 +279,7 @@ function DeliveredScreen({
         className="pointer-events-none fixed inset-0 z-0"
         style={{
           background:
-            "radial-gradient(ellipse 70% 60% at 50% 30%, rgba(99,102,241,0.15) 0%, transparent 70%)",
+            "radial-gradient(ellipse 70% 60% at 50% 30%, rgba(0, 175, 240,0.15) 0%, transparent 70%)",
         }}
       />
 
@@ -328,7 +328,7 @@ function DeliveredScreen({
       <div className="relative z-10 w-full max-w-[460px]">
         {/* Logo */}
         <div className="flex items-center justify-center gap-2 mb-6">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#6366f1] to-[#4f46e5] flex items-center justify-center text-white font-bold text-[15px]">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] flex items-center justify-center text-white font-bold text-[15px]">
             P
           </div>
           <span
@@ -339,7 +339,7 @@ function DeliveredScreen({
               letterSpacing: "-0.02em",
             }}
           >
-            ppvs<span style={{ color: "#6366f1" }}>.io</span>
+            ppvs<span style={{ color: "#00AFF0" }}>.io</span>
           </span>
         </div>
 
@@ -350,7 +350,7 @@ function DeliveredScreen({
               className="absolute inset-0 rounded-full"
               style={{
                 background:
-                  "radial-gradient(circle at 50% 50%, rgba(99,102,241,0.35) 0%, transparent 70%)",
+                  "radial-gradient(circle at 50% 50%, rgba(0, 175, 240,0.35) 0%, transparent 70%)",
                 animation: "pulse-ring 2.4s ease-out infinite",
               }}
             />
@@ -358,7 +358,7 @@ function DeliveredScreen({
               className="absolute inset-2 rounded-full"
               style={{
                 background:
-                  "radial-gradient(circle at 50% 50%, rgba(99,102,241,0.45) 0%, transparent 70%)",
+                  "radial-gradient(circle at 50% 50%, rgba(0, 175, 240,0.45) 0%, transparent 70%)",
                 animation: "pulse-ring 2.4s ease-out infinite 0.8s",
               }}
             />
@@ -382,7 +382,7 @@ function DeliveredScreen({
             style={{ color: "#9ca3af" }}
           >
             Your{" "}
-            <span style={{ color: "#a5a8ff", fontWeight: 600 }}>
+            <span style={{ color: "#5BC8F5", fontWeight: 600 }}>
               {itemCount} {itemCount === 1 ? "item" : "items"}
             </span>{" "}
             already flying into

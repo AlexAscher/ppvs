@@ -68,7 +68,7 @@ function statusBadge(status: string): { label: string; cls: string } {
     case "paid":
       return { label: "Paid", cls: "bg-blue-500/15 text-blue-400" };
     case "sent":
-      return { label: "Sent", cls: "bg-[#6366f1]/15 text-[#a5a8ff]" };
+      return { label: "Sent", cls: "bg-[#00AFF0]/15 text-[#5BC8F5]" };
     case "failed":
       return { label: "Failed", cls: "bg-red-500/15 text-red-400" };
     default:
@@ -274,7 +274,7 @@ export function FanProfileDrawer({
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
           {/* Identity block */}
           <div className="flex items-start gap-3">
-            <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[#6366f1] to-[#4f46e5] flex items-center justify-center text-white text-[18px] font-semibold flex-shrink-0">
+            <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] flex items-center justify-center text-white text-[18px] font-semibold flex-shrink-0">
               {displayName
                 .split(/\s+/)
                 .slice(0, 2)
@@ -320,7 +320,7 @@ export function FanProfileDrawer({
               value={bio}
               onChange={(e) => setBio(e.target.value)}
               placeholder="Bio / personality notes…"
-              className="w-full px-3 py-2 bg-[#1f2937]/60 border border-[#374151] rounded-md text-[12px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1]"
+              className="w-full px-3 py-2 bg-[#1f2937]/60 border border-[#374151] rounded-md text-[12px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#00AFF0]"
             />
             <div className="grid grid-cols-2 gap-2">
               {/* Birthdate: plain text input so the placeholder isn't
@@ -342,13 +342,13 @@ export function FanProfileDrawer({
                 title="Birthdate (YYYY-MM-DD)"
                 inputMode="numeric"
                 maxLength={10}
-                className="px-3 py-2 bg-[#1f2937]/60 border border-[#374151] rounded-md text-[12px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1]"
+                className="px-3 py-2 bg-[#1f2937]/60 border border-[#374151] rounded-md text-[12px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#00AFF0]"
               />
               <input
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
                 placeholder="Location"
-                className="px-3 py-2 bg-[#1f2937]/60 border border-[#374151] rounded-md text-[12px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1]"
+                className="px-3 py-2 bg-[#1f2937]/60 border border-[#374151] rounded-md text-[12px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#00AFF0]"
               />
             </div>
           </div>
@@ -398,7 +398,7 @@ export function FanProfileDrawer({
                   </div>
                   <div
                     className={`text-[15px] font-bold leading-tight ${
-                      c.accent ? "text-[#6366f1]" : "text-white"
+                      c.accent ? "text-[#00AFF0]" : "text-white"
                     }`}
                   >
                     {c.value}
@@ -414,7 +414,7 @@ export function FanProfileDrawer({
                   <span
                     key={i}
                     className={`block w-2 h-2 rounded-full ${
-                      i <= buyingPowerDots ? "bg-[#6366f1]" : "bg-[#2a2d35]"
+                      i <= buyingPowerDots ? "bg-[#00AFF0]" : "bg-[#2a2d35]"
                     }`}
                   />
                 ))}
@@ -434,7 +434,7 @@ export function FanProfileDrawer({
                 {FAN_TAGS.filter((t) => tags.includes(t)).map((t) => (
                   <span
                     key={t}
-                    className="w-8 h-8 flex items-center justify-center rounded-md bg-[#6366f1]/20 ring-1 ring-[#6366f1] text-[16px] leading-none"
+                    className="w-8 h-8 flex items-center justify-center rounded-md bg-[#00AFF0]/20 ring-1 ring-[#00AFF0] text-[16px] leading-none"
                   >
                     {t}
                   </span>

@@ -15,12 +15,12 @@ export function Topbar({ displayName, onLogout }: TopbarProps) {
   return (
     <div className="h-[52px] bg-[#1a1d24] border-b border-[#2a2d35] flex items-center justify-between px-5">
       <div className="flex items-center gap-2.5">
-        <div className="w-7 h-7 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-md flex items-center justify-center relative shadow-sm">
+        <div className="w-7 h-7 bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-md flex items-center justify-center relative shadow-sm">
           <Send className="w-3.5 h-3.5 text-white" />
           <Lock className="w-2 h-2 text-white absolute bottom-0.5 right-0.5" />
         </div>
         <div className="text-[13px] font-semibold">
-          chatter<span className="text-[#6366f1]">.ppvs.io</span>
+          chatter<span className="text-[#00AFF0]">.ppvs.io</span>
         </div>
       </div>
 

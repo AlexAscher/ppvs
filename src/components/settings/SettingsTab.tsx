@@ -109,9 +109,9 @@ export function SettingsTab({ role }: { role: "agency" | "chatter" }) {
   const card = "bg-[#161a22] border border-[#2a2d35] rounded-xl p-5 md:p-6";
   const label = "block text-[12px] text-[#9ca3af] mb-1.5 font-medium";
   const input =
-    "w-full px-3.5 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1]";
+    "w-full px-3.5 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#00AFF0]";
   const btn =
-    "px-5 py-2.5 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white rounded-lg font-semibold text-[12px] hover:from-[#5558e3] hover:to-[#4338ca] transition-all disabled:opacity-50 disabled:cursor-not-allowed";
+    "px-5 py-2.5 bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] text-white rounded-lg font-semibold text-[12px] hover:from-[#0098D4] hover:to-[#0098D4] transition-all disabled:opacity-50 disabled:cursor-not-allowed";
   const msgCls = (m: string) =>
     `text-[11px] ${m.startsWith("Error") ? "text-red-400" : "text-emerald-400"}`;
 

@@ -62,7 +62,7 @@ export default function AppError({
             <button
               onClick={reset}
               style={{
-                background: "#6366f1",
+                background: "#00AFF0",
                 color: "white",
                 border: "none",
                 borderRadius: 10,

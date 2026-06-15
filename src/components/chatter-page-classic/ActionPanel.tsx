@@ -188,7 +188,7 @@ export function ActionPanel({
             onClick={() => onTabChange(tab)}
             className={`flex-1 text-[10px] font-semibold uppercase tracking-wider border-b-2 transition-all ${
               activeTab === tab
-                ? "text-[#6366f1] border-[#6366f1] bg-[#1a1d24]"
+                ? "text-[#00AFF0] border-[#00AFF0] bg-[#1a1d24]"
                 : "text-[#6b7280] border-transparent hover:text-[#9ca3af] hover:bg-[#1a1d24]/50"
             }`}
           >
@@ -239,7 +239,7 @@ export function ActionPanel({
                 onClick={() => onFilterChange("All")}
                 className={`px-3 py-1.5 rounded-md text-[10px] font-medium border transition-all ${
                   activeFilter === "All"
-                    ? "bg-[#6366f1] text-white border-[#6366f1] shadow-sm"
+                    ? "bg-[#00AFF0] text-white border-[#00AFF0] shadow-sm"
                     : "bg-transparent text-[#9ca3af] border-[#374151] hover:border-[#4b5563] hover:text-[#d1d5db]"
                 }`}
               >
@@ -254,7 +254,7 @@ export function ActionPanel({
                     onClick={() => onFilterChange(isActive ? "All" : tag.id)}
                     className={`px-3 py-1.5 rounded-md text-[10px] font-medium border transition-all ${
                       isActive
-                        ? "bg-[#6366f1] text-white border-[#6366f1] shadow-sm"
+                        ? "bg-[#00AFF0] text-white border-[#00AFF0] shadow-sm"
                         : "bg-transparent text-[#9ca3af] border-[#374151] hover:border-[#4b5563] hover:text-[#d1d5db]"
                     }`}
                   >
@@ -275,9 +275,9 @@ export function ActionPanel({
                     <button
                       key={`folder-${group.id}`}
                       onClick={() => setCurrentFolderId(group.id)}
-                      className="relative aspect-square rounded-lg border-2 border-[#2a2d35] hover:border-[#6366f1]/50 transition-all overflow-hidden bg-gradient-to-br from-[#1f2937] to-[#111827] flex flex-col items-center justify-center group"
+                      className="relative aspect-square rounded-lg border-2 border-[#2a2d35] hover:border-[#00AFF0]/50 transition-all overflow-hidden bg-gradient-to-br from-[#1f2937] to-[#111827] flex flex-col items-center justify-center group"
                     >
-                      <Folder className="w-10 h-10 text-[#6366f1] group-hover:scale-110 transition-transform" />
+                      <Folder className="w-10 h-10 text-[#00AFF0] group-hover:scale-110 transition-transform" />
                       <div className="text-[12px] text-white font-medium mt-2 truncate max-w-full px-2">
                         {group.name}
                       </div>
@@ -297,14 +297,14 @@ export function ActionPanel({
                   onClick={() => onToggleItem(item.id)}
                   className={`relative aspect-square rounded-lg border-2 transition-all overflow-hidden group bg-gradient-to-br from-[#1f2937] to-[#111827] ${
                     selectedItems.includes(item.id)
-                      ? "border-[#6366f1] ring-2 ring-[#6366f1]/20"
+                      ? "border-[#00AFF0] ring-2 ring-[#00AFF0]/20"
                       : "border-[#2a2d35] hover:border-[#374151]"
                   }`}
                 >
                   {item.media_url && (
                     isAud ? (
                       <div className="w-full h-full flex items-center justify-center">
-                        <Music className="w-8 h-8 text-[#6366f1]" />
+                        <Music className="w-8 h-8 text-[#00AFF0]" />
                       </div>
                     ) : isVid ? (
                       <video
@@ -338,7 +338,7 @@ export function ActionPanel({
                     </div>
                   )}
                   {selectedItems.includes(item.id) && (
-                    <div className="absolute -top-1.5 -right-1.5 w-6 h-6 bg-[#6366f1] rounded-full flex items-center justify-center shadow-lg">
+                    <div className="absolute -top-1.5 -right-1.5 w-6 h-6 bg-[#00AFF0] rounded-full flex items-center justify-center shadow-lg">
                       <Check className="w-3.5 h-3.5 text-white" />
                     </div>
                   )}
@@ -374,7 +374,7 @@ export function ActionPanel({
                       value={caption}
                       onChange={(e) => onCaptionChange(e.target.value)}
                       placeholder="Add a message to send with the PPV..."
-                      className="w-full px-3 py-2.5 pr-10 bg-[#1f2937] border border-[#374151] rounded-lg text-[12px] text-white placeholder:text-[#6b7280] resize-none focus:outline-none focus:border-[#6366f1]"
+                      className="w-full px-3 py-2.5 pr-10 bg-[#1f2937] border border-[#374151] rounded-lg text-[12px] text-white placeholder:text-[#6b7280] resize-none focus:outline-none focus:border-[#00AFF0]"
                       rows={2}
                     />
                     <button
@@ -386,7 +386,7 @@ export function ActionPanel({
                       title="Add emoji"
                       aria-label="Add emoji"
                       className={`absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-md transition-colors ${
-                        captionEmojiOpen ? "text-[#6366f1]" : "text-[#9ca3af] hover:text-white"
+                        captionEmojiOpen ? "text-[#00AFF0]" : "text-[#9ca3af] hover:text-white"
                       }`}
                     >
                       <Smile className="w-4 h-4" />
@@ -417,7 +417,7 @@ export function ActionPanel({
                           onPriceInputChange(clean);
                         }}
                         placeholder="0"
-                        className="w-24 pl-6 pr-3 py-1.5 bg-[#1f2937] border border-[#374151] rounded-md text-[12px] text-right text-white font-semibold focus:outline-none focus:border-[#6366f1]"
+                        className="w-24 pl-6 pr-3 py-1.5 bg-[#1f2937] border border-[#374151] rounded-md text-[12px] text-right text-white font-semibold focus:outline-none focus:border-[#00AFF0]"
                       />
                     </div>
                     <span className="text-[12px] text-[#6b7280]">{selectedItems.length} items</span>
@@ -449,7 +449,7 @@ export function ActionPanel({
                           onClick={() => onExpiresInHoursChange(opt.h)}
                           className={`px-2.5 py-1 rounded-md text-[10px] font-medium border transition-all ${
                             expiresInHours === opt.h
-                              ? "bg-[#6366f1] text-white border-[#6366f1]"
+                              ? "bg-[#00AFF0] text-white border-[#00AFF0]"
                               : "bg-transparent text-[#9ca3af] border-[#374151] hover:border-[#4b5563] hover:text-[#d1d5db]"
                           }`}
                         >
@@ -472,7 +472,7 @@ export function ActionPanel({
                     className={`flex-1 py-3 text-white rounded-lg font-semibold text-[13px] transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed ${
                       isFree
                         ? "bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 shadow-emerald-500/20"
-                        : "bg-gradient-to-r from-[#6366f1] to-[#4f46e5] hover:from-[#5558e3] hover:to-[#4338ca] shadow-[#6366f1]/20"
+                        : "bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] hover:from-[#0098D4] hover:to-[#0098D4] shadow-[#00AFF0]/20"
                     }`}
                   >
                     {sending
@@ -492,7 +492,7 @@ export function ActionPanel({
                         title={scheduleAt ? "Edit schedule" : "Schedule send"}
                         className={`w-11 h-full flex items-center justify-center rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                           scheduleAt
-                            ? "bg-[#6366f1]/20 text-[#6366f1] ring-1 ring-[#6366f1]"
+                            ? "bg-[#00AFF0]/20 text-[#00AFF0] ring-1 ring-[#00AFF0]"
                             : "bg-[#1f2937] text-[#9ca3af] hover:text-white hover:bg-[#374151]"
                         }`}
                         aria-label="Schedule send"
@@ -555,14 +555,14 @@ export function ActionPanel({
               value={tipAmount}
               onChange={(e) => onTipAmountChange(e.target.value.replace(/[^0-9.]/g, ""))}
               placeholder="Custom amount..."
-              className="w-full px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[10px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1]"
+              className="w-full px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[10px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#00AFF0]"
             />
             <div className="relative">
               <textarea
                 value={tipMessage}
                 onChange={(e) => onTipMessageChange(e.target.value)}
                 placeholder="Optional message..."
-                className="w-full px-4 py-2.5 pr-10 bg-[#1f2937] border border-[#374151] rounded-lg text-[10px] text-white placeholder:text-[#6b7280] resize-none focus:outline-none focus:border-[#6366f1]"
+                className="w-full px-4 py-2.5 pr-10 bg-[#1f2937] border border-[#374151] rounded-lg text-[10px] text-white placeholder:text-[#6b7280] resize-none focus:outline-none focus:border-[#00AFF0]"
                 rows={2}
               />
               <button
@@ -574,7 +574,7 @@ export function ActionPanel({
                 title="Add emoji"
                 aria-label="Add emoji"
                 className={`absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-md transition-colors ${
-                  tipEmojiOpen ? "text-[#6366f1]" : "text-[#9ca3af] hover:text-white"
+                  tipEmojiOpen ? "text-[#00AFF0]" : "text-[#9ca3af] hover:text-white"
                 }`}
               >
                 <Smile className="w-4 h-4" />
@@ -591,7 +591,7 @@ export function ActionPanel({
               <button
                 onClick={onSendTip}
                 disabled={!hasRecipient || !tipAmount || sending}
-                className="flex-1 py-3 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white rounded-lg font-semibold text-[11px] hover:from-[#5558e3] hover:to-[#4338ca] transition-all shadow-lg shadow-[#6366f1]/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 py-3 bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] text-white rounded-lg font-semibold text-[11px] hover:from-[#0098D4] hover:to-[#0098D4] transition-all shadow-lg shadow-[#00AFF0]/20 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {sending
                   ? "Sending…"
@@ -608,7 +608,7 @@ export function ActionPanel({
                     title={scheduleAt ? "Edit schedule" : "Schedule send"}
                     className={`w-11 h-full flex items-center justify-center rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                       scheduleAt
-                        ? "bg-[#6366f1]/20 text-[#6366f1] ring-1 ring-[#6366f1]"
+                        ? "bg-[#00AFF0]/20 text-[#00AFF0] ring-1 ring-[#00AFF0]"
                         : "bg-[#1f2937] text-[#9ca3af] hover:text-white hover:bg-[#374151]"
                     }`}
                     aria-label="Schedule tip"
@@ -645,12 +645,12 @@ export function ActionPanel({
               }}
               placeholder={hasRecipient ? "Add a note about this fan…" : "Select a chat first"}
               disabled={!hasRecipient}
-              className="w-full h-[90px] px-4 py-3 bg-[#1f2937] border border-[#374151] rounded-lg text-[12px] text-white placeholder:text-[#6b7280] resize-none focus:outline-none focus:border-[#6366f1] disabled:opacity-50"
+              className="w-full h-[90px] px-4 py-3 bg-[#1f2937] border border-[#374151] rounded-lg text-[12px] text-white placeholder:text-[#6b7280] resize-none focus:outline-none focus:border-[#00AFF0] disabled:opacity-50"
             />
             <button
               onClick={onAddNote}
               disabled={!hasRecipient || notesSaving || !notes.trim()}
-              className="w-full flex items-center justify-center gap-1.5 px-5 py-2.5 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white rounded-lg font-semibold text-[12px] hover:from-[#5558e3] hover:to-[#4338ca] transition-all shadow-lg shadow-[#6366f1]/20 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full flex items-center justify-center gap-1.5 px-5 py-2.5 bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] text-white rounded-lg font-semibold text-[12px] hover:from-[#0098D4] hover:to-[#0098D4] transition-all shadow-lg shadow-[#00AFF0]/20 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Plus className="w-4 h-4" />
               {notesSaving ? "Adding…" : "Add note"}

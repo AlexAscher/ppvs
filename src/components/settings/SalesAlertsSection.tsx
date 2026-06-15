@@ -107,7 +107,7 @@ export function SalesAlertsSection() {
 
   const card = "bg-[#161a22] border border-[#2a2d35] rounded-xl p-5 md:p-6";
   const btn =
-    "px-5 py-2.5 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white rounded-lg font-semibold text-[12px] hover:from-[#5558e3] hover:to-[#4338ca] transition-all disabled:opacity-50 disabled:cursor-not-allowed";
+    "px-5 py-2.5 bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] text-white rounded-lg font-semibold text-[12px] hover:from-[#0098D4] hover:to-[#0098D4] transition-all disabled:opacity-50 disabled:cursor-not-allowed";
   const btnGhost =
     "px-4 py-2 bg-[#1f2937] border border-[#374151] text-white rounded-lg text-[12px] hover:bg-[#252b36] transition-all";
 
@@ -199,7 +199,7 @@ function Checkbox({
         aria-checked={checked}
         onClick={() => onChange(!checked)}
         className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${
-          checked ? "bg-[#6366f1] border-[#6366f1]" : "bg-[#1f2937] border-[#374151]"
+          checked ? "bg-[#00AFF0] border-[#00AFF0]" : "bg-[#1f2937] border-[#374151]"
         }`}
       >
         {checked && (

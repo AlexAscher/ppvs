@@ -99,7 +99,7 @@ export function ChatterModelMultiSelect({
                 ) : (
                   <div
                     key={m.id}
-                    className="w-5 h-5 rounded-full bg-gradient-to-br from-[#6366f1] to-[#4f46e5] ring-2 ring-[#1f2937]"
+                    className="w-5 h-5 rounded-full bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] ring-2 ring-[#1f2937]"
                   />
                 ),
               )}
@@ -139,12 +139,12 @@ export function ChatterModelMultiSelect({
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={m.avatar_url} alt={m.name} className="w-5 h-5 rounded-full object-cover shrink-0" />
                   ) : (
-                    <div className="w-5 h-5 rounded-full bg-gradient-to-br from-[#6366f1] to-[#4f46e5] shrink-0" />
+                    <div className="w-5 h-5 rounded-full bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] shrink-0" />
                   )}
                   <span className="truncate flex-1">{m.name}</span>
                   <span
                     className={`w-4 h-4 rounded flex items-center justify-center shrink-0 ${
-                      on ? "bg-[#6366f1]" : "border border-[#4b5563]"
+                      on ? "bg-[#00AFF0]" : "border border-[#4b5563]"
                     }`}
                   >
                     {on && <Check className="w-3 h-3 text-white" />}

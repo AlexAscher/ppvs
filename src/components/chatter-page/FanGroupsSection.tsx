@@ -149,7 +149,7 @@ export function FanGroupsSection({ modelId, peerId }: Props) {
         <div className="mt-2 bg-[#0f131a] border border-[#2a2d35] rounded-lg p-2">
           <input
             autoFocus
-            className="w-full px-2 py-1.5 bg-[#1f2937] border border-[#374151] rounded text-[12px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1] mb-1.5"
+            className="w-full px-2 py-1.5 bg-[#1f2937] border border-[#374151] rounded text-[12px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#00AFF0] mb-1.5"
             placeholder="Search or create…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -180,7 +180,7 @@ export function FanGroupsSection({ modelId, peerId }: Props) {
               <button
                 onClick={() => createAndAssign(search.trim())}
                 disabled={working === "__new__"}
-                className="w-full px-2 py-1.5 rounded flex items-center gap-1.5 text-[12px] text-[#6366f1] hover:bg-[#1f2937] disabled:opacity-50"
+                className="w-full px-2 py-1.5 rounded flex items-center gap-1.5 text-[12px] text-[#00AFF0] hover:bg-[#1f2937] disabled:opacity-50"
               >
                 <Plus className="w-3 h-3" />
                 Create &ldquo;{search.trim()}&rdquo;

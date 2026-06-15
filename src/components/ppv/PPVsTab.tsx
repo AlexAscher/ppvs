@@ -375,7 +375,7 @@ export function PPVsTab() {
                     <button
                       key={m.id}
                       onClick={() => { setSelectedModelId(m.id); setShowModelDropdown(false); }}
-                      className={`w-full px-4 py-2.5 text-[13px] text-left hover:bg-[#374151] transition-colors ${selectedModelId === m.id ? "bg-[#374151] text-[#6366f1]" : "text-white"}`}
+                      className={`w-full px-4 py-2.5 text-[13px] text-left hover:bg-[#374151] transition-colors ${selectedModelId === m.id ? "bg-[#374151] text-[#00AFF0]" : "text-white"}`}
                     >
                       {m.name}
                     </button>
@@ -402,7 +402,7 @@ export function PPVsTab() {
               disabled={!selectedModelId}
               className={`px-4 py-2.5 rounded-lg text-[13px] font-medium transition-all flex items-center gap-2 disabled:opacity-50 border ${
                 selectMode
-                  ? "bg-[#6366f1] border-[#6366f1] text-white"
+                  ? "bg-[#00AFF0] border-[#00AFF0] text-white"
                   : "bg-[#1f2937] border-[#374151] text-white hover:bg-[#374151]"
               }`}
             >
@@ -425,7 +425,7 @@ export function PPVsTab() {
             />
             {bulkUpload && (
               <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 bg-[#1f2937] border border-[#374151] rounded-xl px-4 py-2.5 text-[12px] text-white shadow-2xl flex items-center gap-2">
-                <span className="inline-block w-3.5 h-3.5 border-2 border-[#374151] border-t-[#6366f1] rounded-full animate-spin" />
+                <span className="inline-block w-3.5 h-3.5 border-2 border-[#374151] border-t-[#00AFF0] rounded-full animate-spin" />
                 Uploading {bulkUpload.done}/{bulkUpload.total}…
               </div>
             )}
@@ -438,7 +438,7 @@ export function PPVsTab() {
             <button
               onClick={() => setPpvForm({ kind: "add", groupId: null })}
               disabled={!selectedModelId}
-              className="px-4 py-2.5 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] rounded-lg text-[13px] font-semibold text-white hover:from-[#5558e3] hover:to-[#4338ca] transition-all shadow-lg shadow-[#6366f1]/20 flex items-center gap-2 disabled:opacity-50"
+              className="px-4 py-2.5 bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] rounded-lg text-[13px] font-semibold text-white hover:from-[#0098D4] hover:to-[#0098D4] transition-all shadow-lg shadow-[#00AFF0]/20 flex items-center gap-2 disabled:opacity-50"
             >
               <Plus className="w-4 h-4" />Add PPV
             </button>
@@ -489,7 +489,7 @@ export function PPVsTab() {
               onClick={() => setActiveTagFilter(null)}
               className={`px-3 py-1 rounded-full text-[12px] font-medium transition-all ${
                 activeTagFilter === null
-                  ? "bg-[#6366f1] text-white"
+                  ? "bg-[#00AFF0] text-white"
                   : "bg-[#1f2937] text-[#9ca3af] hover:text-white"
               }`}
             >
@@ -525,7 +525,7 @@ export function PPVsTab() {
               <p className="text-[14px] text-[#9ca3af] mb-6">Start adding your pay-per-view content to share with your fans</p>
               <button
                 onClick={() => setPpvForm({ kind: "add", groupId: null })}
-                className="px-6 py-3 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] rounded-lg text-[14px] font-semibold text-white hover:from-[#5558e3] hover:to-[#4338ca] transition-all shadow-lg shadow-[#6366f1]/20 flex items-center gap-2 mx-auto"
+                className="px-6 py-3 bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] rounded-lg text-[14px] font-semibold text-white hover:from-[#0098D4] hover:to-[#0098D4] transition-all shadow-lg shadow-[#00AFF0]/20 flex items-center gap-2 mx-auto"
               >
                 <Plus className="w-4 h-4" />Create your first PPV
               </button>
@@ -565,7 +565,7 @@ export function PPVsTab() {
                     <div
                       key={p.id}
                       className={`relative h-full rounded-lg ${
-                        selectMode && selectedIds.has(p.id) ? "ring-2 ring-[#6366f1]" : ""
+                        selectMode && selectedIds.has(p.id) ? "ring-2 ring-[#00AFF0]" : ""
                       }`}
                     >
                       {selectMode && (
@@ -573,7 +573,7 @@ export function PPVsTab() {
                           onClick={() => toggleSel(p.id)}
                           className={`absolute top-2 left-2 z-10 w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all ${
                             selectedIds.has(p.id)
-                              ? "bg-[#6366f1] border-[#6366f1] text-white"
+                              ? "bg-[#00AFF0] border-[#00AFF0] text-white"
                               : "bg-black/50 border-white/70"
                           }`}
                         >
@@ -638,11 +638,11 @@ export function PPVsTab() {
                         onChange={(e) => setCaptionDraft(e.target.value)}
                         placeholder="Caption / description…"
                         rows={3}
-                        className="w-full px-3 py-2 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1] resize-none mb-4"
+                        className="w-full px-3 py-2 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#00AFF0] resize-none mb-4"
                       />
                       <div className="flex justify-end gap-2">
                         <button onClick={() => setBulkModal(null)} className="px-4 py-2 rounded-lg text-[12px] bg-[#1f2937] border border-[#374151] text-white hover:bg-[#252b36]">Cancel</button>
-                        <button onClick={() => doBulkSetCaption(captionDraft)} className="px-4 py-2 rounded-lg text-[12px] bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white hover:from-[#5558e3] hover:to-[#4338ca] font-semibold">Apply</button>
+                        <button onClick={() => doBulkSetCaption(captionDraft)} className="px-4 py-2 rounded-lg text-[12px] bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] text-white hover:from-[#0098D4] hover:to-[#0098D4] font-semibold">Apply</button>
                       </div>
                     </>
                   ) : (
@@ -654,7 +654,7 @@ export function PPVsTab() {
                           onClick={() => setBulkGroupChoice(null)}
                           className={`w-full text-left px-3 py-2 rounded-lg text-[13px] border transition-all ${
                             bulkGroupChoice === null
-                              ? "bg-[#6366f1]/15 border-[#6366f1] text-white"
+                              ? "bg-[#00AFF0]/15 border-[#00AFF0] text-white"
                               : "bg-[#1f2937] border-[#374151] text-[#d1d5db] hover:bg-[#252b36]"
                           }`}
                         >
@@ -669,12 +669,12 @@ export function PPVsTab() {
                             onClick={() => setBulkGroupChoice(g.id)}
                             className={`w-full text-left px-3 py-2 rounded-lg text-[13px] border transition-all ${
                               bulkGroupChoice === g.id
-                                ? "bg-[#6366f1]/15 border-[#6366f1] text-white"
+                                ? "bg-[#00AFF0]/15 border-[#00AFF0] text-white"
                                 : "bg-[#1f2937] border-[#374151] text-[#d1d5db] hover:bg-[#252b36]"
                             }`}
                           >
                             <span className="inline-flex items-center gap-2">
-                              <Folder className="w-3.5 h-3.5 text-[#a5a8ff]" />
+                              <Folder className="w-3.5 h-3.5 text-[#5BC8F5]" />
                               <span className="truncate">{g.name}</span>
                               <span className="ml-auto text-[10px] text-[#6b7280]">
                                 {g.items.length} item{g.items.length === 1 ? "" : "s"}
@@ -685,7 +685,7 @@ export function PPVsTab() {
                       </div>
                       <div className="flex justify-end gap-2">
                         <button onClick={() => setBulkModal(null)} className="px-4 py-2 rounded-lg text-[12px] bg-[#1f2937] border border-[#374151] text-white hover:bg-[#252b36]">Cancel</button>
-                        <button onClick={() => doBulkMoveToGroup(bulkGroupChoice)} className="px-4 py-2 rounded-lg text-[12px] bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white hover:from-[#5558e3] hover:to-[#4338ca] font-semibold">Move</button>
+                        <button onClick={() => doBulkMoveToGroup(bulkGroupChoice)} className="px-4 py-2 rounded-lg text-[12px] bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] text-white hover:from-[#0098D4] hover:to-[#0098D4] font-semibold">Move</button>
                       </div>
                     </>
                   )}
@@ -760,13 +760,13 @@ function PpvCard({ ppv, onClick }: { ppv: PpvItem; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="group text-left bg-[#161a22] border border-[#2a2d35] rounded-lg overflow-hidden hover:border-[#6366f1]/50 transition-all w-full h-full flex flex-col"
+      className="group text-left bg-[#161a22] border border-[#2a2d35] rounded-lg overflow-hidden hover:border-[#00AFF0]/50 transition-all w-full h-full flex flex-col"
     >
       <div className="relative aspect-[4/3] bg-[#1f2937] flex items-center justify-center overflow-hidden">
         {ppv.media_url && (
           isAudio ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-[#1f2937] to-[#111827]">
-              <Music className="w-10 h-10 text-[#6366f1]" />
+              <Music className="w-10 h-10 text-[#00AFF0]" />
             </div>
           ) : isVideo ? (
             <video
@@ -861,8 +861,8 @@ function GroupCard({
     <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg overflow-hidden">
       <div className="flex items-center justify-between p-4 border-b border-[#2a2d35] bg-[#1f2937]/30">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-[#6366f1]/20 flex items-center justify-center">
-            <Folder className="w-5 h-5 text-[#6366f1]" />
+          <div className="w-9 h-9 rounded-lg bg-[#00AFF0]/20 flex items-center justify-center">
+            <Folder className="w-5 h-5 text-[#00AFF0]" />
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -922,12 +922,12 @@ function GroupCard({
           {group.items.map((it) => {
             const sel = !!selectedIds?.has(it.id);
             return (
-              <div key={it.id} className={`relative h-full rounded-lg ${selectMode && sel ? "ring-2 ring-[#6366f1]" : ""}`}>
+              <div key={it.id} className={`relative h-full rounded-lg ${selectMode && sel ? "ring-2 ring-[#00AFF0]" : ""}`}>
                 {selectMode && (
                   <button
                     onClick={() => onToggleSel?.(it.id)}
                     className={`absolute top-2 left-2 z-10 w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all ${
-                      sel ? "bg-[#6366f1] border-[#6366f1] text-white" : "bg-black/50 border-white/70"
+                      sel ? "bg-[#00AFF0] border-[#00AFF0] text-white" : "bg-black/50 border-white/70"
                     }`}
                   >
                     {sel && "✓"}

@@ -160,7 +160,7 @@ function ToastCard({ event, onClose }: { event: PulseEvent; onClose: () => void 
           style={{
             background: isTip
               ? "linear-gradient(135deg,#10b981,#059669)"
-              : "linear-gradient(135deg,#6366f1,#4f46e5)",
+              : "linear-gradient(135deg,#00AFF0,#00AFF0)",
           }}
         >
           {isTip ? "💸" : "🔓"}
@@ -185,7 +185,7 @@ function ToastCard({ event, onClose }: { event: PulseEvent; onClose: () => void 
       <div
         className="h-0.5"
         style={{
-          background: isTip ? "#10b981" : "#6366f1",
+          background: isTip ? "#10b981" : "#00AFF0",
           animation: `shrink ${TOAST_TTL_MS}ms linear forwards`,
         }}
       />

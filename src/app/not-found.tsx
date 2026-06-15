@@ -47,7 +47,7 @@ export default function NotFound() {
           href="/"
           style={{
             display: "inline-block",
-            background: "#6366f1",
+            background: "#00AFF0",
             color: "white",
             textDecoration: "none",
             borderRadius: 10,

@@ -97,7 +97,7 @@ export function EditGroupModal({ group, allTags, onClose, onSave, onDelete }: Pr
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white focus:border-[#6366f1] focus:outline-none transition-colors"
+              className="w-full px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white focus:border-[#00AFF0] focus:outline-none transition-colors"
             />
           </div>
 
@@ -115,7 +115,7 @@ export function EditGroupModal({ group, allTags, onClose, onSave, onDelete }: Pr
                 value={bundlePrice}
                 onChange={(e) => setBundlePrice(e.target.value)}
                 placeholder="0.00"
-                className="w-full pl-8 pr-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#4b5563] focus:border-[#6366f1] focus:outline-none transition-colors"
+                className="w-full pl-8 pr-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#4b5563] focus:border-[#00AFF0] focus:outline-none transition-colors"
               />
             </div>
             <p className="text-[11px] text-[#6b7280] mt-1.5">Sell the whole group as one unlock at this price. Empty = items sold individually.</p>
@@ -135,7 +135,7 @@ export function EditGroupModal({ group, allTags, onClose, onSave, onDelete }: Pr
             <button
               onClick={handleSave}
               disabled={saving || deleting}
-              className="flex-1 py-2.5 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white rounded-lg font-semibold text-[14px] disabled:opacity-50 disabled:cursor-not-allowed hover:from-[#5558e3] hover:to-[#4338ca] transition-all"
+              className="flex-1 py-2.5 bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] text-white rounded-lg font-semibold text-[14px] disabled:opacity-50 disabled:cursor-not-allowed hover:from-[#0098D4] hover:to-[#0098D4] transition-all"
             >
               {saving ? "Saving…" : "Save"}
             </button>

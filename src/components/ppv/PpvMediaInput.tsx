@@ -71,7 +71,7 @@ export function PpvMediaInput({ initialUrl, onFileChange }: Props) {
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}
         className={`relative w-full aspect-[4/3] rounded-lg border-2 border-dashed cursor-pointer transition-all overflow-hidden ${
-          dragOver ? "border-[#6366f1] bg-[#6366f1]/5" : "border-[#374151] bg-[#1f2937] hover:border-[#4b5563]"
+          dragOver ? "border-[#00AFF0] bg-[#00AFF0]/5" : "border-[#374151] bg-[#1f2937] hover:border-[#4b5563]"
         }`}
       >
         {preview ? (
@@ -90,8 +90,8 @@ export function PpvMediaInput({ initialUrl, onFileChange }: Props) {
                 className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-[#1f2937] to-[#111827] px-4"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="w-14 h-14 rounded-full bg-[#6366f1]/20 flex items-center justify-center">
-                  <Music className="w-7 h-7 text-[#6366f1]" />
+                <div className="w-14 h-14 rounded-full bg-[#00AFF0]/20 flex items-center justify-center">
+                  <Music className="w-7 h-7 text-[#00AFF0]" />
                 </div>
                 <audio src={preview} controls className="w-full max-w-[280px]" />
               </div>

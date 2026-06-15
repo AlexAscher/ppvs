@@ -182,7 +182,7 @@ export default function MiniAppPage() {
     return (
       <Shell>
         <div className="text-center py-12">
-          <div className="inline-block w-8 h-8 border-2 border-[#374151] border-t-[#6366f1] rounded-full animate-spin" />
+          <div className="inline-block w-8 h-8 border-2 border-[#374151] border-t-[#00AFF0] rounded-full animate-spin" />
         </div>
       </Shell>
     );
@@ -203,7 +203,7 @@ export default function MiniAppPage() {
               <div className="text-[28px] mb-1">🔒</div>
               <div className="text-[18px] font-bold text-white">
                 Private content{" "}
-                {itemCount > 1 ? <span className="text-[#6366f1]">({itemCount})</span> : null}
+                {itemCount > 1 ? <span className="text-[#00AFF0]">({itemCount})</span> : null}
               </div>
             </>
           ) : (
@@ -275,7 +275,7 @@ export default function MiniAppPage() {
             </div>
             <div className="border-t border-[#30363d] pt-2 mt-1 flex items-center justify-between">
               <span className="text-[14px] font-semibold text-white">Total</span>
-              <span className="text-[18px] font-bold text-[#6366f1]">
+              <span className="text-[18px] font-bold text-[#00AFF0]">
                 ${boot.total.toFixed(2)}
               </span>
             </div>
@@ -286,7 +286,7 @@ export default function MiniAppPage() {
         <button
           onClick={handlePay}
           disabled={state === "loading"}
-          className="w-full py-3.5 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] rounded-xl text-white font-semibold text-[15px] disabled:opacity-60 transition-all active:scale-[0.98]"
+          className="w-full py-3.5 bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] rounded-xl text-white font-semibold text-[15px] disabled:opacity-60 transition-all active:scale-[0.98]"
         >
           {state === "loading"
             ? "Processing…"

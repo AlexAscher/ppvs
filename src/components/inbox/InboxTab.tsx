@@ -127,7 +127,7 @@ export function InboxTab() {
             <button
               onClick={() => setScopeModelId(null)}
               className={`px-3 py-1.5 rounded-full text-[12px] font-medium transition-all ${
-                !scopeModelId ? "bg-[#6366f1] text-white" : "bg-[#1f2937] text-[#9ca3af] hover:text-white"
+                !scopeModelId ? "bg-[#00AFF0] text-white" : "bg-[#1f2937] text-[#9ca3af] hover:text-white"
               }`}
             >
               All creators
@@ -137,7 +137,7 @@ export function InboxTab() {
                 key={m.id}
                 onClick={() => setScopeModelId(scopeModelId === m.id ? null : m.id)}
                 className={`px-3 py-1.5 rounded-full text-[12px] font-medium transition-all ${
-                  scopeModelId === m.id ? "bg-[#6366f1] text-white" : "bg-[#1f2937] text-[#9ca3af] hover:text-white"
+                  scopeModelId === m.id ? "bg-[#00AFF0] text-white" : "bg-[#1f2937] text-[#9ca3af] hover:text-white"
                 }`}
               >
                 {m.name}
@@ -151,7 +151,7 @@ export function InboxTab() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search fan name, username, last message…"
-              className="w-full pl-10 pr-4 py-2.5 bg-[#161a22] border border-[#2a2d35] rounded-lg text-[13px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1]"
+              className="w-full pl-10 pr-4 py-2.5 bg-[#161a22] border border-[#2a2d35] rounded-lg text-[13px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#00AFF0]"
             />
           </div>
         </div>
@@ -181,7 +181,7 @@ export function InboxTab() {
                   idx > 0 ? "border-t border-[#2a2d35]" : ""
                 }`}
               >
-                <div className="relative w-11 h-11 rounded-full bg-gradient-to-br from-[#6366f1] to-[#4f46e5] flex items-center justify-center shrink-0 overflow-hidden">
+                <div className="relative w-11 h-11 rounded-full bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] flex items-center justify-center shrink-0 overflow-hidden">
                   <span className="text-white font-semibold text-[14px]">
                     {initials(it.peerTitle) || "?"}
                   </span>
@@ -203,7 +203,7 @@ export function InboxTab() {
                     <span className="text-[13px] font-semibold text-white truncate">
                       {it.peerUsername ? `@${it.peerUsername}` : it.peerTitle}
                     </span>
-                    <span className="text-[10px] text-[#6366f1] bg-[#6366f1]/10 px-1.5 py-0.5 rounded-md font-medium shrink-0">
+                    <span className="text-[10px] text-[#00AFF0] bg-[#00AFF0]/10 px-1.5 py-0.5 rounded-md font-medium shrink-0">
                       {it.modelName}
                     </span>
                   </div>
@@ -214,7 +214,7 @@ export function InboxTab() {
                 <div className="text-right shrink-0">
                   <div className="text-[10px] text-[#6b7280]">{formatTime(it.lastMessageDate)}</div>
                   {it.unreadCount > 0 && (
-                    <div className="mt-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 bg-[#6366f1] text-white rounded-full text-[10px] font-bold">
+                    <div className="mt-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 bg-[#00AFF0] text-white rounded-full text-[10px] font-bold">
                       {it.unreadCount > 99 ? "99+" : it.unreadCount}
                     </div>
                   )}

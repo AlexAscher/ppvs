@@ -169,12 +169,39 @@ export function AutoRepliesSection() {
     }
   }
 
+  /** Toggle Enable on/off and immediately persist — without this round-trip
+   *  the switch only flipped a local state and never saved, so the user could
+   *  flick "Enable" and nothing actually happened on the server. Errors fall
+   *  back to the previous value so the UI stays consistent. */
+  async function toggleEnabled(next: boolean) {
+    if (!selectedModelId || saving) return;
+    const prev = config.enabled;
+    setConfig((c) => ({ ...c, enabled: next })); // optimistic
+    setSaving(true);
+    setMsg("");
+    try {
+      const res = await fetch(`/api/auto-reply/${selectedModelId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: next }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+      setMsg(next ? "Auto-replies enabled ✓" : "Auto-replies disabled");
+    } catch (e: unknown) {
+      setConfig((c) => ({ ...c, enabled: prev })); // rollback
+      setMsg(e instanceof Error ? `Error: ${e.message}` : "Save error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const card = "bg-[#161a22] border border-[#2a2d35] rounded-xl p-5 md:p-6";
   const label = "block text-[12px] text-[#9ca3af] mb-1.5 font-medium";
   const input =
-    "w-full px-3.5 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1]";
+    "w-full px-3.5 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#00AFF0]";
   const btn =
-    "px-5 py-2.5 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white rounded-lg font-semibold text-[12px] hover:from-[#5558e3] hover:to-[#4338ca] transition-all disabled:opacity-50 disabled:cursor-not-allowed";
+    "px-5 py-2.5 bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] text-white rounded-lg font-semibold text-[12px] hover:from-[#0098D4] hover:to-[#0098D4] transition-all disabled:opacity-50 disabled:cursor-not-allowed";
   const msgCls = (m: string) =>
     `text-[11px] ${m.startsWith("Error") ? "text-red-400" : "text-emerald-400"}`;
 
@@ -207,7 +234,7 @@ export function AutoRepliesSection() {
                   key={m.id}
                   onClick={() => { setSelectedModelId(m.id); setShowModelDropdown(false); }}
                   className={`w-full px-3 py-2 text-[12px] text-left hover:bg-[#374151] transition-colors ${
-                    selectedModelId === m.id ? "bg-[#374151] text-[#6366f1]" : "text-white"
+                    selectedModelId === m.id ? "bg-[#374151] text-[#00AFF0]" : "text-white"
                   }`}
                 >
                   {m.name}
@@ -229,28 +256,36 @@ export function AutoRepliesSection() {
         <p className="text-[12px] text-[#6b7280] mt-4">Loading…</p>
       ) : (
         <div className="space-y-4 mt-4">
-          {/* Enable toggle */}
-          <label className="flex items-center justify-between gap-3 p-3 bg-[#1f2937]/40 border border-[#2a2d35] rounded-lg cursor-pointer hover:bg-[#1f2937]/70 transition-colors">
+          {/* Enable toggle — auto-saves on click. Plain <button> instead of
+              the old <label>+hidden-checkbox+peer-checked pattern, which was
+              fragile and didn't actually persist the toggle (had to press
+              "Save auto-reply" too). Now flipping the switch posts to the
+              API immediately. */}
+          <button
+            type="button"
+            role="switch"
+            aria-checked={config.enabled}
+            disabled={saving}
+            onClick={() => toggleEnabled(!config.enabled)}
+            className="w-full flex items-center justify-between gap-3 p-3 bg-[#1f2937]/40 border border-[#2a2d35] rounded-lg cursor-pointer hover:bg-[#1f2937]/70 transition-colors text-left disabled:opacity-60 disabled:cursor-not-allowed"
+          >
             <div>
               <div className="text-[13px] font-medium text-white">Enable auto-replies</div>
               <div className="text-[11px] text-[#9ca3af] mt-0.5">
                 Send this message to every brand-new fan automatically
               </div>
             </div>
-            <input
-              type="checkbox"
-              className="sr-only peer"
-              checked={config.enabled}
-              onChange={(e) => setConfig((c) => ({ ...c, enabled: e.target.checked }))}
-            />
-            {/* Custom switch */}
-            <div className="relative w-11 h-6 bg-[#374151] rounded-full peer-checked:bg-[#6366f1] transition-colors shrink-0">
+            <div
+              className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${
+                config.enabled ? "bg-[#00AFF0]" : "bg-[#374151]"
+              }`}
+            >
               <div
                 className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-transform"
                 style={{ transform: config.enabled ? "translateX(20px)" : "translateX(0)" }}
               />
             </div>
-          </label>
+          </button>
 
           {/* Send delay — how long to wait before firing the auto-reply
               after the fan's first message. Mimics a human typing pause. */}
@@ -266,7 +301,7 @@ export function AutoRepliesSection() {
                     onClick={() => setConfig((c) => ({ ...c, delaySec: preset.value }))}
                     className={`px-3.5 py-2 rounded-lg text-[12px] font-medium border transition-all ${
                       active
-                        ? "bg-[#6366f1] border-[#6366f1] text-white"
+                        ? "bg-[#00AFF0] border-[#00AFF0] text-white"
                         : "bg-[#1f2937] border-[#374151] text-[#9ca3af] hover:text-white"
                     }`}
                   >
@@ -334,7 +369,7 @@ export function AutoRepliesSection() {
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
-                className="w-full max-w-[360px] aspect-video bg-[#1f2937]/40 border-2 border-dashed border-[#374151] hover:border-[#6366f1]/50 rounded-lg flex flex-col items-center justify-center gap-2 text-[#6b7280] hover:text-white transition-colors disabled:opacity-50"
+                className="w-full max-w-[360px] aspect-video bg-[#1f2937]/40 border-2 border-dashed border-[#374151] hover:border-[#00AFF0]/50 rounded-lg flex flex-col items-center justify-center gap-2 text-[#6b7280] hover:text-white transition-colors disabled:opacity-50"
               >
                 <Upload className="w-6 h-6" />
                 <div className="text-[12px] font-medium">

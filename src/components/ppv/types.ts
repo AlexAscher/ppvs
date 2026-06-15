@@ -50,7 +50,7 @@ export type PpvModel = {
 };
 
 export const TAG_COLORS = [
-  "#6366f1",
+  "#00AFF0",
   "#10b981",
   "#f59e0b",
   "#ef4444",

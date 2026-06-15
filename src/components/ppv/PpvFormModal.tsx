@@ -215,7 +215,7 @@ export function PpvFormModal({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Beach Photoset"
-              className="w-full px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#4b5563] focus:border-[#6366f1] focus:outline-none transition-colors"
+              className="w-full px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#4b5563] focus:border-[#00AFF0] focus:outline-none transition-colors"
             />
           </div>
 
@@ -226,7 +226,7 @@ export function PpvFormModal({
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Optional"
               rows={3}
-              className="w-full px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#4b5563] focus:border-[#6366f1] focus:outline-none transition-colors resize-none"
+              className="w-full px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#4b5563] focus:border-[#00AFF0] focus:outline-none transition-colors resize-none"
             />
           </div>
 
@@ -243,7 +243,7 @@ export function PpvFormModal({
               <select
                 value={selectedGroupId ?? ""}
                 onChange={(e) => setSelectedGroupId(e.target.value || null)}
-                className="w-full px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white focus:border-[#6366f1] focus:outline-none transition-colors"
+                className="w-full px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white focus:border-[#00AFF0] focus:outline-none transition-colors"
               >
                 <option value="">— Standalone (no group) —</option>
                 {allGroups.map((g) => (
@@ -253,7 +253,7 @@ export function PpvFormModal({
                 ))}
               </select>
               {existing && existing.group_id !== selectedGroupId && (
-                <p className="text-[11px] text-[#6366f1] mt-1.5">
+                <p className="text-[11px] text-[#00AFF0] mt-1.5">
                   Will be moved on save.
                 </p>
               )}
@@ -281,7 +281,7 @@ export function PpvFormModal({
             <button
               onClick={handleSave}
               disabled={saving || deleting}
-              className="flex-1 py-2.5 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white rounded-lg font-semibold text-[14px] disabled:opacity-50 disabled:cursor-not-allowed hover:from-[#5558e3] hover:to-[#4338ca] transition-all"
+              className="flex-1 py-2.5 bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] text-white rounded-lg font-semibold text-[14px] disabled:opacity-50 disabled:cursor-not-allowed hover:from-[#0098D4] hover:to-[#0098D4] transition-all"
             >
               {saving ? "Saving…" : "Save"}
             </button>

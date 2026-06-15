@@ -340,8 +340,8 @@ function ReplyPreviewCard({
   const senderLabel = preview.isToChatter ? "You" : "Fan";
   const accent = isChatter
     ? "bg-white/80" // inside the gradient bubble — light bar on indigo
-    : "bg-[#6366f1]";
-  const labelColor = isChatter ? "text-white" : "text-[#a5a8ff]";
+    : "bg-[#00AFF0]";
+  const labelColor = isChatter ? "text-white" : "text-[#5BC8F5]";
   const bg = isChatter ? "bg-black/15" : "bg-[#111827]/60";
   const body = preview.quoteText ?? preview.targetText;
   const truncated =
@@ -407,7 +407,7 @@ function Lightbox({ media, onClose }: { media: MessageMediaInfo; onClose: () => 
             target="_blank"
             rel="noreferrer"
             download
-            className="px-5 py-3 bg-[#6366f1] text-white rounded-lg font-semibold"
+            className="px-5 py-3 bg-[#00AFF0] text-white rounded-lg font-semibold"
           >
             Download {media.fileName ?? "file"}
           </a>
@@ -439,7 +439,7 @@ function FanAvatar({
   if (!modelId || failed) {
     return (
       <div
-        className="bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-full flex items-center justify-center text-white font-semibold flex-shrink-0"
+        className="bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-full flex items-center justify-center text-white font-semibold flex-shrink-0"
         style={{ width: px, height: px, fontSize: size * 0.3 }}
       >
         {initials}
@@ -655,7 +655,7 @@ export function TelegramChat({
               value={search}
               onChange={(e) => onSearch(e.target.value)}
               placeholder="Search chats..."
-              className="w-full pl-9 pr-3 py-2 bg-[#1f2937] border border-[#374151] rounded-lg text-[10px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1]"
+              className="w-full pl-9 pr-3 py-2 bg-[#1f2937] border border-[#374151] rounded-lg text-[10px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#00AFF0]"
             />
           </div>
 
@@ -668,7 +668,7 @@ export function TelegramChat({
                 onClick={() => onSelectGroup?.(null)}
                 className={`px-2.5 py-1 rounded-full text-[10px] font-medium whitespace-nowrap border transition-all ${
                   !activeGroupId
-                    ? "bg-[#6366f1] border-[#6366f1] text-white"
+                    ? "bg-[#00AFF0] border-[#00AFF0] text-white"
                     : "bg-[#1f2937] border-[#374151] text-[#9ca3af] hover:text-white"
                 }`}
               >
@@ -703,7 +703,7 @@ export function TelegramChat({
                 <button
                   type="button"
                   onClick={() => { setAddingCategory(true); setNewCategory(""); }}
-                  className="px-2.5 py-1 rounded-full text-[10px] font-medium whitespace-nowrap border border-dashed border-[#374151] text-[#9ca3af] hover:text-white hover:border-[#6366f1] transition-all"
+                  className="px-2.5 py-1 rounded-full text-[10px] font-medium whitespace-nowrap border border-dashed border-[#374151] text-[#9ca3af] hover:text-white hover:border-[#00AFF0] transition-all"
                 >
                   + Add
                 </button>
@@ -724,7 +724,7 @@ export function TelegramChat({
                   }}
                   onBlur={() => setAddingCategory(false)}
                   placeholder="name…"
-                  className="px-2.5 py-1 w-24 rounded-full text-[10px] bg-[#1f2937] border border-[#6366f1] text-white placeholder:text-[#6b7280] focus:outline-none"
+                  className="px-2.5 py-1 w-24 rounded-full text-[10px] bg-[#1f2937] border border-[#00AFF0] text-white placeholder:text-[#6b7280] focus:outline-none"
                 />
               )}
             </div>
@@ -746,7 +746,7 @@ export function TelegramChat({
                     style). Only shown when the fan has actually paid something. */}
                 {!!chat.spent && chat.spent > 0 && (
                   <span
-                    className="absolute -bottom-1 left-1/2 -translate-x-1/2 px-1.5 py-px rounded-full bg-[#6366f1] text-white text-[9px] font-bold leading-tight whitespace-nowrap shadow-md border border-[#0d1117]"
+                    className="absolute -bottom-1 left-1/2 -translate-x-1/2 px-1.5 py-px rounded-full bg-[#00AFF0] text-white text-[9px] font-bold leading-tight whitespace-nowrap shadow-md border border-[#0d1117]"
                     title={`Total spent: $${chat.spent.toFixed(2)}`}
                   >
                     ${chat.spent >= 1000 ? `${(chat.spent / 1000).toFixed(1)}k` : Math.round(chat.spent)}
@@ -768,7 +768,7 @@ export function TelegramChat({
                     {twemoji(chat.lastMessage, `cl-${chat.id}`)}
                   </p>
                   {chat.unread > 0 && (
-                    <div className="ml-2 min-w-[18px] h-[18px] bg-[#6366f1] rounded-full flex items-center justify-center">
+                    <div className="ml-2 min-w-[18px] h-[18px] bg-[#00AFF0] rounded-full flex items-center justify-center">
                       <span className="text-[10px] font-bold text-white">{chat.unread}</span>
                     </div>
                   )}
@@ -806,7 +806,7 @@ export function TelegramChat({
             {selected ? (
               <FanAvatar modelId={modelId} peerId={selected.id} initials={selected.avatar} size={40} />
             ) : (
-              <div className="w-10 h-10 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-full flex-shrink-0" />
+              <div className="w-10 h-10 bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-full flex-shrink-0" />
             )}
             <div className="text-left min-w-0">
               <div className="text-[14px] font-semibold text-white truncate">
@@ -858,7 +858,7 @@ export function TelegramChat({
             })()}
             <div className="px-2.5 md:px-3 py-1.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[11px] text-[#9ca3af] whitespace-nowrap">
               <span className="hidden sm:inline">Total spent: </span>
-              <span className="text-[#6366f1] font-bold">{totalSpent}</span>
+              <span className="text-[#00AFF0] font-bold">{totalSpent}</span>
             </div>
 
           </div>
@@ -909,7 +909,7 @@ export function TelegramChat({
                     <div
                       className={`p-1 rounded-2xl inline-block ${
                         first.isChatter
-                          ? "bg-gradient-to-br from-[#6366f1] to-[#5558e3] rounded-br-sm"
+                          ? "bg-gradient-to-br from-[#00AFF0] to-[#0098D4] rounded-br-sm"
                           : "bg-[#1f2937] rounded-bl-sm"
                       }`}
                       // Fix "giant right margin" bug: with a fixed 100px/col
@@ -942,7 +942,7 @@ export function TelegramChat({
                                 // opens the original in the lightbox.
                                 <div className={`w-full h-full flex flex-col items-center justify-center gap-0.5 ${
                                   first.isChatter
-                                    ? "bg-gradient-to-br from-[#5558e3]/35 to-[#4338ca]/20"
+                                    ? "bg-gradient-to-br from-[#0098D4]/35 to-[#0098D4]/20"
                                     : "bg-gradient-to-br from-[#1f2937] to-[#0d1117]"
                                 }`}>
                                   <div className="text-[26px] leading-none">
@@ -971,7 +971,7 @@ export function TelegramChat({
                                   ) : (
                                     <div className={`w-full h-full ${
                                       first.isChatter
-                                        ? "bg-gradient-to-br from-[#5558e3]/35 to-[#4338ca]/20"
+                                        ? "bg-gradient-to-br from-[#0098D4]/35 to-[#0098D4]/20"
                                         : "bg-gradient-to-br from-[#1f2937] to-[#0d1117]"
                                     }`} />
                                   )}
@@ -1046,7 +1046,7 @@ export function TelegramChat({
                     <div
                       className={`p-1 rounded-2xl ${
                         message.isChatter
-                          ? "bg-gradient-to-br from-[#6366f1] to-[#5558e3] rounded-br-sm"
+                          ? "bg-gradient-to-br from-[#00AFF0] to-[#0098D4] rounded-br-sm"
                           : "bg-[#1f2937] rounded-bl-sm"
                       }`}
                     >
@@ -1078,7 +1078,7 @@ export function TelegramChat({
                   <div
                     className={`px-4 py-2.5 rounded-2xl ${
                       message.isChatter
-                        ? "bg-gradient-to-br from-[#6366f1] to-[#5558e3] text-white rounded-br-sm"
+                        ? "bg-gradient-to-br from-[#00AFF0] to-[#0098D4] text-white rounded-br-sm"
                         : "bg-[#1f2937] text-[#e5e7eb] rounded-bl-sm"
                     }`}
                   >
@@ -1114,7 +1114,7 @@ export function TelegramChat({
           <div className="px-5 py-2 bg-[#1f2937]/60 border-t border-[#2a2d35] flex items-start gap-2">
             <div
               className={`w-1 self-stretch rounded ${
-                editing ? "bg-amber-400" : "bg-[#6366f1]"
+                editing ? "bg-amber-400" : "bg-[#00AFF0]"
               }`}
             />
             <div className="flex-1 min-w-0">
@@ -1126,8 +1126,8 @@ export function TelegramChat({
                   </>
                 ) : (
                   <>
-                    <Reply className="w-3 h-3 text-[#6366f1]" />
-                    <span className="text-[#6366f1]">
+                    <Reply className="w-3 h-3 text-[#00AFF0]" />
+                    <span className="text-[#00AFF0]">
                       {replyingTo!.quote ? "Replying with quote" : "Replying"} to{" "}
                       {replyingTo!.isChatter ? "yourself" : "fan"}
                     </span>
@@ -1216,7 +1216,7 @@ export function TelegramChat({
               }
             }}
             placeholder="Type a message..."
-            className="flex-1 min-w-0 px-3 md:px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1]"
+            className="flex-1 min-w-0 px-3 md:px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#00AFF0]"
           />
           <button
             type="button"
@@ -1237,7 +1237,7 @@ export function TelegramChat({
               }}
               className={`w-9 h-9 md:w-10 md:h-10 shrink-0 flex items-center justify-center rounded-lg transition-colors ${
                 showEmoji
-                  ? "bg-[#374151] text-[#6366f1]"
+                  ? "bg-[#374151] text-[#00AFF0]"
                   : "bg-[#1f2937] text-[#9ca3af] hover:text-white hover:bg-[#374151]"
               }`}
               aria-label="Emoji picker"
@@ -1256,7 +1256,7 @@ export function TelegramChat({
                 title={scheduleAt ? "Edit schedule" : "Schedule send"}
                 className={`w-9 h-9 md:w-10 md:h-10 shrink-0 flex items-center justify-center rounded-lg transition-colors ${
                   scheduleAt
-                    ? "bg-[#6366f1]/20 text-[#6366f1] ring-1 ring-[#6366f1]"
+                    ? "bg-[#00AFF0]/20 text-[#00AFF0] ring-1 ring-[#00AFF0]"
                     : "bg-[#1f2937] text-[#9ca3af] hover:text-white hover:bg-[#374151]"
                 }`}
                 aria-label="Schedule send"
@@ -1281,7 +1281,7 @@ export function TelegramChat({
             className={`px-3.5 md:px-5 py-2.5 text-white rounded-lg font-semibold text-[13px] transition-all shadow-lg flex items-center gap-1.5 md:gap-2 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed ${
               editing
                 ? "bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 shadow-amber-500/20"
-                : "bg-gradient-to-r from-[#6366f1] to-[#4f46e5] hover:from-[#5558e3] hover:to-[#4338ca] shadow-[#6366f1]/20"
+                : "bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] hover:from-[#0098D4] hover:to-[#0098D4] shadow-[#00AFF0]/20"
             }`}
             // Show the schedule time as a hint when one is set.
             title={

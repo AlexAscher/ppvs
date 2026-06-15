@@ -78,16 +78,16 @@ export function SuccessClient({ code, items, price, caption, recipient, initiall
     <div className="min-h-screen flex items-center justify-center px-3 sm:px-4 bg-[#0d1117] py-6 sm:py-10">
       <div
         className="pointer-events-none fixed inset-0 z-0"
-        style={{ background: "radial-gradient(ellipse 70% 50% at 50% 0%, rgba(99,102,241,0.07) 0%, transparent 70%)" }}
+        style={{ background: "radial-gradient(ellipse 70% 50% at 50% 0%, rgba(0, 175, 240,0.07) 0%, transparent 70%)" }}
       />
 
       <div className="relative z-10 w-full max-w-[520px]">
         <div className="flex items-center justify-center gap-2 mb-6">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#6366f1] to-[#4f46e5] flex items-center justify-center text-white font-bold text-[15px]">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] flex items-center justify-center text-white font-bold text-[15px]">
             P
           </div>
           <span style={{ fontSize: 18, fontWeight: 700, color: "#e6edf3", letterSpacing: "-0.02em" }}>
-            ppvs<span style={{ color: "#6366f1" }}>.io</span>
+            ppvs<span style={{ color: "#00AFF0" }}>.io</span>
           </span>
         </div>
 

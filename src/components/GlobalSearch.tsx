@@ -61,7 +61,7 @@ export function GlobalSearch() {
           onChange={(e) => { setQ(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
           placeholder="Search…"
-          className="w-full pl-8 pr-7 py-2 bg-[#1f2937] border border-[#374151] rounded-lg text-[12px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1]"
+          className="w-full pl-8 pr-7 py-2 bg-[#1f2937] border border-[#374151] rounded-lg text-[12px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#00AFF0]"
         />
         {q && (
           <button

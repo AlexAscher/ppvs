@@ -63,7 +63,7 @@ export function InviteChatterModal({ models, onClose, onInvited }: Props) {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="chatter@example.com"
                 type="email"
-                className="w-full pl-10 pr-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#4b5563] focus:border-[#6366f1] focus:outline-none transition-colors"
+                className="w-full pl-10 pr-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#4b5563] focus:border-[#00AFF0] focus:outline-none transition-colors"
               />
             </div>
             <p className="text-[11px] text-[#6b7280] mt-1.5">Must be an existing ppvs.io account</p>
@@ -86,7 +86,7 @@ export function InviteChatterModal({ models, onClose, onInvited }: Props) {
                     {selectedModel?.avatar_url ? (
                       <img src={selectedModel.avatar_url} alt={selectedModel.name} className="w-6 h-6 rounded-full object-cover shrink-0" />
                     ) : (
-                      <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#6366f1] to-[#4f46e5] shrink-0" />
+                      <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] shrink-0" />
                     )}
                     <span className="truncate">{selectedModel?.name ?? "Select creator"}</span>
                   </div>
@@ -99,12 +99,12 @@ export function InviteChatterModal({ models, onClose, onInvited }: Props) {
                         key={m.id}
                         type="button"
                         onClick={() => { setModelId(m.id); setShowDropdown(false); }}
-                        className={`w-full px-4 py-2.5 text-left text-[13px] hover:bg-[#374151] transition-colors flex items-center gap-2.5 ${modelId === m.id ? "bg-[#374151] text-[#6366f1]" : "text-white"}`}
+                        className={`w-full px-4 py-2.5 text-left text-[13px] hover:bg-[#374151] transition-colors flex items-center gap-2.5 ${modelId === m.id ? "bg-[#374151] text-[#00AFF0]" : "text-white"}`}
                       >
                         {m.avatar_url ? (
                           <img src={m.avatar_url} alt={m.name} className="w-6 h-6 rounded-full object-cover shrink-0" />
                         ) : (
-                          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#6366f1] to-[#4f46e5] shrink-0" />
+                          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] shrink-0" />
                         )}
                         <span className="truncate">{m.name}</span>
                       </button>
@@ -120,7 +120,7 @@ export function InviteChatterModal({ models, onClose, onInvited }: Props) {
           <button
             onClick={handleSubmit}
             disabled={loading || !email.trim() || !modelId}
-            className="w-full py-3 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white rounded-lg font-semibold text-[14px] disabled:opacity-50 disabled:cursor-not-allowed hover:from-[#5558e3] hover:to-[#4338ca] transition-all flex items-center justify-center gap-2"
+            className="w-full py-3 bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] text-white rounded-lg font-semibold text-[14px] disabled:opacity-50 disabled:cursor-not-allowed hover:from-[#0098D4] hover:to-[#0098D4] transition-all flex items-center justify-center gap-2"
           >
             <Send className="w-4 h-4" />
             {loading ? "Sending…" : "Send Invitation"}

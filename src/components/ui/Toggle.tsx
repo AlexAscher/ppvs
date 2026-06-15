@@ -12,7 +12,7 @@ export function Toggle({
   checked,
   onChange,
   disabled = false,
-  color = "#6366f1",
+  color = "#00AFF0",
   ariaLabel,
 }: {
   checked: boolean;

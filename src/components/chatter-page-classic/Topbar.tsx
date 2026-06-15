@@ -66,12 +66,12 @@ export function Topbar({
             <ArrowLeft className="w-4 h-4" />
           </button>
         )}
-        <div className="w-7 h-7 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-md flex items-center justify-center relative shadow-sm shrink-0">
+        <div className="w-7 h-7 bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-md flex items-center justify-center relative shadow-sm shrink-0">
           <Send className="w-3.5 h-3.5 text-white" />
           <Lock className="w-2 h-2 text-white absolute bottom-0.5 right-0.5" />
         </div>
         <div className="text-[13px] font-semibold truncate shrink-0">
-          chatter<span className="text-[#6366f1]">.ppvs.io</span>
+          chatter<span className="text-[#00AFF0]">.ppvs.io</span>
         </div>
         {hasModels && (
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -84,7 +84,7 @@ export function Topbar({
                   onClick={() => onSelectModel?.(m.id)}
                   className={`relative px-3 py-1 rounded-lg text-[11px] font-medium border whitespace-nowrap transition-all ${
                     active
-                      ? "bg-[#6366f1] border-[#6366f1] text-white shadow-sm"
+                      ? "bg-[#00AFF0] border-[#00AFF0] text-white shadow-sm"
                       : "bg-transparent border-[#374151] text-[#9ca3af] hover:border-[#4b5563] hover:text-[#d1d5db]"
                   }`}
                 >

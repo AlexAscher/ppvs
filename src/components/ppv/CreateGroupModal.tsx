@@ -142,7 +142,7 @@ export function CreateGroupModal({ modelId, agencyUserId, allTags, onClose, onSa
             <div className="flex items-center gap-1.5 mt-3">
               {([1, 2] as const).map((s) => (
                 <div key={s} className="flex items-center gap-1.5">
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold transition-colors ${step === s ? "bg-[#6366f1] text-white" : step > s ? "bg-[#10b981] text-white" : "bg-[#2a2d35] text-[#6b7280]"}`}>
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold transition-colors ${step === s ? "bg-[#00AFF0] text-white" : step > s ? "bg-[#10b981] text-white" : "bg-[#2a2d35] text-[#6b7280]"}`}>
                     {s}
                   </div>
                   {s < 2 && <div className={`w-10 h-0.5 transition-colors ${step > s ? "bg-[#10b981]" : "bg-[#2a2d35]"}`} />}
@@ -163,7 +163,7 @@ export function CreateGroupModal({ modelId, agencyUserId, allTags, onClose, onSa
                 value={groupName}
                 onChange={(e) => setGroupName(e.target.value)}
                 placeholder="e.g. Summer Collection"
-                className="w-full px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#4b5563] focus:border-[#6366f1] focus:outline-none transition-colors"
+                className="w-full px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#4b5563] focus:border-[#00AFF0] focus:outline-none transition-colors"
               />
             </div>
             <div>
@@ -179,7 +179,7 @@ export function CreateGroupModal({ modelId, agencyUserId, allTags, onClose, onSa
                   value={bundlePrice}
                   onChange={(e) => setBundlePrice(e.target.value)}
                   placeholder="0.00"
-                  className="w-full pl-8 pr-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#4b5563] focus:border-[#6366f1] focus:outline-none transition-colors"
+                  className="w-full pl-8 pr-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#4b5563] focus:border-[#00AFF0] focus:outline-none transition-colors"
                 />
               </div>
               <p className="text-[11px] text-[#6b7280] mt-1.5">Set a price to let chatters sell the whole group as one unlock. Leave empty to sell items individually.</p>
@@ -188,7 +188,7 @@ export function CreateGroupModal({ modelId, agencyUserId, allTags, onClose, onSa
             <button
               onClick={continueToStep2}
               disabled={!groupName.trim()}
-              className="w-full py-3 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white rounded-lg font-semibold text-[14px] disabled:opacity-50 disabled:cursor-not-allowed hover:from-[#5558e3] hover:to-[#4338ca] transition-all"
+              className="w-full py-3 bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] text-white rounded-lg font-semibold text-[14px] disabled:opacity-50 disabled:cursor-not-allowed hover:from-[#0098D4] hover:to-[#0098D4] transition-all"
             >
               Continue →
             </button>
@@ -221,7 +221,7 @@ export function CreateGroupModal({ modelId, agencyUserId, allTags, onClose, onSa
                   value={item.name}
                   onChange={(e) => updateItem(item.key, { name: e.target.value })}
                   placeholder="Name"
-                  className="w-full px-4 py-2 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] text-white placeholder:text-[#4b5563] focus:border-[#6366f1] focus:outline-none transition-colors"
+                  className="w-full px-4 py-2 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] text-white placeholder:text-[#4b5563] focus:border-[#00AFF0] focus:outline-none transition-colors"
                 />
 
                 <textarea
@@ -229,7 +229,7 @@ export function CreateGroupModal({ modelId, agencyUserId, allTags, onClose, onSa
                   onChange={(e) => updateItem(item.key, { description: e.target.value })}
                   placeholder="Description (optional)"
                   rows={2}
-                  className="w-full px-4 py-2 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] text-white placeholder:text-[#4b5563] focus:border-[#6366f1] focus:outline-none transition-colors resize-none"
+                  className="w-full px-4 py-2 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] text-white placeholder:text-[#4b5563] focus:border-[#00AFF0] focus:outline-none transition-colors resize-none"
                 />
 
                 <div className="relative">
@@ -239,7 +239,7 @@ export function CreateGroupModal({ modelId, agencyUserId, allTags, onClose, onSa
                     value={item.price}
                     onChange={(e) => updateItem(item.key, { price: e.target.value })}
                     placeholder="0.00"
-                    className="w-full pl-8 pr-4 py-2 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] text-white placeholder:text-[#4b5563] focus:border-[#6366f1] focus:outline-none transition-colors"
+                    className="w-full pl-8 pr-4 py-2 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] text-white placeholder:text-[#4b5563] focus:border-[#00AFF0] focus:outline-none transition-colors"
                   />
                 </div>
               </div>
@@ -247,7 +247,7 @@ export function CreateGroupModal({ modelId, agencyUserId, allTags, onClose, onSa
 
             <button
               onClick={() => setItems((p) => [...p, blankItem()])}
-              className="w-full py-2.5 bg-[#1f2937] border border-dashed border-[#374151] rounded-lg text-[13px] font-medium text-[#9ca3af] hover:text-white hover:border-[#6366f1] transition-all flex items-center justify-center gap-2"
+              className="w-full py-2.5 bg-[#1f2937] border border-dashed border-[#374151] rounded-lg text-[13px] font-medium text-[#9ca3af] hover:text-white hover:border-[#00AFF0] transition-all flex items-center justify-center gap-2"
             >
               <Plus className="w-4 h-4" />
               Add more media
@@ -266,7 +266,7 @@ export function CreateGroupModal({ modelId, agencyUserId, allTags, onClose, onSa
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="flex-1 py-2.5 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white rounded-lg font-semibold text-[14px] disabled:opacity-50 disabled:cursor-not-allowed hover:from-[#5558e3] hover:to-[#4338ca] transition-all"
+                className="flex-1 py-2.5 bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] text-white rounded-lg font-semibold text-[14px] disabled:opacity-50 disabled:cursor-not-allowed hover:from-[#0098D4] hover:to-[#0098D4] transition-all"
               >
                 {saving ? "Saving…" : "Save Group"}
               </button>

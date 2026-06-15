@@ -90,7 +90,7 @@ export function SchedulePopover({
               if (Number.isNaN(t.getTime())) return;
               onPick(Math.floor(t.getTime() / 1000));
             }}
-            className="flex-1 px-3 py-1.5 rounded-md text-[12px] font-semibold bg-[#6366f1] text-white hover:bg-[#5558e3]"
+            className="flex-1 px-3 py-1.5 rounded-md text-[12px] font-semibold bg-[#00AFF0] text-white hover:bg-[#0098D4]"
           >
             Schedule
           </button>

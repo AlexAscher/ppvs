@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
     .insert({
       agency_user_id: user.id,
       name: body.name.trim().slice(0, 60),
-      color: body.color?.match(/^#[0-9a-f]{3,8}$/i) ? body.color : "#6366f1",
+      color: body.color?.match(/^#[0-9a-f]{3,8}$/i) ? body.color : "#00AFF0",
       emoji: body.emoji?.slice(0, 8) ?? null,
       position: body.position ?? 0,
     })

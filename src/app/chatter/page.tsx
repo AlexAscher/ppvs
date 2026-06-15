@@ -1945,7 +1945,7 @@ export default function ChatterPage() {
               onClick={() => !disabled && setMobileView(t.key)}
               disabled={disabled}
               className={`flex-1 flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors ${
-                active ? "text-[#6366f1]" : "text-[#6b7280]"
+                active ? "text-[#00AFF0]" : "text-[#6b7280]"
               } ${disabled ? "opacity-40" : ""}`}
             >
               <span className="text-[16px] leading-none">{t.icon}</span>

@@ -177,7 +177,7 @@ export function ChattersTab() {
           <button
             onClick={() => setShowInvite(true)}
             disabled={models.length === 0}
-            className="px-4 py-2.5 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] rounded-lg text-[13px] font-semibold text-white hover:from-[#5558e3] hover:to-[#4338ca] transition-all shadow-lg shadow-[#6366f1]/20 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2.5 bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] rounded-lg text-[13px] font-semibold text-white hover:from-[#0098D4] hover:to-[#0098D4] transition-all shadow-lg shadow-[#00AFF0]/20 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Plus className="w-4 h-4" />Add Chatter
           </button>
@@ -230,7 +230,7 @@ export function ChattersTab() {
               <button
                 onClick={() => setShowInvite(true)}
                 disabled={models.length === 0}
-                className="px-6 py-3 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] rounded-lg text-[14px] font-semibold text-white hover:from-[#5558e3] hover:to-[#4338ca] transition-all shadow-lg shadow-[#6366f1]/20 flex items-center gap-2 mx-auto disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-6 py-3 bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] rounded-lg text-[14px] font-semibold text-white hover:from-[#0098D4] hover:to-[#0098D4] transition-all shadow-lg shadow-[#00AFF0]/20 flex items-center gap-2 mx-auto disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Plus className="w-4 h-4" />Invite your first chatter
               </button>
@@ -263,7 +263,7 @@ export function ChattersTab() {
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="relative shrink-0">
-                      <div className="w-10 h-10 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-full flex items-center justify-center text-white font-semibold text-[13px]">
+                      <div className="w-10 h-10 bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-full flex items-center justify-center text-white font-semibold text-[13px]">
                         {initials}
                       </div>
                       <span
@@ -296,7 +296,7 @@ export function ChattersTab() {
                     <span className="px-2.5 py-1 bg-[#10b981]/20 text-[#10b981] rounded-full text-[11px] font-semibold">active</span>
                   </div>
                   <div className="flex flex-col items-end justify-center text-right">
-                    <span className="text-[15px] font-bold text-[#6366f1]">
+                    <span className="text-[15px] font-bold text-[#00AFF0]">
                       ${(earnings[c.chatter_id]?.net ?? 0).toFixed(2)}
                     </span>
                     <span className="text-[10px] text-[#6b7280]">
@@ -324,7 +324,7 @@ export function ChattersTab() {
                 <div key={c.chatter_id} className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-4">
                   <div className="flex items-center gap-3 cursor-pointer" onClick={() => setSelectedChatter(c)}>
                     <div className="relative shrink-0">
-                      <div className="w-10 h-10 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-full flex items-center justify-center text-white font-semibold text-[13px]">
+                      <div className="w-10 h-10 bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-full flex items-center justify-center text-white font-semibold text-[13px]">
                         {initials}
                       </div>
                       <span
@@ -344,7 +344,7 @@ export function ChattersTab() {
                   <div className="mt-3 pt-3 border-t border-[#2a2d35] flex items-center justify-between gap-3">
                     <div>
                       <div className="text-[10px] text-[#6b7280] uppercase tracking-wider">Earnings</div>
-                      <div className="text-[15px] font-bold text-[#6366f1]">
+                      <div className="text-[15px] font-bold text-[#00AFF0]">
                         ${(earnings[c.chatter_id]?.net ?? 0).toFixed(2)}
                       </div>
                     </div>

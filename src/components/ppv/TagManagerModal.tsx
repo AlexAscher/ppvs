@@ -105,7 +105,7 @@ export function TagManagerModal({ modelId, agencyUserId, tags, onClose, onChange
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g. hot, exclusive"
-                  className="flex-1 px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#4b5563] focus:border-[#6366f1] focus:outline-none transition-colors"
+                  className="flex-1 px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#4b5563] focus:border-[#00AFF0] focus:outline-none transition-colors"
                 />
               </div>
               <div>
@@ -125,7 +125,7 @@ export function TagManagerModal({ modelId, agencyUserId, tags, onClose, onChange
               <button
                 onClick={handleCreate}
                 disabled={loading || !name.trim()}
-                className="w-full py-2.5 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white rounded-lg font-semibold text-[13px] disabled:opacity-50 disabled:cursor-not-allowed hover:from-[#5558e3] hover:to-[#4338ca] transition-all flex items-center justify-center gap-2"
+                className="w-full py-2.5 bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] text-white rounded-lg font-semibold text-[13px] disabled:opacity-50 disabled:cursor-not-allowed hover:from-[#0098D4] hover:to-[#0098D4] transition-all flex items-center justify-center gap-2"
               >
                 <Plus className="w-4 h-4" />
                 {loading ? "Saving…" : "Add Tag"}

@@ -55,14 +55,14 @@ export function TipClient({
         className="pointer-events-none fixed inset-0 z-0"
         style={{
           background:
-            "radial-gradient(ellipse 70% 50% at 50% 0%, rgba(99,102,241,0.07) 0%, transparent 70%)",
+            "radial-gradient(ellipse 70% 50% at 50% 0%, rgba(0, 175, 240,0.07) 0%, transparent 70%)",
         }}
       />
 
       <div className="relative z-10 w-full max-w-[420px]">
         {/* Logo */}
         <div className="flex items-center justify-center gap-2 mb-6">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#6366f1] to-[#4f46e5] flex items-center justify-center text-white font-bold text-[15px]">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] flex items-center justify-center text-white font-bold text-[15px]">
             P
           </div>
           <span
@@ -73,14 +73,14 @@ export function TipClient({
               letterSpacing: "-0.02em",
             }}
           >
-            ppvs<span style={{ color: "#6366f1" }}>.io</span>
+            ppvs<span style={{ color: "#00AFF0" }}>.io</span>
           </span>
         </div>
 
         <div className="bg-[#161b22] border border-[#30363d] rounded-[16px] overflow-hidden">
           {/* Tip icon */}
           <div className="flex items-center justify-center pt-8 pb-4">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#6366f1]/20 to-[#4f46e5]/10 border border-[#6366f1]/30 flex items-center justify-center text-[32px]">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#00AFF0]/20 to-[#00AFF0]/10 border border-[#00AFF0]/30 flex items-center justify-center text-[32px]">
               💰
             </div>
           </div>
@@ -125,7 +125,7 @@ export function TipClient({
                     style={{
                       fontSize: 40,
                       fontWeight: 800,
-                      color: "#6366f1",
+                      color: "#00AFF0",
                       letterSpacing: "-0.03em",
                     }}
                   >
@@ -145,7 +145,7 @@ export function TipClient({
                   disabled={state === "loading"}
                   className="w-full py-[13px] rounded-[10px] text-[14px] font-semibold transition-all border-none cursor-pointer"
                   style={{
-                    background: state === "loading" ? "#6366f160" : "#6366f1",
+                    background: state === "loading" ? "#00AFF060" : "#00AFF0",
                     color: "white",
                   }}
                 >

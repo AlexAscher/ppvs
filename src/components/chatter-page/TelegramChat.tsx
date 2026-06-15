@@ -276,8 +276,8 @@ function ReplyPreviewCard({
   isChatter: boolean;
 }) {
   const senderLabel = preview.isToChatter ? "You" : "Fan";
-  const accent = isChatter ? "bg-white/80" : "bg-[#6366f1]";
-  const labelColor = isChatter ? "text-white" : "text-[#a5a8ff]";
+  const accent = isChatter ? "bg-white/80" : "bg-[#00AFF0]";
+  const labelColor = isChatter ? "text-white" : "text-[#5BC8F5]";
   const bg = isChatter ? "bg-black/15" : "bg-[#111827]/60";
   const body = preview.quoteText ?? preview.targetText;
   const truncated =
@@ -350,7 +350,7 @@ function Lightbox({ media, onClose }: { media: MessageMediaInfo; onClose: () => 
             target="_blank"
             rel="noreferrer"
             download
-            className="px-5 py-3 bg-[#6366f1] text-white rounded-lg font-semibold"
+            className="px-5 py-3 bg-[#00AFF0] text-white rounded-lg font-semibold"
           >
             Download {media.fileName ?? "file"}
           </a>
@@ -498,7 +498,7 @@ export function TelegramChat({
               value={search}
               onChange={(e) => onSearch(e.target.value)}
               placeholder="Search chats..."
-              className="w-full pl-8 pr-2 py-1.5 bg-[#1f2937] border border-[#374151] rounded-md text-[10px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1]"
+              className="w-full pl-8 pr-2 py-1.5 bg-[#1f2937] border border-[#374151] rounded-md text-[10px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#00AFF0]"
             />
           </div>
         </div>
@@ -513,7 +513,7 @@ export function TelegramChat({
                 selectedChat === chat.id ? "bg-[#1f2937]" : ""
               }`}
             >
-              <div className="w-11 h-11 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-full flex items-center justify-center text-white font-semibold text-[13px] flex-shrink-0">
+              <div className="w-11 h-11 bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-full flex items-center justify-center text-white font-semibold text-[13px] flex-shrink-0">
                 {chat.avatar}
               </div>
               <div className="flex-1 min-w-0 text-left">
@@ -533,7 +533,7 @@ export function TelegramChat({
                     {twemoji(chat.lastMessage, `cl-${chat.id}`)}
                   </p>
                   {chat.unread > 0 && (
-                    <div className="ml-2 min-w-[18px] h-[18px] bg-[#6366f1] rounded-full flex items-center justify-center">
+                    <div className="ml-2 min-w-[18px] h-[18px] bg-[#00AFF0] rounded-full flex items-center justify-center">
                       <span className="text-[10px] font-bold text-white">
                         {chat.unread}
                       </span>
@@ -569,7 +569,7 @@ export function TelegramChat({
             className="flex items-center gap-3 hover:opacity-80 transition-opacity disabled:cursor-not-allowed"
             title={selected ? "Open fan profile" : ""}
           >
-            <div className="w-10 h-10 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-full flex items-center justify-center text-white font-semibold">
+            <div className="w-10 h-10 bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-full flex items-center justify-center text-white font-semibold">
               {selected?.avatar ?? ""}
             </div>
             <div className="text-left">
@@ -600,7 +600,7 @@ export function TelegramChat({
                     title={active ? "Remove tag" : "Add tag"}
                     className={`w-7 h-7 flex items-center justify-center rounded-md text-[14px] leading-none transition-all ${
                       active
-                        ? "bg-[#6366f1]/20 ring-1 ring-[#6366f1]"
+                        ? "bg-[#00AFF0]/20 ring-1 ring-[#00AFF0]"
                         : "bg-[#1f2937]/50 hover:bg-[#1f2937] opacity-50 hover:opacity-100"
                     } disabled:cursor-not-allowed`}
                   >
@@ -656,7 +656,7 @@ export function TelegramChat({
                     <div
                       className={`p-1 rounded-2xl inline-block ${
                         first.isChatter
-                          ? "bg-gradient-to-br from-[#6366f1] to-[#5558e3] rounded-br-sm"
+                          ? "bg-gradient-to-br from-[#00AFF0] to-[#0098D4] rounded-br-sm"
                           : "bg-[#1f2937] rounded-bl-sm"
                       }`}
                     >
@@ -748,7 +748,7 @@ export function TelegramChat({
                     <div
                       className={`p-1 rounded-2xl ${
                         message.isChatter
-                          ? "bg-gradient-to-br from-[#6366f1] to-[#5558e3] rounded-br-sm"
+                          ? "bg-gradient-to-br from-[#00AFF0] to-[#0098D4] rounded-br-sm"
                           : "bg-[#1f2937] rounded-bl-sm"
                       }`}
                     >
@@ -780,7 +780,7 @@ export function TelegramChat({
                   <div
                     className={`px-4 py-2.5 rounded-2xl ${
                       message.isChatter
-                        ? "bg-gradient-to-br from-[#6366f1] to-[#5558e3] text-white rounded-br-sm"
+                        ? "bg-gradient-to-br from-[#00AFF0] to-[#0098D4] text-white rounded-br-sm"
                         : "bg-[#1f2937] text-[#e5e7eb] rounded-bl-sm"
                     }`}
                   >
@@ -811,7 +811,7 @@ export function TelegramChat({
           <div className="px-5 py-2 bg-[#1f2937]/60 border-t border-[#2a2d35] flex items-start gap-2">
             <div
               className={`w-1 self-stretch rounded ${
-                editing ? "bg-amber-400" : "bg-[#6366f1]"
+                editing ? "bg-amber-400" : "bg-[#00AFF0]"
               }`}
             />
             <div className="flex-1 min-w-0">
@@ -823,8 +823,8 @@ export function TelegramChat({
                   </>
                 ) : (
                   <>
-                    <Reply className="w-3 h-3 text-[#6366f1]" />
-                    <span className="text-[#6366f1]">
+                    <Reply className="w-3 h-3 text-[#00AFF0]" />
+                    <span className="text-[#00AFF0]">
                       {replyingTo!.quote ? "Replying with quote" : "Replying"} to{" "}
                       {replyingTo!.isChatter ? "yourself" : "fan"}
                     </span>
@@ -864,7 +864,7 @@ export function TelegramChat({
               }
             }}
             placeholder="Type a message..."
-            className="flex-1 px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1]"
+            className="flex-1 px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#00AFF0]"
           />
           <button
             type="button"
@@ -886,7 +886,7 @@ export function TelegramChat({
               }}
               className={`w-10 h-10 flex items-center justify-center rounded-lg transition-colors ${
                 showEmoji
-                  ? "bg-[#374151] text-[#6366f1]"
+                  ? "bg-[#374151] text-[#00AFF0]"
                   : "bg-[#1f2937] text-[#9ca3af] hover:text-white hover:bg-[#374151]"
               }`}
               aria-label="Emoji picker"
@@ -906,7 +906,7 @@ export function TelegramChat({
             className={`px-5 py-2.5 text-white rounded-lg font-semibold text-[13px] transition-all shadow-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${
               editing
                 ? "bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 shadow-amber-500/20"
-                : "bg-gradient-to-r from-[#6366f1] to-[#4f46e5] hover:from-[#5558e3] hover:to-[#4338ca] shadow-[#6366f1]/20"
+                : "bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] hover:from-[#0098D4] hover:to-[#0098D4] shadow-[#00AFF0]/20"
             }`}
           >
             {editing ? (

@@ -78,7 +78,7 @@ export function NumberField({
           // Allow empty, optional leading minus, digits, single dot.
           if (v === "" || /^-?\d*\.?\d*$/.test(v)) commit(v);
         }}
-        className="w-full pl-3 pr-7 py-2 bg-[#1f2937] border border-[#374151] rounded-lg text-[12px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1] disabled:opacity-50"
+        className="w-full pl-3 pr-7 py-2 bg-[#1f2937] border border-[#374151] rounded-lg text-[12px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#00AFF0] disabled:opacity-50"
       />
       <div className="absolute right-1 top-1/2 -translate-y-1/2 flex flex-col">
         <button

@@ -102,7 +102,7 @@ export function ChatterStatsModal({ chatter, models, busy, onToggleModel, onClos
       <div className="bg-[#161a22] border border-[#2a2d35] rounded-xl shadow-2xl w-full max-w-[560px] p-6">
         <div className="flex items-start justify-between mb-6">
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-full flex items-center justify-center text-white font-semibold text-[18px]">
+            <div className="w-14 h-14 bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-full flex items-center justify-center text-white font-semibold text-[18px]">
               {initials}
             </div>
             <div>

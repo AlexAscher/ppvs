@@ -121,13 +121,13 @@ function AgencySidebar({
         }`}
       >
       <div className="h-[52px] border-b border-[#2a2d35] px-5 flex items-center gap-2">
-        <div className="w-8 h-8 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-lg flex items-center justify-center">
+        <div className="w-8 h-8 bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-lg flex items-center justify-center">
           <span className="text-white font-bold text-[14px]">P</span>
         </div>
         <div className="text-[15px] font-semibold">
-          ppvs<span className="text-[#6366f1]">.io</span>
+          ppvs<span className="text-[#00AFF0]">.io</span>
         </div>
-        <span className="text-[12px] px-2 py-0.5 bg-[#6366f1]/10 text-[#6366f1] rounded-full font-medium">Agency</span>
+        <span className="text-[12px] px-2 py-0.5 bg-[#00AFF0]/10 text-[#00AFF0] rounded-full font-medium">Agency</span>
       </div>
 
       <div className="flex-1 py-4 px-3">
@@ -138,7 +138,7 @@ function AgencySidebar({
               onClick={() => onTabChange(item.id)}
               className={`w-full px-4 py-2.5 rounded-lg flex items-center gap-3 transition-all ${
                 activeTab === item.id
-                  ? "bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white shadow-lg shadow-[#6366f1]/20"
+                  ? "bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] text-white shadow-lg shadow-[#00AFF0]/20"
                   : "text-[#9ca3af] hover:bg-[#1f2937] hover:text-white"
               }`}
             >
@@ -186,7 +186,7 @@ function AgencySidebar({
           onClick={() => setShowLogout((v) => !v)}
           className={`w-full flex items-center gap-3 p-2 rounded-lg transition-colors text-left ${showLogout ? "bg-[#1f2937]" : "hover:bg-[#1f2937]"}`}
         >
-          <div className="w-9 h-9 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-full flex items-center justify-center text-white font-semibold text-[13px] shrink-0">
+          <div className="w-9 h-9 bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-full flex items-center justify-center text-white font-semibold text-[13px] shrink-0">
             {userInitials}
           </div>
           <div className="flex-1 min-w-0">
@@ -312,15 +312,15 @@ function ChartCanvas({
           >
             <defs>
               <linearGradient id="lineGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stopColor="#6366f1" stopOpacity="0.3" />
-                <stop offset="100%" stopColor="#6366f1" stopOpacity="0" />
+                <stop offset="0%" stopColor="#00AFF0" stopOpacity="0.3" />
+                <stop offset="100%" stopColor="#00AFF0" stopOpacity="0" />
               </linearGradient>
             </defs>
             <path d={areaPath} fill="url(#lineGradient)" />
             <polyline
               points={linePoints}
               fill="none"
-              stroke="#6366f1"
+              stroke="#00AFF0"
               strokeWidth="0.6"
               strokeLinejoin="round"
               strokeLinecap="round"
@@ -339,11 +339,11 @@ function ChartCanvas({
               onMouseEnter={() => setHoveredPoint(i)}
               onMouseLeave={() => setHoveredPoint(null)}
             >
-              <div className="w-3 h-3 bg-[#6366f1] rounded-full border-2 border-[#161a22] cursor-pointer hover:scale-150 transition-transform" />
+              <div className="w-3 h-3 bg-[#00AFF0] rounded-full border-2 border-[#161a22] cursor-pointer hover:scale-150 transition-transform" />
               {hoveredPoint === i && (
                 <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-[#1f2937] border border-[#374151] rounded-lg px-3 py-2 whitespace-nowrap shadow-xl z-10">
                   <div className="text-[11px] text-[#9ca3af]">{point.date}</div>
-                  <div className="text-[14px] font-bold text-[#6366f1]">{point.label}</div>
+                  <div className="text-[14px] font-bold text-[#00AFF0]">{point.label}</div>
                 </div>
               )}
             </div>
@@ -437,9 +437,14 @@ function DashboardTab() {
         { label: "Available Balance", value: fmtMoney(stats.availableBalance), emoji: "💳" },
         { label: "Sales / Unlocks", value: String(stats.sales), emoji: "👁️" },
         { label: "Avg Order Value", value: fmtMoney(stats.avgOrder), emoji: "🛒" },
-        { label: "Paying Fans", value: String(stats.payingFans), emoji: "👥" },
+        {
+          label: "Conversion Rate",
+          value: stats.totalFans > 0 ? `${Math.round((stats.payingFans / stats.totalFans) * 100)}%` : "—",
+          emoji: "🎯",
+          sub: `${stats.payingFans} / ${stats.totalFans} paying`,
+        },
       ]
-    : Array.from({ length: 8 }, (_, i) => ({ label: ["Net Today","Net This Week","Net This Month","Net All Time","Available Balance","Sales / Unlocks","Avg Order Value","Paying Fans"][i], value: "…", emoji: "•" }));
+    : Array.from({ length: 8 }, (_, i) => ({ label: ["Net Today","Net This Week","Net This Month","Net All Time","Available Balance","Sales / Unlocks","Avg Order Value","Conversion Rate"][i], value: "…", emoji: "•" }));
 
   const chartData = (stats?.chart ?? []).map((c) => ({ ...c, label: fmtMoney(c.value) }));
   const maxValue = Math.max(1, ...chartData.map((d) => d.value));
@@ -467,7 +472,7 @@ function DashboardTab() {
                 <button
                   onClick={() => { setScopeModelId(null); setShowModelMenu(false); }}
                   className={`w-full px-3 py-2 text-[13px] text-left hover:bg-[#374151] transition-colors ${
-                    !scopeModelId ? "bg-[#374151] text-[#6366f1]" : "text-white"
+                    !scopeModelId ? "bg-[#374151] text-[#00AFF0]" : "text-white"
                   }`}
                 >
                   All creators
@@ -477,7 +482,7 @@ function DashboardTab() {
                     key={m.id}
                     onClick={() => { setScopeModelId(m.id); setShowModelMenu(false); }}
                     className={`w-full px-3 py-2 text-[13px] text-left hover:bg-[#374151] transition-colors ${
-                      scopeModelId === m.id ? "bg-[#374151] text-[#6366f1]" : "text-white"
+                      scopeModelId === m.id ? "bg-[#374151] text-[#00AFF0]" : "text-white"
                     }`}
                   >
                     {m.name}
@@ -520,6 +525,9 @@ function DashboardTab() {
               </div>
               <div className="text-[11px] text-[#9ca3af] uppercase tracking-wider mb-1">{stat.label}</div>
               <div className="text-[24px] font-bold text-white">{stat.value}</div>
+              {(stat as { sub?: string }).sub ? (
+                <div className="text-[11px] text-[#6b7280] mt-0.5">{(stat as { sub?: string }).sub}</div>
+              ) : null}
             </div>
           ))}
         </div>
@@ -536,7 +544,7 @@ function DashboardTab() {
                     onClick={() => setPeriod(p)}
                     className={`px-3 py-1 rounded-md transition-colors ${
                       period === p
-                        ? "bg-[#6366f1] text-white"
+                        ? "bg-[#00AFF0] text-white"
                         : "text-[#9ca3af] hover:text-white"
                     }`}
                   >
@@ -559,7 +567,7 @@ function DashboardTab() {
             <h2 className="text-[16px] font-semibold text-white mb-4">Top Chatter 👑</h2>
             {topChatter ? (
               <div className="text-center space-y-3">
-                <div className="w-20 h-20 mx-auto bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-full flex items-center justify-center text-white font-bold text-[24px]">
+                <div className="w-20 h-20 mx-auto bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-full flex items-center justify-center text-white font-bold text-[24px]">
                   {initials(topChatter.name) || "—"}
                 </div>
                 <div>
@@ -568,7 +576,7 @@ function DashboardTab() {
                 </div>
                 <div className="pt-3 border-t border-[#2a2d35]">
                   <div className="text-[11px] text-[#9ca3af] uppercase tracking-wider mb-1">Net Sales</div>
-                  <div className="text-[28px] font-bold text-[#6366f1]">{fmtMoney(topChatter.net)}</div>
+                  <div className="text-[28px] font-bold text-[#00AFF0]">{fmtMoney(topChatter.net)}</div>
                 </div>
               </div>
             ) : (
@@ -593,7 +601,7 @@ function DashboardTab() {
                   stats!.models.map((m) => (
                     <div key={m.id} className="flex items-center justify-between p-3 bg-[#1f2937]/30 rounded-lg hover:bg-[#1f2937]/50 transition-colors">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-full flex items-center justify-center text-white font-semibold text-[12px]">
+                        <div className="w-9 h-9 bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-full flex items-center justify-center text-white font-semibold text-[12px]">
                           {initials(m.name) || "M"}
                         </div>
                         <div>
@@ -601,7 +609,7 @@ function DashboardTab() {
                           <div className="text-[11px] text-[#6b7280]">{m.sales} sales</div>
                         </div>
                       </div>
-                      <div className="text-[15px] font-bold text-[#6366f1]">{fmtMoney(m.net)}</div>
+                      <div className="text-[15px] font-bold text-[#00AFF0]">{fmtMoney(m.net)}</div>
                     </div>
                   ))
                 )}
@@ -657,7 +665,7 @@ function DashboardTab() {
               ) : (
                 stats!.topFans.map((fan, idx) => (
                   <div key={idx} className="flex items-center gap-3 p-3 bg-[#1f2937]/30 rounded-lg hover:bg-[#1f2937]/50 transition-colors">
-                    <div className="w-10 h-10 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-full flex items-center justify-center text-white font-semibold text-[13px] relative">
+                    <div className="w-10 h-10 bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-full flex items-center justify-center text-white font-semibold text-[13px] relative">
                       {initials(fan.name) || "F"}
                       <div className="absolute -top-1 -right-1 w-5 h-5 bg-[#f59e0b] rounded-full flex items-center justify-center text-[10px] font-bold">{idx + 1}</div>
                     </div>
@@ -665,7 +673,7 @@ function DashboardTab() {
                       <div className="text-[13px] font-medium text-white truncate">{fan.name}</div>
                       <div className="text-[11px] text-[#6b7280]">Total spent</div>
                     </div>
-                    <div className="text-[15px] font-bold text-[#6366f1]">{fmtMoney(fan.spent)}</div>
+                    <div className="text-[15px] font-bold text-[#00AFF0]">{fmtMoney(fan.spent)}</div>
                   </div>
                 ))
               )}
@@ -859,7 +867,7 @@ function ModelsTab() {
                 <div className="flex items-center gap-1.5 mt-3">
                   {([1, 2, 3] as const).map((s) => (
                     <div key={s} className="flex items-center gap-1.5">
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold transition-colors ${step === s ? "bg-[#6366f1] text-white" : step > s ? "bg-[#10b981] text-white" : "bg-[#2a2d35] text-[#6b7280]"}`}>{s}</div>
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold transition-colors ${step === s ? "bg-[#00AFF0] text-white" : step > s ? "bg-[#10b981] text-white" : "bg-[#2a2d35] text-[#6b7280]"}`}>{s}</div>
                       {s < 3 && <div className={`w-10 h-0.5 transition-colors ${step > s ? "bg-[#10b981]" : "bg-[#2a2d35]"}`} />}
                     </div>
                   ))}
@@ -874,21 +882,21 @@ function ModelsTab() {
                 <div>
                   <label className="text-[12px] text-[#9ca3af] font-medium mb-1.5 block">API ID</label>
                   <input value={apiId} onChange={(e) => setApiId(e.target.value)} placeholder="12345678"
-                    className="w-full px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#4b5563] focus:border-[#6366f1] transition-colors" />
+                    className="w-full px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#4b5563] focus:border-[#00AFF0] transition-colors" />
                 </div>
                 <div>
                   <label className="text-[12px] text-[#9ca3af] font-medium mb-1.5 block">API Hash</label>
                   <input value={apiHash} onChange={(e) => setApiHash(e.target.value)} placeholder="a1b2c3d4e5f6a1b2c3d4e5f6"
-                    className="w-full px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#4b5563] focus:border-[#6366f1] transition-colors" />
+                    className="w-full px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#4b5563] focus:border-[#00AFF0] transition-colors" />
                 </div>
                 <div>
                   <label className="text-[12px] text-[#9ca3af] font-medium mb-1.5 block">Phone Number</label>
                   <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1234567890"
-                    className="w-full px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#4b5563] focus:border-[#6366f1] transition-colors" />
+                    className="w-full px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#4b5563] focus:border-[#00AFF0] transition-colors" />
                 </div>
                 {error && <p className="text-[12px] text-red-400">{error}</p>}
                 <button onClick={handleSendCode} disabled={loading || !apiId || !apiHash || !phone}
-                  className="w-full py-3 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white rounded-lg font-semibold text-[14px] disabled:opacity-50 disabled:cursor-not-allowed hover:from-[#5558e3] hover:to-[#4338ca] transition-all">
+                  className="w-full py-3 bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] text-white rounded-lg font-semibold text-[14px] disabled:opacity-50 disabled:cursor-not-allowed hover:from-[#0098D4] hover:to-[#0098D4] transition-all">
                   {loading ? "Sending code…" : "Continue →"}
                 </button>
               </div>
@@ -900,11 +908,11 @@ function ModelsTab() {
                 <div>
                   <label className="text-[12px] text-[#9ca3af] font-medium mb-1.5 block">Verification Code</label>
                   <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="12345" maxLength={6}
-                    className="w-full px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[20px] text-white placeholder:text-[#4b5563] focus:border-[#6366f1] transition-colors text-center tracking-[0.4em]" />
+                    className="w-full px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[20px] text-white placeholder:text-[#4b5563] focus:border-[#00AFF0] transition-colors text-center tracking-[0.4em]" />
                 </div>
                 {error && <p className="text-[12px] text-red-400">{error}</p>}
                 <button onClick={handleVerify} disabled={loading || !code}
-                  className="w-full py-3 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white rounded-lg font-semibold text-[14px] disabled:opacity-50 disabled:cursor-not-allowed hover:from-[#5558e3] hover:to-[#4338ca] transition-all">
+                  className="w-full py-3 bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] text-white rounded-lg font-semibold text-[14px] disabled:opacity-50 disabled:cursor-not-allowed hover:from-[#0098D4] hover:to-[#0098D4] transition-all">
                   {loading ? "Verifying…" : "Verify & Connect"}
                 </button>
                 <button onClick={() => { setStep(1); setError(""); }} className="w-full py-2 text-[13px] text-[#6b7280] hover:text-white transition-colors">
@@ -919,11 +927,11 @@ function ModelsTab() {
                 <div>
                   <label className="text-[12px] text-[#9ca3af] font-medium mb-1.5 block">Cloud Password</label>
                   <input type="password" value={twoFaPassword} onChange={(e) => setTwoFaPassword(e.target.value)} placeholder="••••••••"
-                    className="w-full px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#4b5563] focus:border-[#6366f1] transition-colors" />
+                    className="w-full px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#4b5563] focus:border-[#00AFF0] transition-colors" />
                 </div>
                 {error && <p className="text-[12px] text-red-400">{error}</p>}
                 <button onClick={handleCheckPassword} disabled={loading || !twoFaPassword}
-                  className="w-full py-3 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white rounded-lg font-semibold text-[14px] disabled:opacity-50 disabled:cursor-not-allowed hover:from-[#5558e3] hover:to-[#4338ca] transition-all">
+                  className="w-full py-3 bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] text-white rounded-lg font-semibold text-[14px] disabled:opacity-50 disabled:cursor-not-allowed hover:from-[#0098D4] hover:to-[#0098D4] transition-all">
                   {loading ? "Verifying…" : "Confirm & Connect"}
                 </button>
               </div>
@@ -938,33 +946,33 @@ function ModelsTab() {
             <h1 className="text-[24px] font-bold text-white mb-1">Creators 👤</h1>
             <p className="text-[14px] text-[#9ca3af]">Connect and manage your creators&apos; Telegram accounts</p>
           </div>
-          <button onClick={() => openModal()} className="px-4 py-2.5 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] rounded-lg text-[13px] font-semibold text-white hover:from-[#5558e3] hover:to-[#4338ca] transition-all shadow-lg shadow-[#6366f1]/20 flex items-center gap-2">
+          <button onClick={() => openModal()} className="px-4 py-2.5 bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] rounded-lg text-[13px] font-semibold text-white hover:from-[#0098D4] hover:to-[#0098D4] transition-all shadow-lg shadow-[#00AFF0]/20 flex items-center gap-2">
             <Plus className="w-4 h-4" />Add Creator
           </button>
         </div>
 
-        <div className="bg-gradient-to-br from-[#6366f1]/10 to-[#4f46e5]/10 border border-[#6366f1]/30 rounded-lg p-6">
+        <div className="bg-gradient-to-br from-[#00AFF0]/10 to-[#00AFF0]/10 border border-[#00AFF0]/30 rounded-lg p-6">
           <div className="flex items-start gap-4">
-            <div className="w-12 h-12 bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-lg flex items-center justify-center shrink-0">
+            <div className="w-12 h-12 bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-lg flex items-center justify-center shrink-0">
               <LinkIcon className="w-6 h-6 text-white" />
             </div>
             <div className="flex-1">
               <h3 className="text-[16px] font-semibold text-white mb-2">How to Connect Telegram via API ✈️</h3>
               <div className="text-[13px] text-[#d1d5db] space-y-2.5">
-                <p><strong>Step 1.</strong> On a phone or computer, open <a href="https://my.telegram.org" target="_blank" rel="noopener noreferrer" className="text-[#6366f1] hover:underline">my.telegram.org</a> and log in with the <span className="text-white">creator&apos;s</span> phone number. Telegram sends the login code into the Telegram app itself (not by SMS).</p>
+                <p><strong>Step 1.</strong> On a phone or computer, open <a href="https://my.telegram.org" target="_blank" rel="noopener noreferrer" className="text-[#00AFF0] hover:underline">my.telegram.org</a> and log in with the <span className="text-white">creator&apos;s</span> phone number. Telegram sends the login code into the Telegram app itself (not by SMS).</p>
                 <p><strong>Step 2.</strong> Open <span className="text-white font-medium">&quot;API development tools&quot;</span>.</p>
                 <div>
                   <p><strong>Step 3.</strong> If no application exists yet, fill the <span className="text-white font-medium">&quot;Create new application&quot;</span> form:</p>
                   <ul className="mt-1.5 ml-1 space-y-1 text-[#9ca3af]">
                     <li>• <span className="text-white">App title</span> — any name (e.g. the creator&apos;s name).</li>
-                    <li>• <span className="text-white">Short name</span> — 5–32 letters/digits (e.g. <code className="text-[#6366f1]">ppvsapp</code>).</li>
-                    <li>• <span className="text-white">URL</span> — optional, leave blank (or put <code className="text-[#6366f1]">https://t.me</code>).</li>
-                    <li>• <span className="text-white">Platform</span> — choose <span className="text-[#6366f1] font-semibold">Desktop</span>.</li>
+                    <li>• <span className="text-white">Short name</span> — 5–32 letters/digits (e.g. <code className="text-[#00AFF0]">ppvsapp</code>).</li>
+                    <li>• <span className="text-white">URL</span> — optional, leave blank (or put <code className="text-[#00AFF0]">https://t.me</code>).</li>
+                    <li>• <span className="text-white">Platform</span> — choose <span className="text-[#00AFF0] font-semibold">Desktop</span>.</li>
                     <li>• <span className="text-white">Description</span> — optional, leave blank.</li>
                   </ul>
                   <p className="mt-1.5">Then click <span className="text-white font-medium">&quot;Create application&quot;</span>.</p>
                 </div>
-                <p><strong>Step 4.</strong> Copy the <span className="text-[#6366f1] font-medium">api_id</span> (a number) and <span className="text-[#6366f1] font-medium">api_hash</span> (a long letters+digits string). Keep them private — they control the account.</p>
+                <p><strong>Step 4.</strong> Copy the <span className="text-[#00AFF0] font-medium">api_id</span> (a number) and <span className="text-[#00AFF0] font-medium">api_hash</span> (a long letters+digits string). Keep them private — they control the account.</p>
                 <p><strong>Step 5.</strong> Back here, click <span className="text-white font-medium">&quot;Add Creator&quot;</span> and paste the api_id, api_hash and the creator&apos;s phone number.</p>
                 <p><strong>Step 6.</strong> Enter the login code Telegram sends (plus the 2-step password if the account has one) — and you&apos;re connected ✅</p>
               </div>
@@ -978,7 +986,7 @@ function ModelsTab() {
               <div className="w-20 h-20 mx-auto mb-4 bg-[#1f2937] rounded-full flex items-center justify-center text-[32px]">👤</div>
               <h3 className="text-[18px] font-semibold text-white mb-2">No creators connected yet</h3>
               <p className="text-[14px] text-[#9ca3af] mb-6">Add your first creator to start managing their Telegram account</p>
-              <button onClick={() => openModal()} className="px-6 py-3 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] rounded-lg text-[14px] font-semibold text-white hover:from-[#5558e3] hover:to-[#4338ca] transition-all shadow-lg shadow-[#6366f1]/20 flex items-center gap-2 mx-auto">
+              <button onClick={() => openModal()} className="px-6 py-3 bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] rounded-lg text-[14px] font-semibold text-white hover:from-[#0098D4] hover:to-[#0098D4] transition-all shadow-lg shadow-[#00AFF0]/20 flex items-center gap-2 mx-auto">
                 <Plus className="w-4 h-4" />Connect your first creator
               </button>
             </div>
@@ -997,7 +1005,7 @@ function ModelsTab() {
             {models.map((model) => (
               <div key={model.id} className="grid grid-cols-4 gap-4 p-4 border-b border-[#2a2d35] last:border-b-0 hover:bg-[#1f2937]/20 transition-colors">
                 <div className="flex items-center gap-3">
-                  <div className="relative w-10 h-10 rounded-full shrink-0 overflow-hidden bg-gradient-to-br from-[#6366f1] to-[#4f46e5]">
+                  <div className="relative w-10 h-10 rounded-full shrink-0 overflow-hidden bg-gradient-to-br from-[#00AFF0] to-[#00AFF0]">
                     <span className="absolute inset-0 flex items-center justify-center text-white font-semibold text-[13px]">
                       {model.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
                     </span>
@@ -1023,7 +1031,7 @@ function ModelsTab() {
                       </span>
                       <button
                         onClick={() => openModal(model.id)}
-                        className="px-2.5 py-1 bg-[#6366f1] hover:bg-[#5558e3] text-white rounded-full text-[11px] font-semibold shrink-0"
+                        className="px-2.5 py-1 bg-[#00AFF0] hover:bg-[#0098D4] text-white rounded-full text-[11px] font-semibold shrink-0"
                       >
                         Reconnect
                       </button>
@@ -1040,7 +1048,7 @@ function ModelsTab() {
                     <span className={`inline-block ${refreshingId === model.id ? "animate-spin" : ""}`}>↻</span>
                   </button>
                 </div>
-                <div className="flex items-center text-[15px] font-bold text-[#6366f1]">
+                <div className="flex items-center text-[15px] font-bold text-[#00AFF0]">
                   ${model.earnings.toFixed(2)}
                 </div>
               </div>
@@ -1053,7 +1061,7 @@ function ModelsTab() {
             {models.map((model) => (
               <div key={model.id} className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-4">
                 <div className="flex items-center gap-3">
-                  <div className="relative w-11 h-11 rounded-full shrink-0 overflow-hidden bg-gradient-to-br from-[#6366f1] to-[#4f46e5]">
+                  <div className="relative w-11 h-11 rounded-full shrink-0 overflow-hidden bg-gradient-to-br from-[#00AFF0] to-[#00AFF0]">
                     <span className="absolute inset-0 flex items-center justify-center text-white font-semibold text-[14px]">
                       {model.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
                     </span>
@@ -1086,7 +1094,7 @@ function ModelsTab() {
                         <span className="px-2.5 py-1 bg-[#ef4444]/15 text-[#ef4444] rounded-full text-[11px] font-semibold">session expired</span>
                         <button
                           onClick={() => openModal(model.id)}
-                          className="px-2.5 py-1 bg-[#6366f1] hover:bg-[#5558e3] text-white rounded-full text-[11px] font-semibold"
+                          className="px-2.5 py-1 bg-[#00AFF0] hover:bg-[#0098D4] text-white rounded-full text-[11px] font-semibold"
                         >
                           Reconnect
                         </button>
@@ -1097,7 +1105,7 @@ function ModelsTab() {
                   </div>
                   <div className="text-right">
                     <div className="text-[10px] text-[#6b7280] uppercase tracking-wider">Earnings</div>
-                    <div className="text-[15px] font-bold text-[#6366f1]">${model.earnings.toFixed(2)}</div>
+                    <div className="text-[15px] font-bold text-[#00AFF0]">${model.earnings.toFixed(2)}</div>
                   </div>
                 </div>
               </div>
@@ -1247,7 +1255,7 @@ function WalletTab() {
           <p className="text-[14px] text-[#9ca3af]">Manage your earnings and withdrawals</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-gradient-to-br from-[#6366f1] to-[#4f46e5] rounded-lg p-6 shadow-lg shadow-[#6366f1]/20">
+          <div className="bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-lg p-6 shadow-lg shadow-[#00AFF0]/20">
             <div className="flex items-center gap-2 mb-2">
               <DollarSign className="w-5 h-5 text-white/80" />
               <span className="text-[13px] text-white/80 uppercase tracking-wider font-medium">Total Net Sales</span>
@@ -1286,8 +1294,8 @@ function WalletTab() {
                 <div className="text-[10px] uppercase tracking-wider text-[#9ca3af]">Platform fee 10%</div>
                 <div className="text-[22px] font-bold text-[#9ca3af] mt-1">−{money(splitTotals.platformFee)}</div>
               </div>
-              <div className="bg-gradient-to-br from-[#6366f1]/20 to-[#4f46e5]/10 border border-[#6366f1]/40 rounded-lg p-4">
-                <div className="text-[10px] uppercase tracking-wider text-[#a5a8ff]">Agency cut</div>
+              <div className="bg-gradient-to-br from-[#00AFF0]/20 to-[#00AFF0]/10 border border-[#00AFF0]/40 rounded-lg p-4">
+                <div className="text-[10px] uppercase tracking-wider text-[#5BC8F5]">Agency cut</div>
                 <div className="text-[22px] font-bold text-white mt-1">{money(splitTotals.agencyCut)}</div>
               </div>
               <div className="bg-[#0f131a] border border-[#2a2d35] rounded-lg p-4">
@@ -1332,7 +1340,7 @@ function WalletTab() {
 
         <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-6">
           <h2 className="text-[18px] font-semibold text-white mb-6 flex items-center gap-2">
-            Withdraw Funds <ArrowUpRight className="w-5 h-5 text-[#6366f1]" />
+            Withdraw Funds <ArrowUpRight className="w-5 h-5 text-[#00AFF0]" />
           </h2>
           <div className="space-y-5">
             <div>
@@ -1342,7 +1350,7 @@ function WalletTab() {
                   <button
                     key={crypto.id}
                     onClick={() => { setSelectedCrypto(crypto.id); setSelectedNetwork(networkOptions[crypto.id][0]); }}
-                    className={`p-4 rounded-lg border-2 transition-all ${selectedCrypto === crypto.id ? "border-[#6366f1] bg-[#6366f1]/10" : "border-[#374151] bg-[#1f2937] hover:border-[#4b5563]"}`}
+                    className={`p-4 rounded-lg border-2 transition-all ${selectedCrypto === crypto.id ? "border-[#00AFF0] bg-[#00AFF0]/10" : "border-[#374151] bg-[#1f2937] hover:border-[#4b5563]"}`}
                   >
                     <div className="text-[24px] mb-1">{crypto.icon}</div>
                     <div className="text-[13px] font-semibold text-white">{crypto.name}</div>
@@ -1357,7 +1365,7 @@ function WalletTab() {
                   <button
                     key={network}
                     onClick={() => setSelectedNetwork(network)}
-                    className={`px-4 py-2.5 rounded-lg text-[13px] font-medium transition-all ${selectedNetwork === network ? "bg-[#6366f1] text-white" : "bg-[#1f2937] text-[#9ca3af] border border-[#374151] hover:border-[#4b5563]"}`}
+                    className={`px-4 py-2.5 rounded-lg text-[13px] font-medium transition-all ${selectedNetwork === network ? "bg-[#00AFF0] text-white" : "bg-[#1f2937] text-[#9ca3af] border border-[#374151] hover:border-[#4b5563]"}`}
                   >
                     {network}
                   </button>
@@ -1370,7 +1378,7 @@ function WalletTab() {
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#6b7280] text-[14px]">$</span>
                 <input
                   type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00"
-                  className="w-full pl-8 pr-4 py-3 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1]"
+                  className="w-full pl-8 pr-4 py-3 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#00AFF0]"
                 />
               </div>
               <div className="text-[11px] text-[#6b7280] mt-1">Available: {money(available)}</div>
@@ -1380,7 +1388,7 @@ function WalletTab() {
               <input
                 type="text" value={address} onChange={(e) => setAddress(e.target.value)}
                 placeholder={`Enter your ${cryptoOptions.find((c) => c.id === selectedCrypto)?.name} address`}
-                className="w-full px-4 py-3 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1]"
+                className="w-full px-4 py-3 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#00AFF0]"
               />
             </div>
             <div className="bg-[#f59e0b]/10 border border-[#f59e0b]/30 rounded-lg p-4">
@@ -1400,7 +1408,7 @@ function WalletTab() {
             <button
               onClick={handleWithdraw}
               disabled={submitting}
-              className="w-full py-3.5 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white rounded-lg font-semibold text-[14px] hover:from-[#5558e3] hover:to-[#4338ca] transition-all shadow-lg shadow-[#6366f1]/20 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full py-3.5 bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] text-white rounded-lg font-semibold text-[14px] hover:from-[#0098D4] hover:to-[#0098D4] transition-all shadow-lg shadow-[#00AFF0]/20 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {submitting ? "Requesting…" : "Request Withdrawal"}
             </button>
@@ -1465,7 +1473,7 @@ function AgencyDashboard() {
             <Menu className="w-5 h-5" />
           </button>
           <span className="text-[15px] font-semibold">
-            ppvs<span className="text-[#6366f1]">.io</span>
+            ppvs<span className="text-[#00AFF0]">.io</span>
           </span>
         </div>
         <div className="flex-1 flex min-h-0 overflow-hidden">

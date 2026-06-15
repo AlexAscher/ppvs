@@ -166,7 +166,7 @@ export function QuickReplyModal({ modelId, open, onClose, onPick, canManage }: P
             {canManage && editingId === null && (
               <button
                 onClick={startNew}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#6366f1] hover:bg-[#5558e3] rounded-md text-[12px] font-semibold text-white"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#00AFF0] hover:bg-[#0098D4] rounded-md text-[12px] font-semibold text-white"
               >
                 <Plus className="w-3.5 h-3.5" /> New
               </button>
@@ -195,14 +195,14 @@ export function QuickReplyModal({ modelId, open, onClose, onPick, canManage }: P
                 value={draftTitle}
                 onChange={(e) => setDraftTitle(e.target.value)}
                 placeholder="Title (e.g. Greeting)"
-                className="w-full px-3 py-2 bg-[#1f2937] border border-[#374151] rounded-md text-[12px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#6366f1]"
+                className="w-full px-3 py-2 bg-[#1f2937] border border-[#374151] rounded-md text-[12px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#00AFF0]"
               />
               <textarea
                 value={draftBody}
                 onChange={(e) => setDraftBody(e.target.value)}
                 placeholder="Body of the reply…"
                 rows={4}
-                className="w-full px-3 py-2 bg-[#1f2937] border border-[#374151] rounded-md text-[12px] text-white placeholder:text-[#6b7280] resize-none focus:outline-none focus:border-[#6366f1]"
+                className="w-full px-3 py-2 bg-[#1f2937] border border-[#374151] rounded-md text-[12px] text-white placeholder:text-[#6b7280] resize-none focus:outline-none focus:border-[#00AFF0]"
               />
               <div className="flex items-center gap-2 justify-end">
                 <button
@@ -218,7 +218,7 @@ export function QuickReplyModal({ modelId, open, onClose, onPick, canManage }: P
                 <button
                   onClick={saveDraft}
                   disabled={saving || !draftTitle.trim() || !draftBody.trim()}
-                  className="px-4 py-1.5 bg-gradient-to-r from-[#6366f1] to-[#4f46e5] text-white rounded-md text-[12px] font-semibold disabled:opacity-50"
+                  className="px-4 py-1.5 bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] text-white rounded-md text-[12px] font-semibold disabled:opacity-50"
                 >
                   {saving ? "Saving…" : "Save"}
                 </button>

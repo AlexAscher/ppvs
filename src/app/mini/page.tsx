@@ -49,6 +49,7 @@ type TGWebApp = {
   ready?: () => void;
   expand?: () => void;
   close?: () => void;
+  openLink?: (url: string, options?: { try_instant_view?: boolean }) => void;
   initData?: string;
   initDataUnsafe?: { start_param?: string };
   themeParams?: { bg_color?: string };
@@ -78,8 +79,9 @@ declare global {
 export default function MiniAppPage() {
   const [boot, setBoot] = useState<InitResponse | null>(null);
   const [bootError, setBootError] = useState("");
-  const [state, setState] = useState<"locked" | "loading" | "delivered" | "error">("locked");
+  const [state, setState] = useState<"locked" | "loading" | "waiting" | "delivered" | "error">("locked");
   const [errMsg, setErrMsg] = useState("");
+  const [email, setEmail] = useState("");
 
   // Boot: load the TG SDK script, then call /api/mini/init with initData.
   useEffect(() => {
@@ -134,33 +136,69 @@ export default function MiniAppPage() {
     };
   }, []);
 
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+
+  // After opening the Malum checkout, poll /api/mini/init until the webhook
+  // flips the order to paid/delivered, then flip the screen. The webhook
+  // delivers the PPV/tip server-side regardless, so even if the fan closes
+  // the app the content still lands in their Telegram chat.
+  async function pollUntilPaid() {
+    const tg = window.Telegram?.WebApp;
+    const initData = tg?.initData ?? "";
+    const url = new URL(window.location.href);
+    const startParam = tg?.initDataUnsafe?.start_param ?? url.searchParams.get("code") ?? "";
+    const deadline = Date.now() + 10 * 60_000; // give up after 10 min
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 4000));
+      try {
+        const r = await fetch("/api/mini/init", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ initData, startParam }),
+        });
+        const j = (await r.json().catch(() => ({}))) as { status?: string };
+        if (j.status === "paid" || j.status === "delivered") {
+          tg?.HapticFeedback?.notificationOccurred?.("success");
+          setState("delivered");
+          return;
+        }
+      } catch {
+        /* transient — keep polling */
+      }
+    }
+  }
+
   async function handlePay() {
     if (!boot) return;
+    if (!emailValid) {
+      setErrMsg("Enter a valid email for your receipt.");
+      return;
+    }
     const tg = window.Telegram?.WebApp;
     tg?.HapticFeedback?.impactOccurred?.("medium");
     setState("loading");
     setErrMsg("");
     try {
-      // PPV vs tip dispatch via the existing legacy endpoints — no
-      // separate Mini App payment system; this is a transport wrap.
-      const url = boot.kind === "ppv" ? "/api/ppv/deliver" : "/api/tips/deliver";
-      const res = await fetch(url, {
+      // Open a real Malum checkout (PPV + tips both resolve by code). The
+      // webhook settles the payment + delivers; we just open the page and
+      // then poll for completion.
+      const res = await fetch("/api/payments/malum/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: boot.code }),
+        body: JSON.stringify({ code: boot.code, email: email.trim().toLowerCase() }),
       });
-      const data = (await res.json().catch(() => ({}))) as {
-        ok?: boolean;
-        error?: string;
-      };
-      if (!res.ok || data.error) {
+      const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
+      if (!res.ok || data.error || !data.url) {
         tg?.HapticFeedback?.notificationOccurred?.("error");
         setErrMsg(data.error || `HTTP ${res.status}`);
         setState("error");
         return;
       }
-      tg?.HapticFeedback?.notificationOccurred?.("success");
-      setState("delivered");
+      // Open the hosted checkout (Telegram in-app browser, else a new tab).
+      if (tg?.openLink) tg.openLink(data.url);
+      else window.open(data.url, "_blank");
+      setState("waiting");
+      void pollUntilPaid();
     } catch (e: unknown) {
       setErrMsg(e instanceof Error ? e.message : "Network error");
       setState("error");
@@ -189,6 +227,21 @@ export default function MiniAppPage() {
   }
 
   if (state === "delivered") return <DeliveredScreen boot={boot} />;
+
+  if (state === "waiting") {
+    return (
+      <Shell>
+        <div className="px-4 py-12 text-center">
+          <div className="inline-block w-8 h-8 border-2 border-[#374151] border-t-[#00AFF0] rounded-full animate-spin mb-4" />
+          <div className="text-[15px] font-semibold text-white mb-1">Waiting for payment…</div>
+          <div className="text-[13px] text-[#9ca3af] max-w-[320px] mx-auto leading-relaxed">
+            Finish the payment in the page that just opened. Your{" "}
+            {boot.kind === "tip" ? "tip" : "content"} arrives right here in this chat once it&apos;s confirmed.
+          </div>
+        </div>
+      </Shell>
+    );
+  }
 
   // ── Locked: preview + Pay button ────────────────────────────────────
   const itemCount = boot.kind === "ppv" ? boot.items.length : 1;
@@ -280,14 +333,25 @@ export default function MiniAppPage() {
           </div>
         )}
 
+        {/* Email — required by the payment provider for the receipt. */}
+        <input
+          type="email"
+          inputMode="email"
+          autoComplete="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Email for your receipt"
+          className="w-full px-4 py-3 mb-3 bg-[#161b22] border border-[#30363d] rounded-xl text-[14px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#00AFF0]"
+        />
+
         {/* Pay button */}
         <button
           onClick={handlePay}
-          disabled={state === "loading"}
+          disabled={state === "loading" || !emailValid}
           className="w-full py-3.5 bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] rounded-xl text-white font-semibold text-[15px] disabled:opacity-60 transition-all active:scale-[0.98]"
         >
           {state === "loading"
-            ? "Processing…"
+            ? "Opening checkout…"
             : boot.kind === "ppv"
               ? `🔓 Unlock for $${boot.total.toFixed(2)}`
               : `💸 Send tip $${boot.total.toFixed(2)}`}

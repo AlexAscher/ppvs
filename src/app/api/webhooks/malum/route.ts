@@ -100,8 +100,74 @@ export async function POST(req: NextRequest) {
       sendRaw = (data as SendRow | null) ?? null;
     }
     if (!sendRaw) {
+      // Not a PPV send — it may be a TIP checkout (same metadata = code).
+      // Tips carry no content to deliver; we just mark paid + record so the
+      // balance, chat event, and sales alert fire like a normal tip.
+      if (code && /^[a-z0-9]{6,16}$/i.test(code)) {
+        const { data: tipData } = await admin
+          .from("tips")
+          .select("id, model_id, peer_id, peer_username, amount, message, status, chatter_id")
+          .eq("code", code)
+          .maybeSingle();
+        type TipRow = {
+          id: string; model_id: string; peer_id: string; peer_username: string | null;
+          amount: number | string; message: string | null; status: string; chatter_id: string | null;
+        };
+        const tip = (tipData as TipRow | null) ?? null;
+        if (tip) {
+          if (tip.status === "paid") return Response.json({ ok: true, alreadyHandled: true });
+          const tnow = new Date().toISOString();
+          const { error: tErr } = await admin
+            .from("tips")
+            .update({ status: "paid", paid_at: tnow })
+            .eq("id", tip.id);
+          if (tErr) {
+            console.error("[malum/webhook] tip mark-paid failed:", tErr.message);
+            return Response.json({ error: "DB write failed" }, { status: 500 });
+          }
+          // fans.total_spent
+          after(async () => {
+            try {
+              const { data: existing } = await admin
+                .from("fans").select("id, total_spent")
+                .eq("model_id", tip.model_id).eq("peer_id", tip.peer_id).maybeSingle();
+              const prev = Number((existing as { total_spent?: number } | null)?.total_spent ?? 0);
+              await admin.from("fans").upsert(
+                { model_id: tip.model_id, peer_id: tip.peer_id, telegram_username: tip.peer_username,
+                  total_spent: prev + Number(tip.amount ?? 0), last_seen_at: tnow },
+                { onConflict: "model_id,peer_id" },
+              );
+            } catch (e) { console.error("[malum/webhook] tip total_spent failed:", e instanceof Error ? e.message : e); }
+          });
+          // chatter-only chat event
+          after(async () => {
+            try {
+              await admin.from("chat_system_events").insert({
+                model_id: tip.model_id, peer_id: tip.peer_id, kind: "tip_paid",
+                amount: Number(tip.amount ?? 0),
+                body: `Customer sent a tip of $${Number(tip.amount ?? 0).toFixed(2)}`,
+              });
+            } catch (e) { console.error("[malum/webhook] tip chat-event failed:", e instanceof Error ? e.message : e); }
+          });
+          // sales alert
+          after(async () => {
+            try {
+              const { data: m } = await admin.from("models").select("name, agency_user_id").eq("id", tip.model_id).maybeSingle();
+              const agencyUserId = (m as { agency_user_id?: string } | null)?.agency_user_id;
+              if (!agencyUserId) return;
+              sendSalesAlert({
+                type: "tip", agencyUserId, modelId: tip.model_id,
+                modelName: (m as { name?: string } | null)?.name ?? undefined,
+                fanDisplay: tip.peer_username ? `@${tip.peer_username}` : "Fan",
+                amount: Number(tip.amount ?? 0), message: tip.message, chatterId: tip.chatter_id ?? null,
+              });
+            } catch (e) { console.error("[malum/webhook] tip sales-alert failed:", e instanceof Error ? e.message : e); }
+          });
+          return Response.json({ ok: true, tip: true });
+        }
+      }
       console.warn(
-        "[malum/webhook] no matching send for txn=",
+        "[malum/webhook] no matching send/tip for txn=",
         event.txn,
         "metadata=",
         event.metadata,

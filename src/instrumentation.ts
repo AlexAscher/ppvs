@@ -32,6 +32,15 @@ export async function register() {
   } catch (e) {
     console.error("[instrumentation] alert bot start failed:", e instanceof Error ? e.message : e);
   }
+
+  // Keep models with auto-replies enabled connected so their first-message
+  // auto-reply fires instantly instead of after the next reconnect.
+  try {
+    const { startAutoReplyKeepAlive } = await import("@/lib/auto-reply-keepalive");
+    startAutoReplyKeepAlive();
+  } catch (e) {
+    console.error("[instrumentation] auto-reply keep-alive start failed:", e instanceof Error ? e.message : e);
+  }
 }
 
 async function setupProxy() {

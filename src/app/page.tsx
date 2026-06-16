@@ -315,44 +315,41 @@ export default function LandingPage() {
         </div>
       </nav>
 
-      {/* ── HERO ── */}
-      <section className="min-h-screen flex flex-col items-center justify-center px-8 text-center" style={{ background: "#080b12", paddingTop: "140px", paddingBottom: "140px" }}>
-        <div className="max-w-[820px] w-full">
-          <h1 className="text-white mb-6" style={{ fontSize: "60px", fontWeight: 800, lineHeight: 1.12, letterSpacing: "-0.03em" }}>
-            Turn Telegram chats<br />
-            into <span style={{ color: OF_BLUE }}>revenue</span>.
-          </h1>
-
-          <p className="mb-10 mx-auto" style={{ fontSize: "18px", color: "#8b95a8", maxWidth: "600px", lineHeight: 1.7 }}>
-            Sell PPVs, manage chatters, and get paid instantly.<br />
-            No monthly fees — just a 12% platform fee.
-          </p>
-
-          <div className="flex flex-col items-center gap-4">
-            <div className="flex items-center gap-4">
-              <Link href={startHref} className="px-8 py-4 rounded-xl text-white transition-all hover:opacity-90 active:scale-95" style={{ background: OF_BLUE, fontSize: "16px", fontWeight: 700, display: "inline-block" }}>
-                {startHeroLabel}
-              </Link>
-              <a href={BOOK_DEMO_HREF} target="_blank" rel="noopener noreferrer" className="px-8 py-4 rounded-xl text-white transition-all hover:opacity-80" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.13)", fontSize: "16px", fontWeight: 600, display: "inline-block" }}>
-                Book a demo →
-              </a>
-            </div>
-            <p style={{ fontSize: "13px", color: "#4b5563" }}>No subscriptions · No contracts · No KYC</p>
-          </div>
-
-          {/* Video placeholder */}
-          <div className="mt-12 w-full rounded-2xl overflow-hidden" style={{ background: "#141924", border: "1px solid rgba(255,255,255,0.08)", aspectRatio: "16/9", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.09)" }}>
-                <svg width="22" height="22" viewBox="0 0 22 22" fill="#374151">
-                  <path d="M7 4.5a1 1 0 0 1 1.6-.8l9 6.5a1 1 0 0 1 0 1.6l-9 6.5A1 1 0 0 1 7 17.5v-13z" />
-                </svg>
+      {/* ── HERO — split 70/30: text+buttons left, phone preview right ── */}
+      <section className="min-h-screen flex items-center px-8" style={{ background: "#080b12", paddingTop: "120px", paddingBottom: "120px" }}>
+        <div className="max-w-[1200px] mx-auto w-full grid items-center gap-10" style={{ gridTemplateColumns: "minmax(0, 7fr) minmax(0, 3fr)" }}>
+          {/* Left — 70% */}
+          <div>
+            <h1 className="text-white mb-6" style={{ fontSize: "60px", fontWeight: 800, lineHeight: 1.12, letterSpacing: "-0.03em" }}>
+              Turn Telegram chats<br />
+              into <span style={{ color: OF_BLUE }}>revenue</span>.
+            </h1>
+            <p className="mb-10" style={{ fontSize: "18px", color: "#8b95a8", maxWidth: "560px", lineHeight: 1.7 }}>
+              Sell PPVs, manage chatters, and get paid instantly.<br />
+              No monthly fees — just a 12% platform fee.
+            </p>
+            <div className="flex flex-col items-start gap-4">
+              <div className="flex items-center gap-4 flex-wrap">
+                <Link href={startHref} className="px-8 py-4 rounded-xl text-white transition-all hover:opacity-90 active:scale-95" style={{ background: OF_BLUE, fontSize: "16px", fontWeight: 700, display: "inline-block" }}>
+                  {startHeroLabel}
+                </Link>
+                <a href={BOOK_DEMO_HREF} target="_blank" rel="noopener noreferrer" className="px-8 py-4 rounded-xl text-white transition-all hover:opacity-80" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.13)", fontSize: "16px", fontWeight: 600, display: "inline-block" }}>
+                  Book a demo →
+                </a>
               </div>
-              <span style={{ fontSize: "13px", color: "#4b5563" }}>Product video coming soon</span>
+              <p style={{ fontSize: "13px", color: "#4b5563" }}>No subscriptions · No contracts · No KYC</p>
             </div>
           </div>
 
-          <p className="mt-5" style={{ fontSize: "13px", color: "#374151" }}>We only make money when you do. 12% of revenue, nothing else.</p>
+          {/* Right — 30% phone preview */}
+          <div className="flex items-center justify-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/landing/hero.png"
+              alt="ppvs.io product preview"
+              style={{ width: "100%", maxWidth: "360px", height: "auto", objectFit: "contain" }}
+            />
+          </div>
         </div>
       </section>
 
@@ -567,7 +564,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── PRICING ── */}
-      <section id="pricing" className="py-28 px-8" style={{ background: "#0f1420" }}>
+      <section id="pricing" className="py-20 px-8" style={{ background: "#0f1420" }}>
         <div className="max-w-[880px] mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-white mb-4" style={{ fontSize: "36px", fontWeight: 800, letterSpacing: "-0.02em" }}>
@@ -599,7 +596,7 @@ export default function LandingPage() {
                   "Content vault with tagging",
                   "Real-time revenue tracking",
                   "Telegram native integration",
-                  "Crypto & card payments · no KYC payouts",
+                  "Crypto & card payments",
                   "Role-based access for your whole team",
                 ].map((f, i) => (
                   <div key={i} className="flex items-start gap-3" style={{ fontSize: "14px", color: "#d1d5db" }}>
@@ -614,21 +611,20 @@ export default function LandingPage() {
               <p className="text-center mt-3" style={{ fontSize: "12px", color: "#4b5563" }}>No credit card. No KYC. No contracts.</p>
             </div>
 
-            {/* Plan 2 — AI Autopilot */}
-            <div className="flex flex-col p-8 rounded-2xl" style={{ background: "#0d1018", border: "2px solid rgba(255,255,255,0.08)" }}>
-              <div className="inline-flex items-center gap-2 mb-5 px-3 py-1.5 rounded-full" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "#6b7280", fontSize: "11px", fontWeight: 700, width: "fit-content", letterSpacing: "0.04em" }}>
+            {/* Plan 2 — AI Autopilot (mirrors Free forever's positioning:
+                floating ribbon, header, big stat, list, button at bottom). */}
+            <div className="flex flex-col p-8 rounded-2xl" style={{ background: "#0d1018", border: "2px solid rgba(255,255,255,0.08)", position: "relative" }}>
+              <div style={{ position: "absolute", top: "-14px", left: "32px", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.14)", color: "#9ca3af", fontSize: "11px", fontWeight: 700, padding: "4px 14px", borderRadius: "999px", letterSpacing: "0.04em", display: "inline-flex", alignItems: "center", gap: "6px" }}>
                 <Bot className="w-3 h-3" /> COMING SOON
               </div>
               <div className="mb-5">
                 <div className="text-white mb-2" style={{ fontSize: "22px", fontWeight: 700 }}>AI Autopilot 🤖</div>
                 <div style={{ fontSize: "14px", color: "#6b7280", lineHeight: 1.6 }}>Your agency runs 24/7 — even when your chatters are offline.</div>
               </div>
-              <div className="mb-2">
+              <div className="mb-8 flex items-baseline gap-2">
                 <span className="text-white" style={{ fontSize: "44px", fontWeight: 800, letterSpacing: "-0.03em" }}>TBD</span>
+                <span style={{ fontSize: "14px", color: "#6b7280" }}>pricing</span>
               </div>
-              <p className="mb-8" style={{ fontSize: "13px", color: "#4b5563", lineHeight: 1.7 }}>
-                The AI handles fan conversations, recommends PPVs based on spending history, and sends them automatically.
-              </p>
               <div className="flex flex-col gap-3 mb-8 flex-1">
                 {[
                   "Everything in Free forever",
@@ -643,18 +639,19 @@ export default function LandingPage() {
                   </div>
                 ))}
               </div>
-              <button disabled className="w-full py-4 rounded-xl transition-all" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "#6b7280", fontSize: "15px", fontWeight: 600, cursor: "not-allowed" }}>
+              <button disabled className="w-full py-4 rounded-xl text-center" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "#6b7280", fontSize: "15px", fontWeight: 700, cursor: "not-allowed", display: "block" }}>
                 Join waitlist →
               </button>
+              <p className="text-center mt-3" style={{ fontSize: "12px", color: "#4b5563" }}>Coming soon · We&apos;ll let you know.</p>
             </div>
           </div>
         </div>
       </section>
 
       {/* ── FAQ ── */}
-      <section id="faq" className="py-28 px-8" style={{ background: "#0f1420" }}>
+      <section id="faq" className="py-16 px-8" style={{ background: "#0f1420" }}>
         <div className="max-w-[760px] mx-auto">
-          <div className="text-center mb-16">
+          <div className="text-center mb-10">
             <h2 className="text-white" style={{ fontSize: "34px", fontWeight: 800, letterSpacing: "-0.02em" }}>
               Common questions 🙋
             </h2>
@@ -703,7 +700,8 @@ export default function LandingPage() {
                 <img src={LOGO_SRC} alt="ppvs.io" style={{ height: "26px", width: "auto", objectFit: "contain" }} />
               </div>
               <p style={{ fontSize: "13px", color: "#4b5563", lineHeight: 1.7, maxWidth: "300px" }}>
-                A software that lets OFM agencies sell PPVs inside Telegram.
+                A software that lets OFM agencies<br />
+                sell PPVs inside Telegram.
               </p>
             </div>
             <div>
@@ -727,7 +725,9 @@ export default function LandingPage() {
               <div className="flex flex-col gap-3">
                 <Link href="/terms" className="transition-colors hover:text-white" style={{ fontSize: "14px", color: "#4b5563" }}>Terms of Service</Link>
                 <Link href="/privacy" className="transition-colors hover:text-white" style={{ fontSize: "14px", color: "#4b5563" }}>Privacy Policy</Link>
-                <Link href="/dmca" className="transition-colors hover:text-white" style={{ fontSize: "14px", color: "#4b5563" }}>DMCA</Link>
+                <Link href="/acceptable-use" className="transition-colors hover:text-white" style={{ fontSize: "14px", color: "#4b5563" }}>Acceptable Use Policy</Link>
+                <Link href="/content-policy" className="transition-colors hover:text-white" style={{ fontSize: "14px", color: "#4b5563" }}>Content Policy</Link>
+                <Link href="/dmca" className="transition-colors hover:text-white" style={{ fontSize: "14px", color: "#4b5563" }}>Copyright & Takedowns</Link>
               </div>
             </div>
           </div>

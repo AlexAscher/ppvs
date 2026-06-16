@@ -1,43 +1,151 @@
 import { LegalShell } from "@/components/legal/LegalShell";
 
-export const metadata = { title: "DMCA Policy · ppvs.io" };
+export const metadata = { title: "Copyright & DMCA Policy · ppvs.io" };
 
 export default function DmcaPage() {
   return (
     <LegalShell
-      title="DMCA Policy"
+      title="Copyright & DMCA Policy"
       updated="June 2026"
+      intro={[
+        'ppvs.io ("ppvs.io", "we", "our", or "us") respects the intellectual property rights of others and expects all users of the platform to do the same.',
+        "This Copyright & DMCA Policy explains how copyright owners may report alleged copyright infringement and how ppvs.io responds to such reports.",
+        "This Policy forms part of the Terms of Service, Acceptable Use Policy, and Content Policy.",
+      ]}
       sections={[
         {
-          heading: "1. Copyright Policy",
-          paragraphs: [
-            "ppvs.io respects intellectual property rights and responds to valid notices of alleged copyright infringement under the Digital Millennium Copyright Act (DMCA).",
+          heading: "Copyright Ownership",
+          blocks: [
+            { kind: "p", text: "Users may only upload, distribute, sell, or otherwise make available content that they:" },
+            { kind: "ul", items: [
+              "Own;",
+              "Have created themselves; or",
+              "Have obtained all necessary rights, permissions, licenses, and authorizations to use.",
+            ] },
+            { kind: "p", text: "Users are solely responsible for ensuring they possess the rights required to upload and distribute content through the Service." },
           ],
         },
         {
-          heading: "2. Filing a Notice of Infringement",
-          paragraphs: [
-            "To report content you believe infringes your copyright, send a written notice to our designated agent that includes:",
-            "(1) your physical or electronic signature; (2) identification of the copyrighted work claimed to be infringed; (3) identification of the material that is claimed to be infringing and its location; (4) your contact information (name, address, email); (5) a statement that you have a good-faith belief the use is not authorized; and (6) a statement, under penalty of perjury, that the information is accurate and that you are the copyright owner or authorized to act on their behalf.",
+          heading: "Copyright Infringement",
+          blocks: [
+            { kind: "p", text: "Users may not upload, distribute, sell, or otherwise make available content that infringes:" },
+            { kind: "ul", items: [
+              "Copyright rights;", "Trademark rights;", "Publicity rights;",
+              "Privacy rights; or", "Any other intellectual property rights.",
+            ] },
+            { kind: "p", text: "Uploading stolen, copied, leaked, or otherwise unauthorized content is strictly prohibited." },
           ],
         },
         {
-          heading: "3. Designated Agent",
-          paragraphs: [
-            "Send notices to our designated agent: [Agent name and email — replace with your details].",
+          heading: "Reporting Copyright Infringement",
+          blocks: [
+            { kind: "p", text: "If you believe content available through ppvs.io infringes your copyright, you may submit a notice to:" },
+            { kind: "p", text: "Email: hello@ppvs.io" },
+            { kind: "p", text: "Your notice should include:" },
+            { kind: "h3", text: "Identification of the copyrighted work" },
+            { kind: "p", text: "A description of the copyrighted work you claim has been infringed." },
+            { kind: "h3", text: "Identification of the allegedly infringing content" },
+            { kind: "p", text: "Information sufficient to locate the content on the platform." },
+            { kind: "h3", text: "Contact information" },
+            { kind: "p", text: "Including:" },
+            { kind: "ul", items: ["Full name", "Email address", "Telephone number (if available)"] },
+            { kind: "h3", text: "Good-faith statement" },
+            { kind: "p", text: "A statement that you have a good-faith belief that the use of the material is not authorized by the copyright owner, its agent, or the law." },
+            { kind: "h3", text: "Accuracy statement" },
+            { kind: "p", text: "A statement that the information provided is accurate and that you are the copyright owner or authorized to act on behalf of the copyright owner." },
           ],
         },
         {
-          heading: "4. Counter-Notification",
-          paragraphs: [
-            "If your content was removed and you believe it was a mistake or misidentification, you may submit a counter-notification containing the statements required by the DMCA. We may restore the content if the original complainant does not pursue legal action within the period required by law.",
+          heading: "Investigation Process",
+          blocks: [
+            { kind: "p", text: "Upon receiving a copyright complaint, ppvs.io may:" },
+            { kind: "ul", items: [
+              "Review the complaint.",
+              "Request additional information.",
+              "Contact the affected user.",
+              "Temporarily disable access to content.",
+              "Remove content.",
+              "Suspend accounts.",
+              "Terminate accounts.",
+            ] },
+            { kind: "p", text: "We reserve the right to determine, in our sole discretion, how to investigate and resolve copyright complaints." },
           ],
         },
         {
-          heading: "5. Repeat Infringers",
-          paragraphs: [
-            "We terminate, in appropriate circumstances, the accounts of users who are repeat infringers.",
+          heading: "Counter-Notifications",
+          blocks: [
+            { kind: "p", text: "If your content has been removed as a result of a copyright complaint and you believe the removal was made in error, you may submit a counter-notification." },
+            { kind: "p", text: "Counter-notifications should include:" },
+            { kind: "ul", items: [
+              "Identification of the removed content.",
+              "A statement explaining why you believe the removal was incorrect.",
+              "Your contact information.",
+              "Any supporting evidence demonstrating your rights to the content.",
+            ] },
           ],
+        },
+        {
+          heading: "Repeat Infringers",
+          blocks: [
+            { kind: "p", text: "ppvs.io may suspend or terminate accounts belonging to users who repeatedly infringe the intellectual property rights of others." },
+            { kind: "p", text: "We reserve the right to determine what constitutes repeated infringement." },
+          ],
+        },
+        {
+          heading: "Non-Consensual and Stolen Content",
+          blocks: [
+            { kind: "p", text: "If you believe content depicting you has been uploaded without authorization, consent, or legal rights, you may contact:" },
+            { kind: "p", text: "Email: hello@ppvs.io" },
+            { kind: "p", text: "Reports should include sufficient information to:" },
+            { kind: "ul", items: [
+              "Identify the content.",
+              "Verify your identity.",
+              "Explain the basis of the complaint.",
+            ] },
+            { kind: "p", text: "ppvs.io may remove content while an investigation is conducted." },
+          ],
+        },
+        {
+          heading: "False Reports",
+          blocks: [
+            { kind: "p", text: "Submitting knowingly false, misleading, or fraudulent copyright complaints is prohibited." },
+            { kind: "p", text: "ppvs.io reserves the right to reject complaints and take action against users who abuse the reporting process." },
+          ],
+        },
+        {
+          heading: "No Liability for User Content",
+          blocks: [
+            { kind: "p", text: "ppvs.io acts solely as a software platform that enables users to upload and distribute content." },
+            { kind: "p", text: "Users remain solely responsible for all content uploaded through the Service." },
+            { kind: "p", text: "Nothing in this Policy shall be interpreted as creating any obligation for ppvs.io to actively monitor all content for potential copyright violations." },
+          ],
+        },
+        {
+          heading: "Reservation of Rights",
+          blocks: [
+            { kind: "p", text: "ppvs.io reserves the right to:" },
+            { kind: "ul", items: [
+              "Remove any content at any time.",
+              "Disable access to content.",
+              "Restrict user accounts.",
+              "Suspend withdrawals.",
+              "Terminate accounts.",
+              "Cooperate with copyright owners, payment providers, regulators, and law enforcement authorities.",
+            ] },
+            { kind: "p", text: "Such actions may be taken even where infringement has not been conclusively established." },
+          ],
+        },
+        {
+          heading: "Changes to This Policy",
+          blocks: [
+            { kind: "p", text: "We may update this Policy from time to time." },
+            { kind: "p", text: "Updated versions will be published with a revised effective date." },
+            { kind: "p", text: "Continued use of the Service following publication of an updated version constitutes acceptance of the revised Policy." },
+          ],
+        },
+        {
+          heading: "Contact",
+          blocks: [{ kind: "p", text: "Email: hello@ppvs.io" }],
         },
       ]}
     />

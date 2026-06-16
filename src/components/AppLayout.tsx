@@ -238,11 +238,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       {/* Sidebar */}
       <aside className="w-[220px] shrink-0 bg-[var(--dash-surface)] border-r border-[var(--dash-border)] flex flex-col h-full">
         <div className="px-5 py-[18px] border-b border-[var(--dash-border)]">
-          <Link href="/" className="flex items-center gap-2.5">
-            <Logo size={30} />
-            <span className="text-[15px] font-semibold tracking-tight">
-              ppvs<span className="text-[var(--blue)]">.io</span>
-            </span>
+          <Link href="/" className="flex items-center">
+            <Logo size={28} />
           </Link>
         </div>
 

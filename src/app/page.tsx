@@ -17,7 +17,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  LockOpen,
   Check,
   ChevronRight,
   Bot,
@@ -112,7 +111,7 @@ const faqGroups = [
     items: [
       { q: "How do fans pay?", a: "Fans pay by card (Visa, Mastercard, Apple Pay) or crypto. No account creation needed — they click the link, pay, and the content unlocks instantly." },
       { q: "How do I get paid?", a: "Revenue lands in your ppvs.io balance after each transaction. Withdraw anytime to USDT, BTC, or ETH. Minimum withdrawal is $20. No KYC required to withdraw." },
-      { q: "What is the 10% fee exactly?", a: "We take 10% of every transaction that goes through the platform. This covers payment processing, hosting, and our platform fee. There are no other fees — no monthly cost, no setup fee, no per-seat pricing." },
+      { q: "What is the 12% fee exactly?", a: "We take 12% of every transaction that goes through the platform. This covers payment processing, hosting, and our platform fee. There are no other fees — no monthly cost, no setup fee, no per-seat pricing." },
       { q: "Are there chargebacks?", a: "Crypto payments are irreversible — no chargebacks ever." },
     ],
   },
@@ -319,18 +318,14 @@ export default function LandingPage() {
       {/* ── HERO ── */}
       <section className="min-h-screen flex flex-col items-center justify-center px-8 text-center" style={{ background: "#080b12", paddingTop: "140px", paddingBottom: "140px" }}>
         <div className="max-w-[820px] w-full">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full mb-10" style={{ background: "rgba(0,175,240,0.1)", border: "1px solid rgba(0,175,240,0.25)", color: OF_BLUE, fontSize: "12px", fontWeight: 600, letterSpacing: "0.04em" }}>
-            <LockOpen className="w-3.5 h-3.5" />
-            all-in-one OFM management software
-          </div>
-
           <h1 className="text-white mb-6" style={{ fontSize: "60px", fontWeight: 800, lineHeight: 1.12, letterSpacing: "-0.03em" }}>
-            Turn Telegram chats into{" "}
-            <span style={{ color: OF_BLUE }}>revenue.</span>
+            Turn Telegram chats<br />
+            into <span style={{ color: OF_BLUE }}>revenue</span>.
           </h1>
 
           <p className="mb-10 mx-auto" style={{ fontSize: "18px", color: "#8b95a8", maxWidth: "600px", lineHeight: 1.7 }}>
-            Sell PPVs, manage chatters, and get paid instantly. No monthly fees — just a 10% platform fee.
+            Sell PPVs, manage chatters, and get paid instantly.<br />
+            No monthly fees — just a 12% platform fee.
           </p>
 
           <div className="flex flex-col items-center gap-4">
@@ -357,7 +352,7 @@ export default function LandingPage() {
             </div>
           </div>
 
-          <p className="mt-5" style={{ fontSize: "13px", color: "#374151" }}>We only make money when you do. 10% of revenue, nothing else.</p>
+          <p className="mt-5" style={{ fontSize: "13px", color: "#374151" }}>We only make money when you do. 12% of revenue, nothing else.</p>
         </div>
       </section>
 
@@ -371,9 +366,9 @@ export default function LandingPage() {
         <div className="ppv-marquee">
           {[
             "Visa", "Mastercard", "Apple Pay", "Google Pay", "Bitcoin",
-            "USDT", "Ethereum", "USDC", "Litecoin", "Binance Pay",
+            "USDT", "Ethereum", "USDC", "Litecoin",
             "Visa", "Mastercard", "Apple Pay", "Google Pay", "Bitcoin",
-            "USDT", "Ethereum", "USDC", "Litecoin", "Binance Pay",
+            "USDT", "Ethereum", "USDC", "Litecoin",
           ].map((label, i) => (
             <div key={i} className="flex items-center gap-2 mx-3 px-5 py-2 rounded-full" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", whiteSpace: "nowrap" }}>
               <span className="flex items-center justify-center shrink-0"><PayIcon name={label} /></span>
@@ -384,9 +379,9 @@ export default function LandingPage() {
       </div>
 
       {/* ── FEATURES ── */}
-      <section id="features" className="py-28 px-8" style={{ background: "#0f1420" }}>
+      <section id="features" className="py-16 px-8" style={{ background: "#0f1420" }}>
         <div className="max-w-[1200px] mx-auto">
-          <div className="mb-14">
+          <div className="mb-8">
             <h2 className="text-white mb-3" style={{ fontSize: "36px", fontWeight: 800, letterSpacing: "-0.02em" }}>
               Everything you need to run a Telegram OFM agency. 📈
             </h2>
@@ -394,7 +389,7 @@ export default function LandingPage() {
           </div>
 
           {/* Interactive feature selector */}
-          <div className="flex gap-12 mb-16" style={{ minHeight: "380px" }}>
+          <div className="flex gap-8" style={{ minHeight: "300px" }}>
             {/* Left: feature list */}
             <div className="flex flex-col gap-8 shrink-0" style={{ width: "260px" }}>
               <div>
@@ -457,7 +452,7 @@ export default function LandingPage() {
 
             {/* Right: image + feature info */}
             <div className="flex-1 rounded-2xl flex flex-col overflow-hidden" style={{ background: "#141924", border: `1px solid rgba(0,175,240,0.2)` }}>
-              <div className="flex-1 flex items-center justify-center px-12 py-12 text-center" style={{ background: "#181d28" }}>
+              <div className="flex-1 flex items-center justify-center px-8 py-8 text-center" style={{ background: "#181d28" }}>
                 <div className="flex flex-col items-center gap-3">
                   <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: "rgba(0,175,240,0.12)", border: "1px solid rgba(0,175,240,0.25)", fontSize: "26px" }}>
                     {currentFeature.emoji}
@@ -579,7 +574,7 @@ export default function LandingPage() {
               Keep more. Pay less. 💎
             </h2>
             <p style={{ fontSize: "16px", color: "#6b7280", maxWidth: "520px", margin: "0 auto", lineHeight: 1.7 }}>
-              Our platform fee is just 10% — about half the industry standard. No subscriptions, no setup fees, and no contracts.
+              Our platform fee is just 12% — about half the industry standard. No subscriptions, no setup fees, and no contracts.
             </p>
           </div>
 
@@ -594,7 +589,7 @@ export default function LandingPage() {
                 <div style={{ fontSize: "14px", color: "#6b7280", lineHeight: 1.6 }}>We only make money when you make money.</div>
               </div>
               <div className="mb-8 flex items-baseline gap-2">
-                <span className="text-white" style={{ fontSize: "44px", fontWeight: 800, letterSpacing: "-0.03em" }}>10%</span>
+                <span className="text-white" style={{ fontSize: "44px", fontWeight: 800, letterSpacing: "-0.03em" }}>12%</span>
                 <span style={{ fontSize: "14px", color: "#6b7280" }}>of sales</span>
               </div>
               <div className="flex flex-col gap-3 mb-8 flex-1">

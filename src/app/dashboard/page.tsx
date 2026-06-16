@@ -1262,7 +1262,7 @@ function WalletTab() {
             </div>
             <div className="text-[36px] font-bold text-white">{money(netAllTime)}</div>
             <div className="flex items-center gap-2 mt-2 text-[13px] text-white/80">
-              <TrendingUp className="w-4 h-4" /><span>All-time, after 10% platform fee</span>
+              <TrendingUp className="w-4 h-4" /><span>All-time, after 12% platform fee</span>
             </div>
           </div>
           <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-6">
@@ -1291,7 +1291,7 @@ function WalletTab() {
                 <div className="text-[22px] font-bold text-white mt-1">{money(splitTotals.gross)}</div>
               </div>
               <div className="bg-[#0f131a] border border-[#2a2d35] rounded-lg p-4">
-                <div className="text-[10px] uppercase tracking-wider text-[#9ca3af]">Platform fee 10%</div>
+                <div className="text-[10px] uppercase tracking-wider text-[#9ca3af]">Platform fee 12%</div>
                 <div className="text-[22px] font-bold text-[#9ca3af] mt-1">−{money(splitTotals.platformFee)}</div>
               </div>
               <div className="bg-gradient-to-br from-[#00AFF0]/20 to-[#00AFF0]/10 border border-[#00AFF0]/40 rounded-lg p-4">

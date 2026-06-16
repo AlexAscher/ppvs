@@ -319,7 +319,7 @@ export default function MiniAppPage() {
               <span className="text-white font-medium">${boot.basePrice.toFixed(2)}</span>
             </div>
             <div className="flex items-center justify-between text-[13px]">
-              <span className="text-[#9ca3af]">Service fee (10%)</span>
+              <span className="text-[#9ca3af]">Service fee (12%)</span>
               <span className="text-white font-medium">
                 ${(boot.total - boot.basePrice).toFixed(2)}
               </span>

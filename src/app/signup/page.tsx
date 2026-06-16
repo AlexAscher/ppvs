@@ -15,7 +15,7 @@ function RoleCard({ selected, onClick, icon, title, desc }: {
     <button
       type="button"
       onClick={onClick}
-      className="flex-1 text-left p-[15px_14px] rounded-[10px] transition-all cursor-pointer border-none outline-none"
+      className="flex-1 flex flex-col min-h-[132px] text-left p-[15px_14px] rounded-[10px] transition-all cursor-pointer border-none outline-none"
       style={{
         border: selected ? "1px solid var(--blue)" : "1px solid var(--border)",
         background: selected ? "rgba(0,175,240,0.06)" : "var(--bg)",
@@ -27,7 +27,7 @@ function RoleCard({ selected, onClick, icon, title, desc }: {
       </div>
       <div className="text-[11px] text-[var(--text-3)]" style={{ lineHeight: 1.5 }}>{desc}</div>
       <div
-        className="mt-2.5 w-[16px] h-[16px] rounded-full flex items-center justify-center transition-all"
+        className="mt-auto w-[16px] h-[16px] rounded-full flex items-center justify-center transition-all"
         style={{ background: selected ? "var(--blue)" : "transparent", border: selected ? "none" : "1px solid var(--border)" }}
       >
         {selected && (
@@ -42,7 +42,7 @@ function RoleCard({ selected, onClick, icon, title, desc }: {
 
 export default function SignupPage() {
   const router = useRouter();
-  const [role, setRole] = useState<Role>("chatter");
+  const [role, setRole] = useState<Role>("agency");
   const [agencyName, setAgencyName] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
@@ -119,20 +119,20 @@ export default function SignupPage() {
 
             <div>
               <div className="text-[12px] text-[var(--text-2)] font-medium mb-2.5">I am a...</div>
-              <div className="flex gap-2.5">
-                <RoleCard
-                  selected={role === "chatter"}
-                  onClick={() => setRole("chatter")}
-                  icon="💬"
-                  title="Chatter"
-                  desc="Work for an agency, sell PPV content to fans on Telegram"
-                />
+              <div className="flex gap-2.5 items-stretch">
                 <RoleCard
                   selected={role === "agency"}
                   onClick={() => setRole("agency")}
                   icon="🏢"
                   title="Agency"
                   desc="Manage chatters and creators, track all PPV performance"
+                />
+                <RoleCard
+                  selected={role === "chatter"}
+                  onClick={() => setRole("chatter")}
+                  icon="💬"
+                  title="Chatter"
+                  desc="Work for an agency, sell PPV content to fans on Telegram"
                 />
               </div>
             </div>

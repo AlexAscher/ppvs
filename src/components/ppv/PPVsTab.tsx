@@ -388,7 +388,7 @@ export function PPVsTab() {
               disabled={!selectedModelId}
               className="px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] font-medium text-white hover:bg-[#374151] transition-all flex items-center gap-2 disabled:opacity-50"
             >
-              <Tag className="w-4 h-4" />Add Tags
+              <Tag className="w-4 h-4" />Manage Tags
             </button>
             <button
               onClick={() => setShowCreateGroup(true)}

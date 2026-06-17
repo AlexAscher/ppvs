@@ -1,6 +1,6 @@
 "use client";
 
-import { Send, Lock, RefreshCw, ArrowLeft } from "lucide-react";
+import { RefreshCw, ArrowLeft } from "lucide-react";
 
 interface ModelChip {
   id: string;
@@ -66,13 +66,13 @@ export function Topbar({
             <ArrowLeft className="w-4 h-4" />
           </button>
         )}
-        <div className="w-7 h-7 bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-md flex items-center justify-center relative shadow-sm shrink-0">
-          <Send className="w-3.5 h-3.5 text-white" />
-          <Lock className="w-2 h-2 text-white absolute bottom-0.5 right-0.5" />
-        </div>
-        <div className="text-[13px] font-semibold truncate shrink-0">
-          chatter<span className="text-[#00AFF0]">.ppvs.io</span>
-        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/landing/logo.png"
+          alt="ppvs.io"
+          className="h-7 w-auto shrink-0"
+          style={{ objectFit: "contain" }}
+        />
         {hasModels && (
           <div className="flex items-center gap-1.5 flex-wrap">
             {models!.map((m) => {

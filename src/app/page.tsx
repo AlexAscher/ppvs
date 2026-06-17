@@ -21,6 +21,10 @@ import {
   ChevronRight,
   Bot,
   ChevronDown,
+  Lock,
+  Users,
+  TrendingUp,
+  Wallet as WalletIcon,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 
@@ -249,6 +253,69 @@ function PayIcon({ name }: { name: string }) {
   }
 }
 
+/**
+ * CSS-only illustration for the «Your money. Your wallet» section.
+ * PPV Sale + Tip Received cards on the left feed into the central
+ * Available Balance card, which feeds a USDT Withdrawal Complete card on
+ * the right. No PNG — scales crisply, theme-aware.
+ */
+function PayoutFlowIllustration() {
+  return (
+    <div style={{ background: "#0a0d14", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "20px", padding: "32px 24px", minHeight: 360 }}>
+      <div className="grid grid-cols-[1fr_1.2fr_1fr] items-center gap-3 w-full">
+        {/* Left — two incoming cards */}
+        <div className="flex flex-col gap-3">
+          {[
+            { label: "PPV Sale", amount: "+$24.99" },
+            { label: "Tip Received", amount: "+$75.00" },
+          ].map((c, i) => (
+            <div key={i} style={{ background: "#11151c", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "14px", padding: "14px 14px" }}>
+              <div className="flex items-center gap-2 mb-1.5">
+                <div style={{ width: 22, height: 22, borderRadius: "6px", background: OF_BLUE, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="white"><path d="M22 2 11 13" /><path d="m22 2-7 20-4-9-9-4Z" stroke="white" strokeWidth="2" fill="none" strokeLinejoin="round"/></svg>
+                </div>
+                <span style={{ fontSize: "12px", color: "#9aa6b8" }}>{c.label}</span>
+              </div>
+              <div style={{ fontSize: "20px", fontWeight: 800, color: "#fff" }}>{c.amount}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Centre — Available Balance card with glow */}
+        <div className="relative" style={{ background: "#0d1117", border: `1.5px solid ${OF_BLUE}`, borderRadius: "16px", padding: "22px 18px", boxShadow: `0 0 38px rgba(0,175,240,0.18)` }}>
+          <div style={{ width: 34, height: 34, borderRadius: "8px", background: OF_BLUE, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
+            <span style={{ color: "white", fontWeight: 800, fontSize: 18 }}>$</span>
+          </div>
+          <div style={{ fontSize: "12px", color: "#9aa6b8", marginBottom: 4 }}>Available Balance</div>
+          <div style={{ fontSize: "26px", fontWeight: 800, color: "white", letterSpacing: "-0.02em", marginBottom: 12 }}>$12,842.51</div>
+          <div style={{ height: 1, background: "rgba(255,255,255,0.07)", marginBottom: 12 }} />
+          <div style={{ background: OF_BLUE, color: "white", textAlign: "center", padding: "10px", borderRadius: "10px", fontWeight: 700, fontSize: "13px" }}>
+            ⛁ Withdraw Funds
+          </div>
+        </div>
+
+        {/* Right — withdrawal complete */}
+        <div style={{ background: "#11151c", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "14px", padding: "14px 14px" }}>
+          <div style={{ width: 28, height: 28, borderRadius: "50%", background: "#26A17B", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 10 }}>
+            <span style={{ color: "white", fontWeight: 800, fontSize: 14 }}>₮</span>
+          </div>
+          <div className="flex items-center gap-1.5 mb-1">
+            <span style={{ fontSize: "11px", color: "#9aa6b8" }}>Withdrawal Complete</span>
+            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 14, height: 14, borderRadius: "50%", background: "#22c55e", color: "white", fontSize: 10, fontWeight: 800 }}>✓</span>
+          </div>
+          <div className="flex items-center gap-1.5 mb-2">
+            <span style={{ fontSize: "16px", fontWeight: 800, color: "white" }}>USDT</span>
+            <span style={{ fontSize: "10px", fontWeight: 700, color: "#9aa6b8", background: "rgba(255,255,255,0.06)", padding: "2px 6px", borderRadius: "999px" }}>TRC-20</span>
+          </div>
+          <div className="flex items-center gap-1 px-2 py-1.5 rounded-md" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
+            <span style={{ fontSize: "11px", color: "#cbd5e1", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis" }}>0xA7b3…9F2d</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function GreyImageBox({ label, minHeight = 320 }: { label: string; minHeight?: number }) {
   return (
     <div className="w-full rounded-2xl flex flex-col items-center justify-center" style={{ background: "#1a1f2a", border: "1px solid rgba(255,255,255,0.07)", minHeight }}>
@@ -333,26 +400,11 @@ export default function LandingPage() {
               Sell PPVs, manage chatters, and get paid instantly.<br />
               No monthly fees — just a 12% platform fee.
             </p>
-            <div className="flex flex-col items-start gap-3 mb-10">
+            <div className="flex flex-col items-start gap-3">
               <Link href={startHref} className="px-8 py-3.5 rounded-xl text-white transition-all hover:opacity-90 active:scale-95" style={{ background: OF_BLUE, fontSize: "15px", fontWeight: 700, display: "inline-block" }}>
                 {startHeroLabel}
               </Link>
               <p style={{ fontSize: "13px", color: "#4b5563" }}>No subscriptions · No contracts · No KYC</p>
-            </div>
-
-            {/* 4 quick-glance feature chips per pic 3 */}
-            <div className="grid grid-cols-4 gap-3" style={{ maxWidth: "560px" }}>
-              {[
-                { label: "Send PPVs\n& Tips", icon: "🔒" },
-                { label: "Manage\nChatters", icon: "💬" },
-                { label: "Track\nRevenue", icon: "📈" },
-                { label: "Withdraw\nin Crypto", icon: "💰" },
-              ].map((c, i) => (
-                <div key={i} className="rounded-xl flex flex-col items-center justify-center text-center" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", padding: "14px 10px" }}>
-                  <div style={{ fontSize: "22px", marginBottom: "8px" }}>{c.icon}</div>
-                  <div style={{ fontSize: "11px", fontWeight: 600, color: "#cbd5e1", lineHeight: 1.3, whiteSpace: "pre-line" }}>{c.label}</div>
-                </div>
-              ))}
             </div>
           </div>
 
@@ -365,6 +417,23 @@ export default function LandingPage() {
               style={{ width: "100%", maxWidth: "420px", height: "auto", objectFit: "contain" }}
             />
           </div>
+        </div>
+      </section>
+
+      {/* ── 4 feature chips under the hero (pic 2 reference) ── */}
+      <section className="px-8" style={{ background: "#080b12", paddingBottom: "80px" }}>
+        <div className="max-w-[720px] mx-auto grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {[
+            { label: "Send PPVs\n& Tips", Icon: Lock },
+            { label: "Manage\nChatters", Icon: Users },
+            { label: "Track\nRevenue", Icon: TrendingUp },
+            { label: "Withdraw\nin Crypto", Icon: WalletIcon },
+          ].map(({ label, Icon }, i) => (
+            <div key={i} className="rounded-2xl flex flex-col items-center justify-center text-center" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", padding: "18px 14px" }}>
+              <Icon className="w-7 h-7 mb-2.5" style={{ color: OF_BLUE }} />
+              <div style={{ fontSize: "12px", fontWeight: 600, color: "#e2e8f0", lineHeight: 1.35, whiteSpace: "pre-line" }}>{label}</div>
+            </div>
+          ))}
         </div>
       </section>
 
@@ -529,9 +598,9 @@ export default function LandingPage() {
         {/* ROW 2 — Image left, text right */}
         <div className="max-w-[1200px] mx-auto px-8 py-16">
           <div className="flex items-center gap-20">
-            {/* Image */}
+            {/* CSS illustration — PPV/Tip incomings → balance → withdrawal complete */}
             <div className="flex-1">
-              <GreyImageBox label="Withdrawal screen — balance, crypto address field, USDT / BTC / ETH options visible" minHeight={380} />
+              <PayoutFlowIllustration />
             </div>
             {/* Text */}
             <div className="flex-1">
@@ -556,26 +625,18 @@ export default function LandingPage() {
                 ))}
               </div>
 
-              {/* Withdrawal currencies */}
-              <div className="mt-7">
-                <div style={{ fontSize: "10px", fontWeight: 700, letterSpacing: "0.14em", color: "#4b5563", textTransform: "uppercase", marginBottom: "10px" }}>
-                  Withdraw in
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    { name: "Bitcoin", label: "BTC" },
-                    { name: "Ethereum", label: "ETH" },
-                    { name: "Litecoin", label: "LTC" },
-                    { name: "Monero", label: "XMR" },
-                    { name: "USDT", label: "USDT" },
-                    { name: "USDC", label: "USDC" },
-                  ].map((c) => (
-                    <div key={c.label} className="flex items-center gap-2 px-3 py-1.5 rounded-full" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
-                      <span className="flex items-center justify-center shrink-0"><PayIcon name={c.name} /></span>
-                      <span style={{ fontSize: "12px", fontWeight: 500, color: "#9ca3af" }}>{c.label}</span>
-                    </div>
-                  ))}
-                </div>
+              {/* Withdrawal currencies — only USDT + USDC, inline after the text. */}
+              <div className="mt-7 flex items-center flex-wrap gap-2">
+                <span style={{ fontSize: "13px", fontWeight: 600, color: "#9ca3af" }}>Withdraw in:</span>
+                {[
+                  { name: "USDT", label: "USDT" },
+                  { name: "USDC", label: "USDC" },
+                ].map((c) => (
+                  <div key={c.label} className="flex items-center gap-2 px-3 py-1.5 rounded-full" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                    <span className="flex items-center justify-center shrink-0"><PayIcon name={c.name} /></span>
+                    <span style={{ fontSize: "12px", fontWeight: 500, color: "#9ca3af" }}>{c.label}</span>
+                  </div>
+                ))}
               </div>
             </div>
           </div>

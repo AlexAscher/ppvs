@@ -528,35 +528,53 @@ export function ActionPanel({
 
         {activeTab === "tips" && (
           <div className="space-y-4">
-            <div className="grid grid-cols-3 gap-2">
-              {["$5", "$10", "$20"].map((amount) => (
-                <button
-                  key={amount}
-                  onClick={() => onTipAmountChange(amount.replace("$", ""))}
-                  className="py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[10px] font-semibold text-white hover:bg-[#374151] hover:border-[#4b5563] transition-all"
-                >
-                  {amount}
-                </button>
-              ))}
+            {/* Receipt preview — the agency sees the running tip total as
+                the chatter taps presets / types a custom amount. */}
+            <div className="rounded-xl border border-[#2a2d35] bg-gradient-to-br from-[#0d1117] to-[#161a22] px-4 py-3.5">
+              <div className="text-[10px] uppercase tracking-wider text-[#9ca3af]">You&apos;ll request</div>
+              <div className="text-[28px] font-bold text-white leading-none mt-1">
+                ${tipAmount && Number(tipAmount) > 0 ? Number(tipAmount).toFixed(2) : "0.00"}
+              </div>
+              <div className="text-[10px] text-[#6b7280] mt-1">from {recipientLabel}</div>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              {["$50", "$100"].map((amount) => (
-                <button
-                  key={amount}
-                  onClick={() => onTipAmountChange(amount.replace("$", ""))}
-                  className="py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[10px] font-semibold text-white hover:bg-[#374151] hover:border-[#4b5563] transition-all"
-                >
-                  {amount}
-                </button>
-              ))}
+
+            {/* Preset amounts — bigger, friendlier */}
+            <div>
+              <div className="text-[10px] text-[#9ca3af] uppercase tracking-wider mb-2">Quick amounts</div>
+              <div className="grid grid-cols-4 gap-2">
+                {["5", "10", "20", "50", "100", "200", "500", "1000"].map((amount) => {
+                  const active = tipAmount === amount;
+                  return (
+                    <button
+                      key={amount}
+                      onClick={() => onTipAmountChange(amount)}
+                      className={`py-2.5 rounded-lg text-[12px] font-semibold transition-all ${
+                        active
+                          ? "bg-[#00AFF0] text-white border border-[#00AFF0]"
+                          : "bg-[#1f2937] border border-[#374151] text-white hover:bg-[#252b36] hover:border-[#4b5563]"
+                      }`}
+                    >
+                      ${amount}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <input
-              type="text"
-              value={tipAmount}
-              onChange={(e) => onTipAmountChange(e.target.value.replace(/[^0-9.]/g, ""))}
-              placeholder="Custom amount..."
-              className="w-full px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[10px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#00AFF0]"
-            />
+
+            {/* Custom amount — pill-styled with $ prefix */}
+            <div>
+              <div className="text-[10px] text-[#9ca3af] uppercase tracking-wider mb-1.5">Custom amount</div>
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[14px] text-[#6b7280] pointer-events-none">$</span>
+                <input
+                  type="text"
+                  value={tipAmount}
+                  onChange={(e) => onTipAmountChange(e.target.value.replace(/[^0-9.]/g, ""))}
+                  placeholder="0.00"
+                  className="w-full pl-8 pr-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#00AFF0]"
+                />
+              </div>
+            </div>
             <div className="relative">
               <textarea
                 value={tipMessage}

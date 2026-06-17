@@ -11,7 +11,7 @@ type Props = {
 export function TagSelector({ allTags, selectedIds, onToggle }: Props) {
   if (allTags.length === 0) {
     return (
-      <p className="text-[12px] text-[#6b7280] italic">No tags yet. Create one via &quot;Add Tags&quot;.</p>
+      <p className="text-[12px] text-[#6b7280] italic">No tags yet. Create one via &quot;Manage Tags&quot;.</p>
     );
   }
   return (

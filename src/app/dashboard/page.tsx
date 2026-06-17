@@ -12,6 +12,7 @@ import {
   MessageSquare,
   TrendingUp, DollarSign,
   Plus, Link as LinkIcon, ArrowUpRight, LogOut, Menu,
+  Send, Lock,
 } from "lucide-react";
 import type { DashboardStats } from "@/app/api/dashboard/stats/route";
 import { agencyNet } from "@/lib/platform";
@@ -121,15 +122,22 @@ function AgencySidebar({
         }`}
       >
       <div className="h-[52px] border-b border-[#2a2d35] px-5 flex items-center gap-2">
-        {/* Brand P-key, same as chatter topbar — kept inline as SVG so we
-            don't drag in the wordmark and keep the sidebar header compact. */}
-        <svg viewBox="0 0 100 100" className="w-8 h-8 shrink-0" aria-hidden>
-          <rect width="100" height="100" rx="18" fill="#00AFF0" />
-          <path
-            d="M40 22h22a16 16 0 0 1 16 16v6a16 16 0 0 1-16 16H52v8h12v8H52v6H40V22zm12 12v18h10a6 6 0 0 0 6-6v-6a6 6 0 0 0-6-6H52z"
-            fill="#0d1117"
+        {/* Brand mark — Send + Lock inside a colored square. Explicit pixel
+            sizes via inline style so the sidebar survives if Tailwind's
+            `w-8 h-8` fails to load on the dashboard route. */}
+        <div
+          className="w-8 h-8 shrink-0 bg-[#00AFF0] rounded-lg flex items-center justify-center relative shadow-sm"
+          style={{ width: 32, height: 32, flex: "0 0 32px" }}
+        >
+          <Send
+            className="w-4 h-4 text-white"
+            style={{ width: 16, height: 16 }}
           />
-        </svg>
+          <Lock
+            className="w-2.5 h-2.5 text-white absolute bottom-0.5 right-0.5"
+            style={{ width: 10, height: 10 }}
+          />
+        </div>
         <div className="text-[15px] font-semibold">
           ppvs<span className="text-[#00AFF0]">.io</span>
         </div>

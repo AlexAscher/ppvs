@@ -1,6 +1,6 @@
 "use client";
 
-import { RefreshCw, ArrowLeft } from "lucide-react";
+import { RefreshCw, ArrowLeft, Send, Lock } from "lucide-react";
 
 interface ModelChip {
   id: string;
@@ -63,19 +63,25 @@ export function Topbar({
             title="Back to dashboard"
             className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#1f2937] text-[#9ca3af] hover:text-white transition-colors shrink-0 -ml-1"
           >
-            <ArrowLeft className="w-4 h-4" />
+            <ArrowLeft className="w-4 h-4" style={{ width: 16, height: 16 }} />
           </button>
         )}
-        {/* Brand-mark icon (the same P-key from /landing/logo.png, but
-            embedded inline as SVG so the topbar doesn't need an extra image
-            request and we don't drag in the wordmark next to it). */}
-        <svg viewBox="0 0 100 100" className="w-7 h-7 shrink-0" aria-hidden>
-          <rect width="100" height="100" rx="18" fill="#00AFF0" />
-          <path
-            d="M40 22h22a16 16 0 0 1 16 16v6a16 16 0 0 1-16 16H52v8h12v8H52v6H40V22zm12 12v18h10a6 6 0 0 0 6-6v-6a6 6 0 0 0-6-6H52z"
-            fill="#0d1117"
+        {/* Brand-mark — explicit pixel sizes + style fallback so the topbar
+            survives if Tailwind's `w-7 h-7` ever fails to apply on this
+            nested route (which once blew the SVG up to 100% of the screen). */}
+        <div
+          className="w-7 h-7 shrink-0 bg-[#00AFF0] rounded-md flex items-center justify-center relative shadow-sm"
+          style={{ width: 28, height: 28, flex: "0 0 28px" }}
+        >
+          <Send
+            className="w-3.5 h-3.5 text-white"
+            style={{ width: 14, height: 14 }}
           />
-        </svg>
+          <Lock
+            className="w-2 h-2 text-white absolute bottom-0.5 right-0.5"
+            style={{ width: 8, height: 8 }}
+          />
+        </div>
         <div className="text-[13px] font-semibold truncate shrink-0">
           chatter<span className="text-[#00AFF0]">.ppvs.io</span>
         </div>
@@ -122,7 +128,7 @@ export function Topbar({
             aria-label="Reload"
             className="w-8 h-8 flex items-center justify-center rounded-full bg-[#1f2937]/40 border border-[#374151]/50 text-[#9ca3af] hover:text-white hover:bg-[#1f2937] transition-colors disabled:opacity-50 shrink-0"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${reloading ? "animate-spin" : ""}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${reloading ? "animate-spin" : ""}`} style={{ width: 14, height: 14 }} />
           </button>
         )}
         <div className="hidden md:flex items-center gap-2 px-4 py-1.5 bg-[#1f2937]/40 border border-[#374151]/50 rounded-full max-w-[180px]">

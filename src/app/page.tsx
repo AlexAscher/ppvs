@@ -400,11 +400,28 @@ export default function LandingPage() {
               Sell PPVs, manage chatters, and get paid instantly.<br />
               No monthly fees — just a 12% platform fee.
             </p>
-            <div className="flex flex-col items-start gap-3">
+            <div className="flex flex-col items-start gap-3 mb-6">
               <Link href={startHref} className="px-8 py-3.5 rounded-xl text-white transition-all hover:opacity-90 active:scale-95" style={{ background: OF_BLUE, fontSize: "15px", fontWeight: 700, display: "inline-block" }}>
                 {startHeroLabel}
               </Link>
               <p style={{ fontSize: "13px", color: "#4b5563" }}>No subscriptions · No contracts · No KYC</p>
+            </div>
+
+            {/* 4 feature chips — INSIDE the left hero column, below the
+                "No subscriptions" microcopy. Smaller than the previous
+                full-width row per the user's arrow on the screenshot. */}
+            <div className="grid grid-cols-4 gap-2" style={{ maxWidth: "440px" }}>
+              {[
+                { label: "Send PPVs\n& Tips", Icon: Lock },
+                { label: "Manage\nChatters", Icon: Users },
+                { label: "Track\nRevenue", Icon: TrendingUp },
+                { label: "Withdraw\nin Crypto", Icon: WalletIcon },
+              ].map(({ label, Icon }, i) => (
+                <div key={i} className="rounded-lg flex flex-col items-center justify-center text-center" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", padding: "10px 6px" }}>
+                  <Icon className="w-5 h-5 mb-1.5" style={{ color: OF_BLUE }} />
+                  <div style={{ fontSize: "10px", fontWeight: 600, color: "#cbd5e1", lineHeight: 1.3, whiteSpace: "pre-line" }}>{label}</div>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -417,23 +434,6 @@ export default function LandingPage() {
               style={{ width: "100%", maxWidth: "420px", height: "auto", objectFit: "contain" }}
             />
           </div>
-        </div>
-      </section>
-
-      {/* ── 4 feature chips under the hero (pic 2 reference) ── */}
-      <section className="px-8" style={{ background: "#080b12", paddingBottom: "80px" }}>
-        <div className="max-w-[720px] mx-auto grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {[
-            { label: "Send PPVs\n& Tips", Icon: Lock },
-            { label: "Manage\nChatters", Icon: Users },
-            { label: "Track\nRevenue", Icon: TrendingUp },
-            { label: "Withdraw\nin Crypto", Icon: WalletIcon },
-          ].map(({ label, Icon }, i) => (
-            <div key={i} className="rounded-2xl flex flex-col items-center justify-center text-center" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", padding: "18px 14px" }}>
-              <Icon className="w-7 h-7 mb-2.5" style={{ color: OF_BLUE }} />
-              <div style={{ fontSize: "12px", fontWeight: 600, color: "#e2e8f0", lineHeight: 1.35, whiteSpace: "pre-line" }}>{label}</div>
-            </div>
-          ))}
         </div>
       </section>
 

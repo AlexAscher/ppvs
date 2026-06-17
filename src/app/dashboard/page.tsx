@@ -121,9 +121,15 @@ function AgencySidebar({
         }`}
       >
       <div className="h-[52px] border-b border-[#2a2d35] px-5 flex items-center gap-2">
-        <div className="w-8 h-8 bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-lg flex items-center justify-center">
-          <span className="text-white font-bold text-[14px]">P</span>
-        </div>
+        {/* Brand P-key, same as chatter topbar — kept inline as SVG so we
+            don't drag in the wordmark and keep the sidebar header compact. */}
+        <svg viewBox="0 0 100 100" className="w-8 h-8 shrink-0" aria-hidden>
+          <rect width="100" height="100" rx="18" fill="#00AFF0" />
+          <path
+            d="M40 22h22a16 16 0 0 1 16 16v6a16 16 0 0 1-16 16H52v8h12v8H52v6H40V22zm12 12v18h10a6 6 0 0 0 6-6v-6a6 6 0 0 0-6-6H52z"
+            fill="#0d1117"
+          />
+        </svg>
         <div className="text-[15px] font-semibold">
           ppvs<span className="text-[#00AFF0]">.io</span>
         </div>

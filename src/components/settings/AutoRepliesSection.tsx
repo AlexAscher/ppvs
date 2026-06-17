@@ -366,7 +366,7 @@ export function AutoRepliesSection() {
               <div className="relative rounded-lg overflow-hidden border border-[#374151] bg-[#1f2937] aspect-video flex items-center justify-center max-w-[360px]">
                 {config.mediaType === "video" ? (
                   <video
-                    src={config.mediaUrl}
+                    src={`/api/auto-reply/${selectedModelId}/media`}
                     controls
                     muted
                     className="w-full h-full object-contain"
@@ -377,9 +377,12 @@ export function AutoRepliesSection() {
                     <span>Image saved — preview couldn&apos;t load here, but the fan still receives it.</span>
                   </div>
                 ) : (
+                  // Hit the signed-URL endpoint so the preview keeps working
+                  // regardless of whether the `ppvs` bucket is public or
+                  // private (default getPublicUrl 403s on private bucket).
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={config.mediaUrl}
+                    src={`/api/auto-reply/${selectedModelId}/media`}
                     alt="Auto-reply attachment"
                     className="w-full h-full object-contain"
                     onError={() => setMediaBroke(true)}

@@ -742,16 +742,24 @@ export function TelegramChat({
             >
               <div className="relative shrink-0">
                 <FanAvatar modelId={modelId} peerId={chat.id} initials={chat.avatar} size={44} />
-                {/* Spent badge — overlays the bottom of the avatar (PayAndView
-                    style). Only shown when the fan has actually paid something. */}
-                {!!chat.spent && chat.spent > 0 && (
-                  <span
-                    className="absolute -bottom-1 left-1/2 -translate-x-1/2 px-1.5 py-px rounded-full bg-[#00AFF0] text-white text-[9px] font-bold leading-tight whitespace-nowrap shadow-md border border-[#0d1117]"
-                    title={`Total spent: $${chat.spent.toFixed(2)}`}
-                  >
-                    ${chat.spent >= 1000 ? `${(chat.spent / 1000).toFixed(1)}k` : Math.round(chat.spent)}
-                  </span>
-                )}
+                {/* Spent badge — always rendered. Paid fans get the
+                    bright accent; $0 fans get a muted grey badge so the
+                    chatter can see at a glance who's contributing.
+                    Falls back to 0 when chat.spent is undefined. */}
+                {(() => {
+                  const s = Number(chat.spent ?? 0);
+                  const paid = s > 0;
+                  return (
+                    <span
+                      className={`absolute -bottom-1 left-1/2 -translate-x-1/2 px-1.5 py-px rounded-full text-white text-[9px] font-bold leading-tight whitespace-nowrap shadow-md border border-[#0d1117] ${
+                        paid ? "bg-[#00AFF0]" : "bg-[#374151]"
+                      }`}
+                      title={paid ? `Total spent: $${s.toFixed(2)}` : "No spend yet"}
+                    >
+                      ${paid ? (s >= 1000 ? `${(s / 1000).toFixed(1)}k` : Math.round(s)) : 0}
+                    </span>
+                  );
+                })()}
               </div>
               <div className="flex-1 min-w-0 text-left">
                 <div className="flex items-center justify-between mb-1">

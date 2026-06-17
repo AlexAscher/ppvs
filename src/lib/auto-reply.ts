@@ -140,6 +140,16 @@ export function subscribeAutoReplyEvents(modelId: string, client: TelegramClient
       const senderId = evt.message.senderId?.toString();
       if (!senderId) return;
 
+      // ── Freshness gate ─────────────────────────────────────────────────
+      // When the keep-alive worker (or a chatter polling) reconnects a model
+      // that had its NewMessage handler detached, gramJS replays the message
+      // queue it missed — including DMs from HOURS ago. Without this gate the
+      // model would auto-reply to ancient first-messages every reconnect.
+      // Anything older than 5 minutes is treated as historical and dropped.
+      const msgDate = Number(evt.message.date ?? 0);
+      const nowSec = Math.floor(Date.now() / 1000);
+      if (!msgDate || nowSec - msgDate > 5 * 60) return;
+
       // Coalesce concurrent fires from the same fan — gramJS can deliver
       // the same message twice during re-sync.
       const inflightKey = `${modelId}:${senderId}`;

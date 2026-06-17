@@ -66,13 +66,19 @@ export function Topbar({
             <ArrowLeft className="w-4 h-4" />
           </button>
         )}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/landing/logo.png"
-          alt="ppvs.io"
-          className="h-7 w-auto shrink-0"
-          style={{ objectFit: "contain" }}
-        />
+        {/* Brand-mark icon (the same P-key from /landing/logo.png, but
+            embedded inline as SVG so the topbar doesn't need an extra image
+            request and we don't drag in the wordmark next to it). */}
+        <svg viewBox="0 0 100 100" className="w-7 h-7 shrink-0" aria-hidden>
+          <rect width="100" height="100" rx="18" fill="#00AFF0" />
+          <path
+            d="M40 22h22a16 16 0 0 1 16 16v6a16 16 0 0 1-16 16H52v8h12v8H52v6H40V22zm12 12v18h10a6 6 0 0 0 6-6v-6a6 6 0 0 0-6-6H52z"
+            fill="#0d1117"
+          />
+        </svg>
+        <div className="text-[13px] font-semibold truncate shrink-0">
+          chatter<span className="text-[#00AFF0]">.ppvs.io</span>
+        </div>
         {hasModels && (
           <div className="flex items-center gap-1.5 flex-wrap">
             {models!.map((m) => {

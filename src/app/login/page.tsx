@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { LogoWord } from "../logo";
@@ -14,6 +14,20 @@ function LoginForm() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const supabase = createClient();
+
+  // If we land on /login while a session already exists, forward straight to
+  // the dashboard (or the `?next=` target). Fixes the "I went back, then
+  // clicked Login again, why does it ask for the password" complaint —
+  // Supabase's cookie was still valid.
+  useEffect(() => {
+    let cancelled = false;
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (cancelled || !session) return;
+      const next = searchParams.get("next") ?? "/dashboard";
+      router.replace(next);
+    });
+    return () => { cancelled = true; };
+  }, [router, searchParams, supabase]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

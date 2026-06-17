@@ -1136,10 +1136,14 @@ type Payout = {
   id: string;
   amount: number;
   address: string | null;
+  currency?: string | null;
+  network?: string | null;
   status: string;
   created_at: string;
   paid_at: string | null;
 };
+
+const MIN_WITHDRAWAL_USD = 30;
 
 function WalletTab() {
   const supabase = createClient();
@@ -1150,24 +1154,12 @@ function WalletTab() {
 
   const [netAllTime, setNetAllTime] = useState<number | null>(null);
   const [available, setAvailable] = useState<number | null>(null);
+  const [platformFeeTotal, setPlatformFeeTotal] = useState<number | null>(null);
   const [payouts, setPayouts] = useState<Payout[]>([]);
+  const [confirmCorrect, setConfirmCorrect] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [msg, setMsg] = useState("");
 
-  // Agency split breakdown (all-time) — both gross turnover and the
-  // agency's own cut, plus what's owed to models / chatters per splits.
-  type SplitTotals = { gross: number; platformFee: number; modelCut: number; chatterCut: number; agencyCut: number };
-  type SplitPair = {
-    modelName: string;
-    chatterName: string;
-    gross: number;
-    platformFee: number;
-    modelCut: number;
-    chatterCut: number;
-    agencyCut: number;
-  };
-  const [splitTotals, setSplitTotals] = useState<SplitTotals | null>(null);
-  const [splitPairs, setSplitPairs] = useState<SplitPair[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1179,11 +1171,9 @@ function WalletTab() {
         if (saved) setAddress((a) => a || saved);
       });
       try {
-        const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
-        const [statsRes, payoutsRes, splitRes] = await Promise.all([
+        const [statsRes, payoutsRes] = await Promise.all([
           fetch("/api/dashboard/stats"),
           fetch("/api/payouts"),
-          fetch(`/api/payout/report?from=2000-01-01&to=${tomorrow}`),
         ]);
         if (cancelled) return;
         if (statsRes.ok) {
@@ -1195,11 +1185,8 @@ function WalletTab() {
           const p = await payoutsRes.json();
           setPayouts((p.payouts ?? []) as Payout[]);
           if (typeof p.availableBalance === "number") setAvailable(p.availableBalance);
-        }
-        if (splitRes.ok) {
-          const r = await splitRes.json();
-          if (r.totals) setSplitTotals(r.totals as SplitTotals);
-          if (r.byPair) setSplitPairs(r.byPair as SplitPair[]);
+          if (typeof p.netSalesTotal === "number") setNetAllTime(p.netSalesTotal);
+          if (typeof p.platformFeeTotal === "number") setPlatformFeeTotal(p.platformFeeTotal);
         }
       } catch {
         /* best-effort */
@@ -1212,25 +1199,34 @@ function WalletTab() {
   }, []);
 
   async function handleWithdraw() {
-    const amt = Number(amount);
+    const amt = Math.floor(Number(amount));
     setMsg("");
-    if (!Number.isFinite(amt) || amt < 20) {
-      setMsg("Minimum withdrawal is $20.");
+    if (!Number.isFinite(amt) || amt < MIN_WITHDRAWAL_USD) {
+      setMsg(`Minimum withdrawal is $${MIN_WITHDRAWAL_USD}.`);
       return;
     }
+    if (!address.trim()) { setMsg("Enter your withdrawal address."); return; }
+    if (!confirmCorrect) { setMsg("Please confirm the withdrawal information."); return; }
     setSubmitting(true);
     try {
+      const currencyName = cryptoOptions.find((c) => c.id === selectedCrypto)?.name ?? null;
       const res = await fetch("/api/payouts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: amt, address }),
+        body: JSON.stringify({
+          amount: amt,
+          address: address.trim(),
+          currency: currencyName,
+          network: selectedNetwork,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setPayouts((prev) => [data.payout as Payout, ...prev]);
       if (typeof data.availableBalance === "number") setAvailable(data.availableBalance);
       setAmount("");
-      setMsg("✓ Withdrawal requested — pending review.");
+      setConfirmCorrect(false);
+      setMsg("✓ Withdrawal requested — completed within 7 days.");
     } catch (e: unknown) {
       setMsg(e instanceof Error ? e.message : "Request failed");
     } finally {
@@ -1247,199 +1243,191 @@ function WalletTab() {
         ? "bg-red-500/15 text-red-400"
         : "bg-[#f59e0b]/15 text-[#f59e0b]";
 
+  const cryptoName = cryptoOptions.find((c) => c.id === selectedCrypto)?.name ?? "USDT";
+
   return (
     <div className="flex-1 bg-[#0d1117] overflow-y-auto p-4 md:p-6">
-      <div className="max-w-[1000px] mx-auto space-y-6">
-        <div>
-          <h1 className="text-[24px] font-bold text-white mb-1">Wallet 💰</h1>
-          <p className="text-[14px] text-[#9ca3af]">Manage your earnings and withdrawals</p>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-lg p-6 shadow-lg shadow-[#00AFF0]/20">
-            <div className="flex items-center gap-2 mb-2">
-              <DollarSign className="w-5 h-5 text-white/80" />
-              <span className="text-[13px] text-white/80 uppercase tracking-wider font-medium">Total Net Sales</span>
-            </div>
-            <div className="text-[36px] font-bold text-white">{money(netAllTime)}</div>
-            <div className="flex items-center gap-2 mt-2 text-[13px] text-white/80">
-              <TrendingUp className="w-4 h-4" /><span>All-time, after 12% platform fee</span>
-            </div>
-          </div>
-          <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-6">
-            <div className="flex items-center gap-2 mb-2">
-              <DollarSign className="w-5 h-5 text-[#9ca3af]" />
-              <span className="text-[13px] text-[#9ca3af] uppercase tracking-wider font-medium">Available Balance</span>
-            </div>
-            <div className="text-[36px] font-bold text-white">{money(available)}</div>
-            <div className="text-[13px] text-[#6b7280] mt-2">Net minus requested payouts</div>
-          </div>
+      <div className="max-w-[1200px] mx-auto">
+        <div className="mb-6">
+          <h1 className="text-[24px] font-bold text-white mb-1">Wallet</h1>
+          <p className="text-[14px] text-[#9ca3af]">Manage your earnings and withdraw your funds.</p>
         </div>
 
-        {/* Agency split breakdown — both gross and the agency's own cut,
-            plus what's owed out to models / chatters (per Payout splits). */}
-        {splitTotals && (
-          <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-6">
-            <h2 className="text-[18px] font-semibold text-white mb-1 flex items-center gap-2">
-              Agency split 🧮
-            </h2>
-            <p className="text-[13px] text-[#9ca3af] mb-4">
-              All-time, aggregated across every model.
-            </p>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
-              <div className="bg-[#0f131a] border border-[#2a2d35] rounded-lg p-4">
-                <div className="text-[10px] uppercase tracking-wider text-[#9ca3af]">Gross turnover</div>
-                <div className="text-[22px] font-bold text-white mt-1">{money(splitTotals.gross)}</div>
-              </div>
-              <div className="bg-[#0f131a] border border-[#2a2d35] rounded-lg p-4">
-                <div className="text-[10px] uppercase tracking-wider text-[#9ca3af]">Platform fee 12%</div>
-                <div className="text-[22px] font-bold text-[#9ca3af] mt-1">−{money(splitTotals.platformFee)}</div>
-              </div>
-              <div className="bg-gradient-to-br from-[#00AFF0]/20 to-[#00AFF0]/10 border border-[#00AFF0]/40 rounded-lg p-4">
-                <div className="text-[10px] uppercase tracking-wider text-[#5BC8F5]">Agency cut</div>
-                <div className="text-[22px] font-bold text-white mt-1">{money(splitTotals.agencyCut)}</div>
-              </div>
-              <div className="bg-[#0f131a] border border-[#2a2d35] rounded-lg p-4">
-                <div className="text-[10px] uppercase tracking-wider text-[#9ca3af]">Owed to creators</div>
-                <div className="text-[22px] font-bold text-white mt-1">{money(splitTotals.modelCut)}</div>
-              </div>
-              <div className="bg-[#0f131a] border border-[#2a2d35] rounded-lg p-4">
-                <div className="text-[10px] uppercase tracking-wider text-[#9ca3af]">Owed to chatters</div>
-                <div className="text-[22px] font-bold text-white mt-1">{money(splitTotals.chatterCut)}</div>
-              </div>
-            </div>
-            {splitPairs.length > 0 && (
-              <div className="bg-[#0f131a] border border-[#2a2d35] rounded-lg overflow-x-auto">
-                <table className="w-full text-[12px]">
-                  <thead className="bg-[#161a22]">
-                    <tr className="text-left text-[#9ca3af]">
-                      <th className="px-3 py-2">Creator</th>
-                      <th className="px-3 py-2">Chatter</th>
-                      <th className="px-3 py-2 text-right">Gross</th>
-                      <th className="px-3 py-2 text-right">Creator</th>
-                      <th className="px-3 py-2 text-right">Chatter</th>
-                      <th className="px-3 py-2 text-right">Agency</th>
-                    </tr>
-                  </thead>
-                  <tbody className="text-white">
-                    {splitPairs.map((p, i) => (
-                      <tr key={i} className="border-t border-[#2a2d35]">
-                        <td className="px-3 py-2">{p.modelName}</td>
-                        <td className="px-3 py-2">{p.chatterName}</td>
-                        <td className="px-3 py-2 text-right">{money(p.gross)}</td>
-                        <td className="px-3 py-2 text-right">{money(p.modelCut)}</td>
-                        <td className="px-3 py-2 text-right">{money(p.chatterCut)}</td>
-                        <td className="px-3 py-2 text-right">{money(p.agencyCut)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-6">
-          <h2 className="text-[18px] font-semibold text-white mb-6 flex items-center gap-2">
-            Withdraw Funds <ArrowUpRight className="w-5 h-5 text-[#00AFF0]" />
-          </h2>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+          {/* ── Left column ── */}
           <div className="space-y-5">
-            <div>
-              <label className="text-[13px] text-[#9ca3af] font-medium mb-2 block">Select Cryptocurrency</label>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {cryptoOptions.map((crypto) => (
-                  <button
-                    key={crypto.id}
-                    onClick={() => { setSelectedCrypto(crypto.id); setSelectedNetwork(networkOptions[crypto.id][0]); }}
-                    className={`p-4 rounded-lg border-2 transition-all ${selectedCrypto === crypto.id ? "border-[#00AFF0] bg-[#00AFF0]/10" : "border-[#374151] bg-[#1f2937] hover:border-[#4b5563]"}`}
-                  >
-                    <div className="text-[24px] mb-1">{crypto.icon}</div>
-                    <div className="text-[13px] font-semibold text-white">{crypto.name}</div>
-                  </button>
-                ))}
+            {/* Available Balance */}
+            <div className="bg-[#161a22] border border-[#2a2d35] rounded-xl p-6">
+              <div className="text-[12px] uppercase tracking-wider text-[#9ca3af]">Available Balance</div>
+              <div className="text-[44px] font-bold text-white mt-1 leading-none">{available != null ? available.toFixed(2) : "…"}</div>
+            </div>
+
+            {/* Net Sales Total + Platform Fee Total */}
+            <div className="grid grid-cols-2 gap-5">
+              <div className="bg-[#161a22] border border-[#2a2d35] rounded-xl p-5">
+                <div className="text-[12px] uppercase tracking-wider text-[#9ca3af]">Net Sales Total</div>
+                <div className="text-[26px] font-bold text-white mt-1">{money(netAllTime)}</div>
+              </div>
+              <div className="bg-[#161a22] border border-[#2a2d35] rounded-xl p-5">
+                <div className="text-[12px] uppercase tracking-wider text-[#9ca3af]">Platform Fee Total</div>
+                <div className="text-[26px] font-bold text-white mt-1">{money(platformFeeTotal)}</div>
               </div>
             </div>
-            <div>
-              <label className="text-[13px] text-[#9ca3af] font-medium mb-2 block">Select Network</label>
-              <div className="flex gap-3 flex-wrap">
-                {networkOptions[selectedCrypto].map((network) => (
-                  <button
-                    key={network}
-                    onClick={() => setSelectedNetwork(network)}
-                    className={`px-4 py-2.5 rounded-lg text-[13px] font-medium transition-all ${selectedNetwork === network ? "bg-[#00AFF0] text-white" : "bg-[#1f2937] text-[#9ca3af] border border-[#374151] hover:border-[#4b5563]"}`}
-                  >
-                    {network}
-                  </button>
-                ))}
+
+            {/* Recent Withdrawals */}
+            <div className="bg-[#161a22] border border-[#2a2d35] rounded-xl overflow-hidden">
+              <div className="px-5 pt-5 pb-3">
+                <h2 className="text-[16px] font-semibold text-white">Recent Withdrawals</h2>
               </div>
+              {payouts.length === 0 ? (
+                <div className="text-[13px] text-[#6b7280] py-6 text-center">No withdrawals yet.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[13px]">
+                    <thead>
+                      <tr className="text-left text-[#9ca3af] border-y border-[#2a2d35]">
+                        <th className="px-5 py-2 font-medium">Date</th>
+                        <th className="px-3 py-2 font-medium">Amount</th>
+                        <th className="px-3 py-2 font-medium">Currency</th>
+                        <th className="px-3 py-2 font-medium">Network</th>
+                        <th className="px-5 py-2 font-medium">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {payouts.map((p) => (
+                        <tr key={p.id} className="border-b border-[#2a2d35] last:border-b-0 text-white">
+                          <td className="px-5 py-3 text-[#9ca3af]">
+                            {new Date(p.created_at).toLocaleString("en-US", { month: "short", day: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                          </td>
+                          <td className="px-3 py-3 font-medium">{Math.floor(Number(p.amount))}</td>
+                          <td className="px-3 py-3">{p.currency ?? "—"}</td>
+                          <td className="px-3 py-3">{p.network ?? "—"}</td>
+                          <td className="px-5 py-3">
+                            <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${statusCls(p.status)}`}>
+                              {p.status === "paid" ? "Completed" : p.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
-            <div>
-              <label className="text-[13px] text-[#9ca3af] font-medium mb-2 block">Amount (Minimum $20)</label>
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#6b7280] text-[14px]">$</span>
+          </div>
+
+          {/* ── Right column: Withdraw Funds ── */}
+          <div className="bg-[#161a22] border border-[#2a2d35] rounded-xl p-6">
+            <h2 className="text-[18px] font-semibold text-white mb-5">Withdraw Funds</h2>
+
+            <div className="space-y-5">
+              {/* Amount */}
+              <div>
+                <label className="text-[12px] text-[#9ca3af] font-medium mb-1.5 block">Amount to Withdraw</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    placeholder="Enter amount"
+                    className="w-full pl-4 pr-14 py-3 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#00AFF0]"
+                  />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[#6b7280] text-[13px] font-medium">USD</span>
+                </div>
+                <div className="text-[11px] text-[#6b7280] mt-1">
+                  ${MIN_WITHDRAWAL_USD} minimum to withdraw. Only whole numbers accepted.
+                </div>
+              </div>
+
+              {/* Currency */}
+              <div>
+                <label className="text-[12px] text-[#9ca3af] font-medium mb-1.5 block">Select Currency</label>
+                <div className="grid grid-cols-2 gap-3">
+                  {cryptoOptions.map((c) => (
+                    <button
+                      key={c.id}
+                      onClick={() => { setSelectedCrypto(c.id); setSelectedNetwork(networkOptions[c.id][0]); }}
+                      className={`flex items-center gap-3 px-4 py-3 rounded-lg border transition-all ${
+                        selectedCrypto === c.id
+                          ? "border-[#00AFF0] bg-[#00AFF0]/10"
+                          : "border-[#374151] bg-[#1f2937] hover:border-[#4b5563]"
+                      }`}
+                    >
+                      <span className="text-[20px]">{c.icon}</span>
+                      <span className="text-[14px] font-medium text-white">{c.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Network */}
+              <div>
+                <label className="text-[12px] text-[#9ca3af] font-medium mb-1.5 block">Select Network</label>
+                <div className="grid grid-cols-2 gap-3">
+                  {networkOptions[selectedCrypto].map((n) => (
+                    <button
+                      key={n}
+                      onClick={() => setSelectedNetwork(n)}
+                      className={`px-4 py-3 rounded-lg border text-[14px] font-medium transition-all ${
+                        selectedNetwork === n
+                          ? "border-[#00AFF0] bg-[#00AFF0]/10 text-white"
+                          : "border-[#374151] bg-[#1f2937] text-[#9ca3af] hover:border-[#4b5563]"
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Address */}
+              <div>
+                <label className="text-[12px] text-[#9ca3af] font-medium mb-1.5 block">Withdrawal Address</label>
                 <input
-                  type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00"
-                  className="w-full pl-8 pr-4 py-3 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#00AFF0]"
+                  type="text"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder="Enter withdrawal address"
+                  className="w-full px-4 py-3 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#00AFF0]"
                 />
               </div>
-              <div className="text-[11px] text-[#6b7280] mt-1">Available: {money(available)}</div>
-            </div>
-            <div>
-              <label className="text-[13px] text-[#9ca3af] font-medium mb-2 block">Withdrawal Address</label>
-              <input
-                type="text" value={address} onChange={(e) => setAddress(e.target.value)}
-                placeholder={`Enter your ${cryptoOptions.find((c) => c.id === selectedCrypto)?.name} address`}
-                className="w-full px-4 py-3 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#00AFF0]"
-              />
-            </div>
-            <div className="bg-[#f59e0b]/10 border border-[#f59e0b]/30 rounded-lg p-4">
-              <div className="flex items-start gap-3">
-                <span className="text-[20px]">⚠️</span>
-                <div className="text-[12px] text-[#f59e0b]">
-                  <p className="font-semibold mb-1">Important</p>
-                  <p>Double-check your withdrawal address. Transactions cannot be reversed once confirmed.</p>
+
+              {/* Confirm checkbox */}
+              <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={confirmCorrect}
+                  onChange={(e) => setConfirmCorrect(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 accent-[#00AFF0]"
+                />
+                <span className="text-[12px] text-white leading-relaxed">
+                  I confirm that the withdrawal information provided is correct.
+                  <br />
+                  <span className="text-[#9ca3af]">Incorrect information may result in permanent loss of funds.</span>
+                </span>
+              </label>
+
+              {msg && (
+                <div className={`text-[12px] ${msg.startsWith("✓") ? "text-emerald-400" : "text-red-400"}`}>
+                  {msg}
                 </div>
-              </div>
+              )}
+
+              <button
+                onClick={handleWithdraw}
+                disabled={submitting}
+                className="w-full py-3.5 bg-[#00AFF0] hover:bg-[#0098D4] text-white rounded-lg font-semibold text-[14px] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {submitting ? "Requesting…" : "Withdraw Funds"}
+              </button>
+
+              <p className="text-[11px] text-[#6b7280] text-center">
+                Withdrawals are completed within 7 days of submission. ({cryptoName} on {selectedNetwork})
+              </p>
             </div>
-            {msg && (
-              <div className={`text-[12px] ${msg.startsWith("✓") ? "text-emerald-400" : "text-red-400"}`}>
-                {msg}
-              </div>
-            )}
-            <button
-              onClick={handleWithdraw}
-              disabled={submitting}
-              className="w-full py-3.5 bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] text-white rounded-lg font-semibold text-[14px] hover:from-[#0098D4] hover:to-[#0098D4] transition-all shadow-lg shadow-[#00AFF0]/20 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {submitting ? "Requesting…" : "Request Withdrawal"}
-            </button>
           </div>
         </div>
 
-        {/* Payout history */}
-        <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-6">
-          <h2 className="text-[16px] font-semibold text-white mb-4">Payout history</h2>
-          {payouts.length === 0 ? (
-            <div className="text-[13px] text-[#6b7280] py-4 text-center">No withdrawals yet.</div>
-          ) : (
-            <div className="space-y-2">
-              {payouts.map((p) => (
-                <div key={p.id} className="flex items-center justify-between p-3 bg-[#1f2937]/30 rounded-lg">
-                  <div className="min-w-0">
-                    <div className="text-[14px] font-semibold text-white">
-                      ${Number(p.amount).toLocaleString("en-US", { maximumFractionDigits: 2 })}
-                    </div>
-                    <div className="text-[11px] text-[#6b7280] truncate">
-                      {p.address || "—"} · {new Date(p.created_at).toLocaleDateString("en-US")}
-                    </div>
-                  </div>
-                  <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${statusCls(p.status)}`}>
-                    {p.status}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
       </div>
     </div>
   );

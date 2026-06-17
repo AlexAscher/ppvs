@@ -288,13 +288,17 @@ export default function LandingPage() {
     };
   }, []);
 
-  const loginHref = authed ? "/dashboard" : "/login";
-  const loginLabel = authed ? "Dashboard" : "Login";
-  const startHref = authed ? "/dashboard" : "/signup";
-  const startNavLabel = authed ? "Open dashboard" : "Get Started";
-  const startHeroLabel = authed ? "Open dashboard" : "Start Selling PPVs 💸";
-  const startPricingLabel = authed ? "Open dashboard" : "Start Selling PPVs 💸";
-  const startCtaLabel = authed ? "Open dashboard" : "Start Selling PPVs 💸";
+  // The landing must ALWAYS look logged-out. /login + /signup already
+  // forward to /dashboard when a session exists, so a logged-in visitor
+  // who clicks "Get Started" still lands in the right place.
+  void authed; // keep the hook for future use without flipping labels
+  const loginHref = "/login";
+  const loginLabel = "Login";
+  const startHref = "/signup";
+  const startNavLabel = "Get Started";
+  const startHeroLabel = "Start Selling PPVs 💸";
+  const startPricingLabel = "Start Selling PPVs 💸";
+  const startCtaLabel = "Start Selling PPVs 💸";
 
   return (
     <div style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif' }}>
@@ -315,63 +319,78 @@ export default function LandingPage() {
         </div>
       </nav>
 
-      {/* ── HERO — split 70/30: text+buttons left, phone preview right ── */}
-      <section className="min-h-screen flex items-center px-8" style={{ background: "#080b12", paddingTop: "120px", paddingBottom: "120px" }}>
-        <div className="max-w-[1200px] mx-auto w-full grid items-center gap-10" style={{ gridTemplateColumns: "minmax(0, 7fr) minmax(0, 3fr)" }}>
-          {/* Left — 70% */}
+      {/* ── HERO — text+CTA+feature chips left, phone right (pic 3) ── */}
+      <section className="px-8" style={{ background: "#080b12", paddingTop: "120px", paddingBottom: "60px" }}>
+        <div className="max-w-[1200px] mx-auto w-full grid items-center gap-12" style={{ gridTemplateColumns: "minmax(0, 1.2fr) minmax(0, 1fr)" }}>
+          {/* Left */}
           <div>
-            <h1 className="text-white mb-6" style={{ fontSize: "60px", fontWeight: 800, lineHeight: 1.12, letterSpacing: "-0.03em" }}>
-              Turn Telegram chats<br />
-              into <span style={{ color: OF_BLUE }}>revenue</span>.
+            <h1 className="text-white mb-6" style={{ fontSize: "56px", fontWeight: 800, lineHeight: 1.1, letterSpacing: "-0.03em" }}>
+              Turn Telegram<br />
+              chats into<br />
+              <span style={{ color: OF_BLUE }}>revenue</span>.
             </h1>
-            <p className="mb-10" style={{ fontSize: "18px", color: "#8b95a8", maxWidth: "560px", lineHeight: 1.7 }}>
+            <p className="mb-8" style={{ fontSize: "16px", color: "#8b95a8", maxWidth: "520px", lineHeight: 1.7 }}>
               Sell PPVs, manage chatters, and get paid instantly.<br />
               No monthly fees — just a 12% platform fee.
             </p>
-            <div className="flex flex-col items-start gap-4">
-              <div className="flex items-center gap-4 flex-wrap">
-                <Link href={startHref} className="px-8 py-4 rounded-xl text-white transition-all hover:opacity-90 active:scale-95" style={{ background: OF_BLUE, fontSize: "16px", fontWeight: 700, display: "inline-block" }}>
-                  {startHeroLabel}
-                </Link>
-                <a href={BOOK_DEMO_HREF} target="_blank" rel="noopener noreferrer" className="px-8 py-4 rounded-xl text-white transition-all hover:opacity-80" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.13)", fontSize: "16px", fontWeight: 600, display: "inline-block" }}>
-                  Book a demo →
-                </a>
-              </div>
+            <div className="flex flex-col items-start gap-3 mb-10">
+              <Link href={startHref} className="px-8 py-3.5 rounded-xl text-white transition-all hover:opacity-90 active:scale-95" style={{ background: OF_BLUE, fontSize: "15px", fontWeight: 700, display: "inline-block" }}>
+                {startHeroLabel}
+              </Link>
               <p style={{ fontSize: "13px", color: "#4b5563" }}>No subscriptions · No contracts · No KYC</p>
+            </div>
+
+            {/* 4 quick-glance feature chips per pic 3 */}
+            <div className="grid grid-cols-4 gap-3" style={{ maxWidth: "560px" }}>
+              {[
+                { label: "Send PPVs\n& Tips", icon: "🔒" },
+                { label: "Manage\nChatters", icon: "💬" },
+                { label: "Track\nRevenue", icon: "📈" },
+                { label: "Withdraw\nin Crypto", icon: "💰" },
+              ].map((c, i) => (
+                <div key={i} className="rounded-xl flex flex-col items-center justify-center text-center" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", padding: "14px 10px" }}>
+                  <div style={{ fontSize: "22px", marginBottom: "8px" }}>{c.icon}</div>
+                  <div style={{ fontSize: "11px", fontWeight: 600, color: "#cbd5e1", lineHeight: 1.3, whiteSpace: "pre-line" }}>{c.label}</div>
+                </div>
+              ))}
             </div>
           </div>
 
-          {/* Right — 30% phone preview */}
+          {/* Right — phone preview */}
           <div className="flex items-center justify-center">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/landing/hero.png"
               alt="ppvs.io product preview"
-              style={{ width: "100%", maxWidth: "360px", height: "auto", objectFit: "contain" }}
+              style={{ width: "100%", maxWidth: "420px", height: "auto", objectFit: "contain" }}
             />
           </div>
         </div>
       </section>
 
-      {/* ── PAYMENT CAROUSEL DIVIDER ── */}
-      <div style={{ background: "#0d1117", borderTop: "1px solid rgba(255,255,255,0.06)", borderBottom: "1px solid rgba(255,255,255,0.06)", overflow: "hidden", padding: "16px 0" }}>
+      {/* ── HIGHLIGHTS MARQUEE — selling points strip under the hero ── */}
+      <div style={{ background: "#0d1117", borderTop: "1px solid rgba(255,255,255,0.06)", borderBottom: "1px solid rgba(255,255,255,0.06)", overflow: "hidden", padding: "14px 0" }}>
         <style>{`
           @keyframes ppv-marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
-          .ppv-marquee { display: flex; width: max-content; animation: ppv-marquee 30s linear infinite; }
+          .ppv-marquee { display: flex; width: max-content; animation: ppv-marquee 40s linear infinite; }
           .ppv-marquee:hover { animation-play-state: paused; }
         `}</style>
         <div className="ppv-marquee">
-          {[
-            "Visa", "Mastercard", "Apple Pay", "Google Pay", "Bitcoin",
-            "USDT", "Ethereum", "USDC", "Litecoin",
-            "Visa", "Mastercard", "Apple Pay", "Google Pay", "Bitcoin",
-            "USDT", "Ethereum", "USDC", "Litecoin",
-          ].map((label, i) => (
-            <div key={i} className="flex items-center gap-2 mx-3 px-5 py-2 rounded-full" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", whiteSpace: "nowrap" }}>
-              <span className="flex items-center justify-center shrink-0"><PayIcon name={label} /></span>
-              <span style={{ fontSize: "13px", fontWeight: 500, color: "#9ca3af" }}>{label}</span>
-            </div>
-          ))}
+          {Array.from({ length: 3 }).flatMap((_, dup) =>
+            [
+              "NO MONTHLY FEES",
+              "NO KYC REQUIRED",
+              "OPEN IN 5 MINUTES",
+              "INSTANT CRYPTO WITHDRAWALS",
+              "12% PLATFORM FEE",
+              "WITHOUT LEAVING TELEGRAM",
+            ].map((label, i) => (
+              <div key={`${dup}-${i}`} className="flex items-center gap-3 mx-6" style={{ whiteSpace: "nowrap" }}>
+                <span style={{ fontSize: "11px", fontWeight: 700, color: "#9ca3af", letterSpacing: "0.18em" }}>{label}</span>
+                <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#374151" }} />
+              </div>
+            )),
+          )}
         </div>
       </div>
 

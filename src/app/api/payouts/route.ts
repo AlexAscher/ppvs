@@ -1,21 +1,26 @@
 import { NextRequest } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase-server";
 import { getCachedAuthUser } from "@/lib/auth-cache";
-import { agencyNet } from "@/lib/platform";
+import { agencyNet, platformFee, PLATFORM_FEE_PCT } from "@/lib/platform";
 
 /**
  * Agency payout requests.
- *   GET  → list this agency's payouts (newest first)
- *   POST → request a withdrawal { amount, address }. Validates against the
- *          live available balance (all-time net − non-rejected payouts).
+ *   GET  → list this agency's payouts (newest first), plus header totals:
+ *           availableBalance, netSalesTotal, platformFeeTotal.
+ *   POST → request a withdrawal { amount, address, currency?, network? }.
+ *           Min withdrawal: $30. SLA: completed within 7 days.
  *
  * Agency-scoped via the SSR session; the admin client does the writes.
  */
+
+export const MIN_WITHDRAWAL_USD = 30;
 
 export type PayoutRow = {
   id: string;
   amount: number;
   address: string | null;
+  currency: string | null;
+  network: string | null;
   status: string;
   created_at: string;
   paid_at: string | null;
@@ -23,26 +28,42 @@ export type PayoutRow = {
 
 const PAID = new Set(["paid", "delivered"]);
 
-async function availableBalance(
+type GrossNet = { gross: number; net: number; fee: number };
+
+async function grossAndNet(
   admin: ReturnType<typeof createAdminSupabaseClient>,
   agencyUserId: string,
-): Promise<number> {
+): Promise<GrossNet> {
   const { data: models } = await admin
     .from("models")
     .select("id")
     .eq("agency_user_id", agencyUserId);
   const modelIds = (models ?? []).map((m: { id: string }) => m.id);
-  if (modelIds.length === 0) return 0;
+  if (modelIds.length === 0) return { gross: 0, net: 0, fee: 0 };
 
-  const { data: sends } = await admin
-    .from("ppv_sends")
-    .select("total_price, status")
-    .in("model_id", modelIds);
-  // Net of the platform's 10% commission (taken off the top).
-  const net = ((sends ?? []) as { total_price: number; status: string }[])
-    .filter((s) => PAID.has(s.status))
-    .reduce((sum, s) => sum + agencyNet(Number(s.total_price ?? 0)), 0);
+  // PPV sends + tips, both contribute. agencyNet = (1 − PLATFORM_FEE_PCT) × gross.
+  const [sendsRes, tipsRes] = await Promise.all([
+    admin.from("ppv_sends").select("total_price, status").in("model_id", modelIds),
+    admin.from("tips").select("amount, status").in("model_id", modelIds),
+  ]);
+  let gross = 0;
+  for (const s of (sendsRes.data ?? []) as { total_price: number; status: string }[]) {
+    if (PAID.has(s.status)) gross += Number(s.total_price ?? 0);
+  }
+  for (const t of (tipsRes.data ?? []) as { amount: number; status: string }[]) {
+    if (t.status === "paid") gross += Number(t.amount ?? 0);
+  }
+  const net = agencyNet(gross);
+  const fee = platformFee(gross);
+  return { gross, net, fee };
+}
 
+async function availableBalance(
+  admin: ReturnType<typeof createAdminSupabaseClient>,
+  agencyUserId: string,
+  precomputedNet?: number,
+): Promise<number> {
+  const net = precomputedNet ?? (await grossAndNet(admin, agencyUserId)).net;
   const { data: payouts } = await admin
     .from("payouts")
     .select("amount, status")
@@ -50,7 +71,6 @@ async function availableBalance(
   const withdrawn = ((payouts ?? []) as { amount: number; status: string }[])
     .filter((p) => p.status !== "rejected")
     .reduce((sum, p) => sum + Number(p.amount ?? 0), 0);
-
   return Math.max(0, net - withdrawn);
 }
 
@@ -62,14 +82,23 @@ export async function GET() {
     const admin = createAdminSupabaseClient();
     const { data, error } = await admin
       .from("payouts")
-      .select("id, amount, address, status, created_at, paid_at")
+      .select("id, amount, address, currency, network, status, created_at, paid_at")
       .eq("agency_user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(50);
     if (error) return Response.json({ error: error.message }, { status: 500 });
 
-    const balance = await availableBalance(admin, user.id);
-    return Response.json({ payouts: (data ?? []) as PayoutRow[], availableBalance: balance });
+    const totals = await grossAndNet(admin, user.id);
+    const balance = await availableBalance(admin, user.id, totals.net);
+    return Response.json({
+      payouts: (data ?? []) as PayoutRow[],
+      availableBalance: Math.round(balance * 100) / 100,
+      netSalesTotal: Math.round(totals.net * 100) / 100,
+      platformFeeTotal: Math.round(totals.fee * 100) / 100,
+      grossSalesTotal: Math.round(totals.gross * 100) / 100,
+      platformFeePct: PLATFORM_FEE_PCT,
+      minWithdrawal: MIN_WITHDRAWAL_USD,
+    });
   } catch (e: unknown) {
     return Response.json({ error: e instanceof Error ? e.message : "Failed" }, { status: 500 });
   }
@@ -80,12 +109,25 @@ export async function POST(req: NextRequest) {
     const user = await getCachedAuthUser();
     if (!user) return Response.json({ error: "Not authenticated" }, { status: 401 });
 
-    const body = (await req.json().catch(() => null)) as { amount?: number; address?: string } | null;
-    const amount = Number(body?.amount ?? 0);
+    const body = (await req.json().catch(() => null)) as {
+      amount?: number;
+      address?: string;
+      currency?: string;
+      network?: string;
+    } | null;
+    const amount = Math.floor(Number(body?.amount ?? 0));
     if (!Number.isFinite(amount) || amount <= 0) {
       return Response.json({ error: "Enter a valid amount" }, { status: 400 });
     }
+    if (amount < MIN_WITHDRAWAL_USD) {
+      return Response.json(
+        { error: `Minimum withdrawal is $${MIN_WITHDRAWAL_USD}.` },
+        { status: 400 },
+      );
+    }
     const address = (body?.address ?? "").trim() || null;
+    const currency = (body?.currency ?? "").trim().toUpperCase() || null;
+    const network = (body?.network ?? "").trim().toUpperCase() || null;
 
     const admin = createAdminSupabaseClient();
     const balance = await availableBalance(admin, user.id);
@@ -98,8 +140,8 @@ export async function POST(req: NextRequest) {
 
     const { data, error } = await admin
       .from("payouts")
-      .insert({ agency_user_id: user.id, amount, address, status: "pending" })
-      .select("id, amount, address, status, created_at, paid_at")
+      .insert({ agency_user_id: user.id, amount, address, currency, network, status: "pending" })
+      .select("id, amount, address, currency, network, status, created_at, paid_at")
       .single();
     if (error) return Response.json({ error: error.message }, { status: 500 });
 

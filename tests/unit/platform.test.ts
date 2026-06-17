@@ -2,18 +2,18 @@ import { describe, it, expect } from "vitest";
 import { PLATFORM_FEE_PCT, platformFee, agencyNet } from "@/lib/platform";
 
 describe("platform economics", () => {
-  it("defaults to a 10% platform fee", () => {
-    expect(PLATFORM_FEE_PCT).toBe(0.1);
+  it("defaults to a 12% platform fee", () => {
+    expect(PLATFORM_FEE_PCT).toBe(0.12);
   });
 
   it("platformFee takes the configured cut of gross", () => {
-    expect(platformFee(100)).toBeCloseTo(10, 10);
+    expect(platformFee(100)).toBeCloseTo(12, 10);
     expect(platformFee(0)).toBe(0);
-    expect(platformFee(55.5)).toBeCloseTo(5.55, 10);
+    expect(platformFee(55.5)).toBeCloseTo(6.66, 10);
   });
 
   it("agencyNet is gross minus the platform fee", () => {
-    expect(agencyNet(100)).toBeCloseTo(90, 10);
+    expect(agencyNet(100)).toBeCloseTo(88, 10);
     expect(agencyNet(0)).toBe(0);
   });
 

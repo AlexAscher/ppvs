@@ -26,6 +26,7 @@ import { NotificationToaster } from "@/components/NotificationToaster";
 import type { FanRow, FanNote } from "@/lib/fan-types";
 import { QuickReplyModal } from "@/components/chatter-page/QuickReplyModal";
 import { DeleteMessageModal } from "@/components/chatter-page/DeleteMessageModal";
+import { FanProfileDrawer } from "@/components/chatter-page/FanProfileDrawer";
 
 export type StatsPayload = {
   todayNet: number;
@@ -246,6 +247,11 @@ export default function ChatterPage() {
 
   // Quick reply modal — opens from a button next to the message input.
   const [quickReplyOpen, setQuickReplyOpen] = useState(false);
+
+  // Fan profile drawer — opens when the chatter clicks the fan name/avatar in
+  // the chat header. Holds tags / groups / notes / purchase history (the
+  // profile + stats block lives in the Fan Information tab instead).
+  const [fanDrawerOpen, setFanDrawerOpen] = useState(false);
 
   // Right-click context-menu actions: reply / edit mode. Both blockers
   // for handleSend — when `editing` is set, Send actually edits via PUT;
@@ -1866,12 +1872,7 @@ export default function ChatterPage() {
             }
           }}
           onOpenQuickReply={() => setQuickReplyOpen(true)}
-          onOpenFanProfile={() => {
-            // Drawer removed — clicking the fan header now jumps to the
-            // Fan Information tab (which holds the profile + stats block).
-            setActiveTab("notes");
-            setMobileView("actions");
-          }}
+          onOpenFanProfile={() => setFanDrawerOpen(true)}
           replyingTo={replyingTo}
           editing={editing}
           onCancelReply={() => setReplyingTo(null)}
@@ -1976,6 +1977,15 @@ export default function ChatterPage() {
           // to edit before hitting Send.
           setInputText((prev) => (prev.trim() ? `${prev} ${body}` : body));
         }}
+      />
+      <FanProfileDrawer
+        open={fanDrawerOpen}
+        onClose={() => setFanDrawerOpen(false)}
+        modelId={selectedModelId}
+        peerId={selectedDialog?.id ?? null}
+        fan={fan}
+        displayName={selectedDialog?.title ?? "User"}
+        username={selectedDialog?.username ?? null}
       />
       <DeleteMessageModal
         open={!!deletingMessage}

@@ -80,13 +80,6 @@ const chatterFeatures = [
     desc: "Chat with fans in real time, access vault, request tips, manage fan information, and switch between models.",
   },
   {
-    id: "chatter-vault",
-    emoji: "💸",
-    label: "Sell PPVs",
-    tagline: "Send paid content in seconds.",
-    desc: "Filter content by tag, bundle multiple items together, and let pricing calculate automatically before sending.",
-  },
-  {
     id: "chatter-tips",
     emoji: "🎁",
     label: "Request Tips",
@@ -261,7 +254,7 @@ function PayIcon({ name }: { name: string }) {
  */
 function PayoutFlowIllustration() {
   return (
-    <div style={{ background: "#0a0d14", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "20px", padding: "32px 24px", minHeight: 360 }}>
+    <div style={{ background: "#0a0d14", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "20px", padding: "32px 24px", minHeight: 360, display: "flex", flexDirection: "column", justifyContent: "center" }}>
       <div className="grid grid-cols-[1fr_1.2fr_1fr] items-center gap-3 w-full">
         {/* Left — two incoming cards */}
         <div className="flex flex-col gap-3">
@@ -388,10 +381,10 @@ export default function LandingPage() {
 
       {/* ── HERO — text+CTA+feature chips left, phone right (pic 3) ── */}
       <section className="px-8" style={{ background: "#080b12", paddingTop: "120px", paddingBottom: "60px" }}>
-        <div className="max-w-[1200px] mx-auto w-full grid items-center gap-12" style={{ gridTemplateColumns: "minmax(0, 1.2fr) minmax(0, 1fr)" }}>
+        <div className="max-w-[1200px] mx-auto w-full grid items-center gap-8" style={{ gridTemplateColumns: "minmax(0, 1.1fr) minmax(0, 1fr)" }}>
           {/* Left */}
           <div>
-            <h1 className="text-white mb-6" style={{ fontSize: "56px", fontWeight: 800, lineHeight: 1.1, letterSpacing: "-0.03em" }}>
+            <h1 className="text-white mb-6" style={{ fontSize: "60px", fontWeight: 800, lineHeight: 1.1, letterSpacing: "-0.03em" }}>
               Turn Telegram<br />
               chats into<br />
               <span style={{ color: OF_BLUE }}>revenue</span>.
@@ -425,13 +418,15 @@ export default function LandingPage() {
             </div>
           </div>
 
-          {/* Right — phone preview */}
-          <div className="flex items-center justify-center">
+          {/* Right — phone preview. Left-aligned (justify-start) so the image
+              sits closer to the centre / text rather than hugging the far
+              right edge, and a touch larger per the hero tweak. */}
+          <div className="flex items-center justify-start">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/landing/hero.png"
               alt="ppvs.io product preview"
-              style={{ width: "100%", maxWidth: "420px", height: "auto", objectFit: "contain" }}
+              style={{ width: "100%", maxWidth: "500px", height: "auto", objectFit: "contain" }}
             />
           </div>
         </div>

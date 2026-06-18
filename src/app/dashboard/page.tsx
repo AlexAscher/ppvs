@@ -12,7 +12,6 @@ import {
   MessageSquare,
   TrendingUp, DollarSign,
   Plus, Link as LinkIcon, ArrowUpRight, LogOut, Menu,
-  Send, Lock,
 } from "lucide-react";
 import type { DashboardStats } from "@/app/api/dashboard/stats/route";
 import { agencyNet } from "@/lib/platform";
@@ -24,10 +23,12 @@ import { agencyNet } from "@/lib/platform";
 type AgencyTab = "dashboard" | "inbox" | "ppvs" | "models" | "chatters" | "wallet" | "settings";
 
 const menuItems = [
-  { id: "dashboard" as AgencyTab, label: "Dashboard", emoji: "📊" },
+  // Labels + emojis mirror the main-site feature names. Inbox + Settings have
+  // no main-page equivalent, so they keep their existing label/emoji.
+  { id: "dashboard" as AgencyTab, label: "Agency Dashboard", emoji: "📊" },
   { id: "inbox" as AgencyTab, label: "Inbox", emoji: "📥" },
-  { id: "ppvs" as AgencyTab, label: "PPVs", emoji: "🔒" },
-  { id: "models" as AgencyTab, label: "Creators", emoji: "👤" },
+  { id: "ppvs" as AgencyTab, label: "Vault", emoji: "🔒" },
+  { id: "models" as AgencyTab, label: "Creators", emoji: "🎭" },
   { id: "chatters" as AgencyTab, label: "Chatters", emoji: "💬" },
   { id: "wallet" as AgencyTab, label: "Wallet", emoji: "💰" },
   { id: "settings" as AgencyTab, label: "Settings", emoji: "⚙️" },
@@ -122,22 +123,18 @@ function AgencySidebar({
         }`}
       >
       <div className="h-[52px] border-b border-[#2a2d35] px-5 flex items-center gap-2">
-        {/* Brand mark — Send + Lock inside a colored square. Explicit pixel
-            sizes via inline style so the sidebar survives if Tailwind's
-            `w-8 h-8` fails to load on the dashboard route. */}
-        <div
-          className="w-8 h-8 shrink-0 bg-[#00AFF0] rounded-lg flex items-center justify-center relative shadow-sm"
-          style={{ width: 32, height: 32, flex: "0 0 32px" }}
-        >
-          <Send
-            className="w-4 h-4 text-white"
-            style={{ width: 16, height: 16 }}
-          />
-          <Lock
-            className="w-2.5 h-2.5 text-white absolute bottom-0.5 right-0.5"
-            style={{ width: 10, height: 10 }}
-          />
-        </div>
+        {/* Brand mark — the PPVS.IO P-key logo. Explicit width/height (attr +
+            inline style) so it can never blow up to 100% if Tailwind sizing
+            fails to load on the dashboard route. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/brand-mark.png"
+          alt="ppvs.io"
+          width={32}
+          height={32}
+          className="w-8 h-8 shrink-0 rounded-lg"
+          style={{ width: 32, height: 32, flex: "0 0 32px", objectFit: "contain" }}
+        />
         <div className="text-[15px] font-semibold">
           ppvs<span className="text-[#00AFF0]">.io</span>
         </div>
@@ -1136,14 +1133,10 @@ function ModelsTab() {
 const cryptoOptions = [
   { id: "usdt", name: "USDT", icon: "₮" },
   { id: "usdc", name: "USDC", icon: "$" },
-  { id: "btc", name: "Bitcoin", icon: "₿" },
-  { id: "eth", name: "Ethereum", icon: "Ξ" },
 ];
 const networkOptions: Record<string, string[]> = {
-  usdt: ["TRC20", "ERC20", "BEP20"],
-  usdc: ["ERC20", "Polygon"],
-  btc: ["Bitcoin"],
-  eth: ["Ethereum"],
+  usdt: ["TRC20", "BEP20"],
+  usdc: ["TRC20", "BEP20"],
 };
 
 type Payout = {
@@ -1263,7 +1256,7 @@ function WalletTab() {
     <div className="flex-1 bg-[#0d1117] overflow-y-auto p-4 md:p-6">
       <div className="max-w-[1200px] mx-auto">
         <div className="mb-6">
-          <h1 className="text-[24px] font-bold text-white mb-1">Wallet</h1>
+          <h1 className="text-[24px] font-bold text-white mb-1">Wallet 💰</h1>
           <p className="text-[14px] text-[#9ca3af]">Manage your earnings and withdraw your funds.</p>
         </div>
 

@@ -2,9 +2,10 @@
 
 import { Check, Folder, ChevronLeft, Trash2, Plus, Music, Clock, Smile } from "lucide-react";
 import { useState } from "react";
-import type { FanNote } from "@/lib/fan-types";
+import type { FanNote, FanRow } from "@/lib/fan-types";
 import { SchedulePopover, formatScheduleShort } from "./SchedulePopover";
 import { EmojiPicker } from "../chatter-page/EmojiPicker";
+import { FanInfoBlock } from "./FanInfoBlock";
 
 function formatNoteDate(iso: string): string {
   const d = new Date(iso);
@@ -56,6 +57,17 @@ export interface PpvGroup {
 
 type Tab = "ppv" | "tips" | "notes" | "stats";
 
+// Tab labels mirror the main-site feature names. The keys keep their original
+// meaning (ppv = send PPVs, tips = request tips, notes = fan info, stats =
+// dashboard) so all the wiring below is untouched — only the displayed label
+// changes.
+const TAB_LABELS: Record<Tab, string> = {
+  ppv: "Sales Workspace",
+  tips: "Request Tips",
+  notes: "Fan Information",
+  stats: "Dashboard",
+};
+
 interface ActionPanelProps {
   activeTab: Tab;
   onTabChange: (t: Tab) => void;
@@ -97,6 +109,13 @@ interface ActionPanelProps {
   /** Schedule send (UNIX seconds). Shared by PPV + Tip actions. */
   scheduleAt?: number | null;
   onChangeScheduleAt?: (ts: number | null) => void;
+  /** Quick-emoji shortcuts (same list the main composer uses) — rendered as a
+   *  one-tap insert strip above the PPV caption + Tip message fields. */
+  quickEmojis?: string[];
+  /** Context for the "Fan Information" tab profile/stats block. */
+  fanInfoModelId?: string | null;
+  fanInfoPeerId?: string | null;
+  fan?: FanRow | null;
 }
 
 export type StatsView = {
@@ -150,6 +169,10 @@ export function ActionPanel({
   stats,
   scheduleAt = null,
   onChangeScheduleAt,
+  quickEmojis,
+  fanInfoModelId = null,
+  fanInfoPeerId = null,
+  fan = null,
 }: ActionPanelProps) {
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [ppvScheduleOpen, setPpvScheduleOpen] = useState(false);
@@ -174,13 +197,38 @@ export function ActionPanel({
       ? scopedItems
       : scopedItems.filter((i) => i.tags.some((t) => t.id === activeFilter));
 
+  // One-tap quick-emoji strip — same shortcut list the main message composer
+  // shows, surfaced on the PPV caption + Tip message fields so the chatter
+  // gets the same fast emoji access everywhere they type.
+  const quickEmojiRow = (onInsert: (em: string) => void) => {
+    if (!Array.isArray(quickEmojis) || quickEmojis.length === 0) return null;
+    return (
+      <div className="flex items-center gap-1 flex-wrap mt-2">
+        {quickEmojis.map((em) => (
+          <button
+            key={em}
+            type="button"
+            onClick={() => onInsert(em)}
+            title="Insert emoji"
+            className="w-7 h-7 shrink-0 flex items-center justify-center rounded-md text-[16px] leading-none hover:bg-[#1f2937] transition-colors"
+          >
+            {em}
+          </button>
+        ))}
+      </div>
+    );
+  };
+
   function itemCountInGroup(groupId: string): number {
     return ppvItems.filter((i) => i.group_id === groupId).length;
   }
 
   return (
     <div className="w-full xl:w-[30%] xl:shrink-0 bg-[#161a22] border-l border-[#2a2d35] flex flex-col">
-      {/* Tabs — h-[44px] text-[10px] exactly per Create_prompt_design. */}
+      {/* Tabs — h-[44px] text-[10px] exactly per Create_prompt_design.
+          Labels match the main-site feature names (no emoji in the chatter
+          per the user's spec): Sales Workspace / Request Tips / Fan
+          Information / Dashboard. */}
       <div className="h-[44px] border-b border-[#2a2d35] flex">
         {(["ppv", "tips", "notes", "stats"] as Tab[]).map((tab) => (
           <button
@@ -192,7 +240,7 @@ export function ActionPanel({
                 : "text-[#6b7280] border-transparent hover:text-[#9ca3af] hover:bg-[#1a1d24]/50"
             }`}
           >
-            {tab === "ppv" ? "Send PPV" : tab}
+            {TAB_LABELS[tab]}
           </button>
         ))}
       </div>
@@ -399,6 +447,7 @@ export function ActionPanel({
                       />
                     )}
                   </div>
+                  {quickEmojiRow((em) => onCaptionChange(caption + em))}
                 </div>
 
                 <div className="flex items-center justify-between">
@@ -542,7 +591,7 @@ export function ActionPanel({
             <div>
               <div className="text-[10px] text-[#9ca3af] uppercase tracking-wider mb-2">Quick amounts</div>
               <div className="grid grid-cols-4 gap-2">
-                {["5", "10", "20", "50", "100", "200", "500", "1000"].map((amount) => {
+                {["20", "50", "100", "200"].map((amount) => {
                   const active = tipAmount === amount;
                   return (
                     <button
@@ -604,6 +653,7 @@ export function ActionPanel({
                   onClose={() => setTipEmojiOpen(false)}
                 />
               )}
+              {quickEmojiRow((em) => onTipMessageChange(tipMessage + em))}
             </div>
             <div className="flex gap-2">
               <button
@@ -652,6 +702,16 @@ export function ActionPanel({
 
         {activeTab === "notes" && (
           <div className="space-y-3">
+            {/* Fan profile + stats block (moved out of the slide-out drawer
+                per the user's spec). Notes add/list stays below it. */}
+            <FanInfoBlock
+              modelId={fanInfoModelId}
+              peerId={fanInfoPeerId}
+              fan={fan}
+            />
+            <div className="border-t border-[#2a2d35] pt-3 text-[10px] text-[#6b7280] uppercase tracking-wide">
+              Notes
+            </div>
             <textarea
               value={notes}
               onChange={(e) => onNotesChange(e.target.value)}

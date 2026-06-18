@@ -1,6 +1,6 @@
 "use client";
 
-import { RefreshCw, ArrowLeft, Send, Lock } from "lucide-react";
+import { RefreshCw, ArrowLeft } from "lucide-react";
 
 interface ModelChip {
   id: string;
@@ -66,22 +66,18 @@ export function Topbar({
             <ArrowLeft className="w-4 h-4" style={{ width: 16, height: 16 }} />
           </button>
         )}
-        {/* Brand-mark — explicit pixel sizes + style fallback so the topbar
-            survives if Tailwind's `w-7 h-7` ever fails to apply on this
-            nested route (which once blew the SVG up to 100% of the screen). */}
-        <div
-          className="w-7 h-7 shrink-0 bg-[#00AFF0] rounded-md flex items-center justify-center relative shadow-sm"
-          style={{ width: 28, height: 28, flex: "0 0 28px" }}
-        >
-          <Send
-            className="w-3.5 h-3.5 text-white"
-            style={{ width: 14, height: 14 }}
-          />
-          <Lock
-            className="w-2 h-2 text-white absolute bottom-0.5 right-0.5"
-            style={{ width: 8, height: 8 }}
-          />
-        </div>
+        {/* Brand-mark — the PPVS.IO P-key logo. Explicit width/height (attr +
+            inline style) so it can never blow up to 100% if Tailwind's sizing
+            classes fail to load on this nested route. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/brand-mark.png"
+          alt="ppvs.io"
+          width={28}
+          height={28}
+          className="w-7 h-7 shrink-0 rounded-md"
+          style={{ width: 28, height: 28, flex: "0 0 28px", objectFit: "contain" }}
+        />
         <div className="text-[13px] font-semibold truncate shrink-0">
           chatter<span className="text-[#00AFF0]">.ppvs.io</span>
         </div>

@@ -22,41 +22,46 @@ export type MessageItem = {
   replyTo: { msgId: number; quoteText: string | null } | null;
 };
 
+const PEER_INVALID_RE =
+  /PEER_ID_INVALID|CHAT_INVALID|CHANNEL_INVALID|USER_ID_INVALID|peer not found/i;
+
 /**
- * Resolve an InputPeer that this session is allowed to use. We first try the
- * cheap buildPeer() with the chatter-supplied access_hash; if Telegram comes
- * back with PEER_ID_INVALID / CHAT_INVALID / channel-not-loaded, the cached
- * access_hash is stale (or never matched THIS session — common when the
- * dialog list was bootstrapped against a different account / model session).
- * In that case we fall back to `tg.getInputEntity(peerId)`, which forces
- * gramJS to resolve the user via getUsers / contacts.resolve, refreshing the
- * session's entity cache. The retry pattern is exposed as a small helper so
- * GET/POST/markRead/etc. all benefit from it without duplicating the catch.
+ * Run a peer-scoped operation, re-resolving the peer once if Telegram rejects
+ * the cheap buildPeer() with PEER_ID_INVALID / CHAT_INVALID / etc. That error
+ * means the chatter-supplied access_hash is stale (or never matched THIS
+ * session — common when the dialog list was bootstrapped against a different
+ * account / model session). On that specific error we fall back to
+ * `tg.getInputEntity(peerId)`, which forces gramJS to resolve the user via
+ * getUsers / contacts.resolve (refreshing the session's entity cache), then
+ * retries the same operation against the fresh peer.
+ *
+ * NOTE: earlier this validated the peer with a separate `getMessages(limit:0)`
+ * touch BEFORE the real call. That extra round-trip is gone — we run the real
+ * op and only re-resolve on failure. The double-fetch was both wasteful and a
+ * plausible cause of getHistory returning messages with the `out` flag
+ * stripped, which flipped the chatter's own sent messages to the "incoming"
+ * side when a dialog was re-opened.
  */
-async function resolvePeerWithRetry(
+async function withResolvedPeer<T>(
   tg: import("telegram").TelegramClient,
   peerId: string,
   accessHash: string | null,
-): Promise<Api.TypeInputPeer> {
+  op: (peer: Api.TypeInputPeer) => Promise<T>,
+): Promise<T> {
   const initial = buildPeer(peerId, accessHash);
   try {
-    // Touch a no-op so we hit Telegram with this peer once — if it errors,
-    // we re-resolve. getMessages with limit 0 is cheap enough.
-    await tg.getMessages(initial, { limit: 0 });
-    return initial;
+    return await op(initial);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    if (!/PEER_ID_INVALID|CHAT_INVALID|CHANNEL_INVALID|USER_ID_INVALID|peer not found/i.test(msg)) {
-      throw e;
-    }
-    // Fall through to a fresh resolve.
+    if (!PEER_INVALID_RE.test(msg)) throw e;
+    let resolved: Api.TypeInputPeer;
     try {
-      const resolved = await tg.getInputEntity(peerId);
-      return resolved as Api.TypeInputPeer;
+      resolved = (await tg.getInputEntity(peerId)) as Api.TypeInputPeer;
     } catch {
       // Re-throw the original PEER_ID_INVALID so the caller surfaces it.
       throw e;
     }
+    return await op(resolved);
   }
 }
 
@@ -92,8 +97,9 @@ export async function GET(
       auth.model.api_id,
       auth.model.api_hash,
       async (tg) => {
-        const peer = await resolvePeerWithRetry(tg, peerId, accessHash);
-        const raw = await tg.getMessages(peer, { limit: 50 });
+        const raw = await withResolvedPeer(tg, peerId, accessHash, (peer) =>
+          tg.getMessages(peer, { limit: 50 }),
+        );
         return raw
           .filter((m): m is Api.Message => m instanceof Api.Message)
           .map((m): MessageItem => ({
@@ -148,8 +154,8 @@ export async function POST(
       auth.model.session_string,
       auth.model.api_id,
       auth.model.api_hash,
-      async (tg) => {
-        const peer = await resolvePeerWithRetry(tg, peerId, accessHash ?? null);
+      async (tg) =>
+        withResolvedPeer(tg, peerId, accessHash ?? null, async (peer) => {
         const hasReply = typeof replyToMsgId === "number" && replyToMsgId > 0;
         const hasQuote =
           hasReply && typeof quoteText === "string" && quoteText.trim().length > 0;
@@ -192,7 +198,7 @@ export async function POST(
         if (scheduleSec) args.schedule = scheduleSec;
         const msg = await tg.sendMessage(peer, args);
         return msg;
-      },
+        }),
     );
 
     // Return the real message metadata so the client can replace its
@@ -251,14 +257,13 @@ export async function PUT(
       auth.model.session_string,
       auth.model.api_id,
       auth.model.api_hash,
-      async (tg) => {
-        const peer = await resolvePeerWithRetry(tg, peerId, accessHash ?? null);
-        const msg = await tg.editMessage(peer, {
-          message: Number(messageId),
-          text,
-        });
-        return msg;
-      },
+      async (tg) =>
+        withResolvedPeer(tg, peerId, accessHash ?? null, (peer) =>
+          tg.editMessage(peer, {
+            message: Number(messageId),
+            text,
+          }),
+        ),
     );
 
     return Response.json({
@@ -312,10 +317,10 @@ export async function DELETE(
       auth.model.session_string,
       auth.model.api_id,
       auth.model.api_hash,
-      async (tg) => {
-        const peer = await resolvePeerWithRetry(tg, peerId, accessHash ?? null);
-        await tg.deleteMessages(peer, ids, { revoke: doRevoke });
-      },
+      async (tg) =>
+        withResolvedPeer(tg, peerId, accessHash ?? null, (peer) =>
+          tg.deleteMessages(peer, ids, { revoke: doRevoke }),
+        ),
     );
 
     return Response.json({ ok: true, deleted: ids, revoke: doRevoke });

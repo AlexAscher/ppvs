@@ -1925,6 +1925,10 @@ export default function ChatterPage() {
           stats={stats}
           scheduleAt={scheduleAt}
           onChangeScheduleAt={setScheduleAt}
+          quickEmojis={quickEmojis}
+          fanInfoModelId={selectedModelId}
+          fanInfoPeerId={selectedDialog?.id ?? null}
+          fan={fan}
         />
         </div>
       </div>

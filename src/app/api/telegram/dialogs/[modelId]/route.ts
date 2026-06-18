@@ -127,8 +127,26 @@ export async function GET(
             id = `-100${entity.id.toString()}`;
             accessHash = entity.accessHash?.toString() ?? null;
           } else {
-            // Skip dialogs with unknown / unresolved entity to avoid duplicate React keys.
-            continue;
+            // gramJS occasionally leaves d.entity undefined when the
+            // users/chats arrays in the getDialogs response don't cover a
+            // peer. Previously we DROPPED these dialogs — which made a whole
+            // account (e.g. Comfygod) render an EMPTY list when none of its
+            // entities resolved. Instead, build a minimal item from the
+            // dialog-level fields. accessHash is unknown here; the messages
+            // route re-resolves it via getInputEntity on PEER_ID_INVALID.
+            // d.id is already the marked id (positive user / -chat / -100
+            // channel), matching our peerId convention.
+            const dd = d as unknown as {
+              id?: { toString(): string } | null;
+              name?: string | null;
+              isChannel?: boolean;
+              isGroup?: boolean;
+            };
+            const did = dd.id ? dd.id.toString() : null;
+            if (!did) continue;
+            type = dd.isChannel ? "channel" : dd.isGroup ? "chat" : "user";
+            id = did;
+            title = dd.name || "Chat";
           }
 
           const msg = d.message;
@@ -170,6 +188,14 @@ export async function GET(
               readOutboxMaxId,
             });
           }
+        }
+        // Diagnostic: an empty list with raw>0 means a mapping gap; raw==0
+        // means Telegram returned no dialogs for this session (account truly
+        // empty, or the session needs re-auth). Logged so we can tell which.
+        if (items.length === 0) {
+          console.warn(
+            `[telegram/dialogs] model ${modelId}: getDialogs returned ${dialogs.length} raw dialog(s), 0 mapped`,
+          );
         }
         return { result: items, bumpInfos: bumps };
       },

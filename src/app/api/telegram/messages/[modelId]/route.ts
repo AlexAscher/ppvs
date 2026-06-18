@@ -65,6 +65,54 @@ async function withResolvedPeer<T>(
   }
 }
 
+// ── message direction (self-id based) ──────────────────────────────────────
+// getHistory's `out` flag has been observed to come back falsy for the
+// account's OWN sent messages after a reconnect, which flipped sent bubbles to
+// the "incoming" side when a dialog was re-opened. The authoritative signal is
+// the sender: compare each message's fromId to the model's own user id (getMe,
+// cached per model). We only fall back to `out` when Telegram omits fromId.
+declare global {
+  var __ppvs_self_id__: Map<string, string> | undefined;
+  var __ppvs_msg_log_ts__: Map<string, number> | undefined;
+}
+const selfIdCache: Map<string, string> =
+  globalThis.__ppvs_self_id__ ?? new Map<string, string>();
+globalThis.__ppvs_self_id__ = selfIdCache;
+const msgLogTs: Map<string, number> =
+  globalThis.__ppvs_msg_log_ts__ ?? new Map<string, number>();
+globalThis.__ppvs_msg_log_ts__ = msgLogTs;
+
+async function getSelfId(
+  tg: import("telegram").TelegramClient,
+  modelId: string,
+): Promise<string | null> {
+  const cached = selfIdCache.get(modelId);
+  if (cached) return cached;
+  try {
+    const me = await tg.getMe();
+    const id =
+      me && typeof me === "object" && "id" in me && me.id != null
+        ? me.id.toString()
+        : null;
+    if (id) selfIdCache.set(modelId, id);
+    return id;
+  } catch {
+    return null;
+  }
+}
+
+function peerUserId(p: Api.TypePeer | undefined): string | null {
+  return p instanceof Api.PeerUser ? p.userId.toString() : null;
+}
+
+function isOutgoingMessage(m: Api.Message, selfId: string | null): boolean {
+  if (selfId != null && m.fromId) {
+    const fid = peerUserId(m.fromId);
+    if (fid != null) return fid === selfId;
+  }
+  return !!m.out;
+}
+
 function extractReplyTo(msg: Api.Message): MessageItem["replyTo"] {
   const r = msg.replyTo;
   if (!r || !(r instanceof Api.MessageReplyHeader)) return null;
@@ -97,16 +145,32 @@ export async function GET(
       auth.model.api_id,
       auth.model.api_hash,
       async (tg) => {
+        const selfId = await getSelfId(tg, modelId);
         const raw = await withResolvedPeer(tg, peerId, accessHash, (peer) =>
           tg.getMessages(peer, { limit: 50 }),
         );
-        return raw
-          .filter((m): m is Api.Message => m instanceof Api.Message)
+        const msgs = raw.filter((m): m is Api.Message => m instanceof Api.Message);
+        // Throttled diagnostic (≤1/model/30s). If direction is still wrong,
+        // this shows whether getHistory carries fromId and how it lines up
+        // with `out` + the model's self id.
+        const now = Date.now();
+        if (now - (msgLogTs.get(modelId) ?? 0) > 30_000) {
+          msgLogTs.set(modelId, now);
+          const sample = msgs.slice(0, 5).map((m) => ({
+            id: m.id,
+            out: m.out ?? null,
+            from: peerUserId(m.fromId),
+          }));
+          console.log(
+            `[telegram/messages] model=${modelId} self=${selfId} peer=${peerId} sample=${JSON.stringify(sample)}`,
+          );
+        }
+        return msgs
           .map((m): MessageItem => ({
             id: m.id,
             text: m.message ?? "",
             date: m.date,
-            isOutgoing: !!m.out,
+            isOutgoing: isOutgoingMessage(m, selfId),
             media: extractMessageMedia(m),
             groupedId: m.groupedId ? m.groupedId.toString() : null,
             replyTo: extractReplyTo(m),

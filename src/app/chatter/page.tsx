@@ -25,7 +25,6 @@ import {
 import { NotificationToaster } from "@/components/NotificationToaster";
 import type { FanRow, FanNote } from "@/lib/fan-types";
 import { QuickReplyModal } from "@/components/chatter-page/QuickReplyModal";
-import { FanProfileDrawer } from "@/components/chatter-page/FanProfileDrawer";
 import { DeleteMessageModal } from "@/components/chatter-page/DeleteMessageModal";
 
 export type StatsPayload = {
@@ -247,8 +246,6 @@ export default function ChatterPage() {
 
   // Quick reply modal — opens from a button next to the message input.
   const [quickReplyOpen, setQuickReplyOpen] = useState(false);
-  // Fan profile drawer — opens when user clicks fan name/avatar in header.
-  const [fanDrawerOpen, setFanDrawerOpen] = useState(false);
 
   // Right-click context-menu actions: reply / edit mode. Both blockers
   // for handleSend — when `editing` is set, Send actually edits via PUT;
@@ -1357,6 +1354,10 @@ export default function ChatterPage() {
       setTipMessage("");
       setScheduleAt(null);
       void fetchDialogs(selectedModelId, false);
+      // Refresh the OPEN chat too so the "Tip for $X" message shows up right
+      // away instead of only after the chatter re-enters the dialog. Skip for
+      // scheduled tips — nothing posts to the chat until they fire.
+      if (!wasScheduled) void fetchMessages(selectedModelId, selectedDialog);
       setNotice(wasScheduled ? `✅ Tip scheduled ($${amount.toFixed(2)})` : `✅ Tip request sent ($${amount.toFixed(2)})`);
       setTimeout(
         () => setNotice((n) => (n.startsWith("✅ Tip") ? "" : n)),
@@ -1865,7 +1866,12 @@ export default function ChatterPage() {
             }
           }}
           onOpenQuickReply={() => setQuickReplyOpen(true)}
-          onOpenFanProfile={() => setFanDrawerOpen(true)}
+          onOpenFanProfile={() => {
+            // Drawer removed — clicking the fan header now jumps to the
+            // Fan Information tab (which holds the profile + stats block).
+            setActiveTab("notes");
+            setMobileView("actions");
+          }}
           replyingTo={replyingTo}
           editing={editing}
           onCancelReply={() => setReplyingTo(null)}
@@ -1970,15 +1976,6 @@ export default function ChatterPage() {
           // to edit before hitting Send.
           setInputText((prev) => (prev.trim() ? `${prev} ${body}` : body));
         }}
-      />
-      <FanProfileDrawer
-        open={fanDrawerOpen}
-        onClose={() => setFanDrawerOpen(false)}
-        modelId={selectedModelId}
-        peerId={selectedDialog?.id ?? null}
-        fan={fan}
-        displayName={selectedDialog?.title ?? "User"}
-        username={selectedDialog?.username ?? null}
       />
       <DeleteMessageModal
         open={!!deletingMessage}

@@ -42,6 +42,13 @@ const agencyFeatures = [
     desc: "Monitor revenue, creator performance, chatter performance, and conversion rates in real time from a single dashboard.",
   },
   {
+    id: "agency-inbox",
+    emoji: "📥",
+    label: "Inbox",
+    tagline: "Every conversation in one place.",
+    desc: "Jump straight to any fan's chat from a unified, deep-linked inbox — so your team never loses track of who's waiting on a reply.",
+  },
+  {
     id: "agency-vault",
     emoji: "🔒",
     label: "Vault",

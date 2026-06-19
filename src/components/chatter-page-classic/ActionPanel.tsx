@@ -777,7 +777,6 @@ export function ActionPanel({
                   { label: "All time net", value: fmtDollars(stats.allTimeNet) },
                   { label: "Sales today", value: String(stats.todaySales) },
                   { label: "Sales all time", value: String(stats.allTimeSales) },
-                  { label: "Unlocks", value: String(stats.unlocks) },
                   { label: "Sends today", value: String(stats.todayMessages) },
                   { label: "Sends all time", value: String(stats.allTimeMessages) },
                 ]
@@ -786,7 +785,6 @@ export function ActionPanel({
                   { label: "All time net", value: "…" },
                   { label: "Sales today", value: "…" },
                   { label: "Sales all time", value: "…" },
-                  { label: "Unlocks", value: "…" },
                   { label: "Sends today", value: "…" },
                   { label: "Sends all time", value: "…" },
                 ]

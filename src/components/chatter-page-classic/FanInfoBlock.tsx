@@ -122,14 +122,6 @@ export function FanInfoBlock({ modelId, peerId, fan }: Props) {
   }
 
   const totalSpent = Number(fan.total_spent ?? 0);
-  const buyingPowerDots = (() => {
-    if (totalSpent >= 500) return 5;
-    if (totalSpent >= 200) return 4;
-    if (totalSpent >= 75) return 3;
-    if (totalSpent >= 20) return 2;
-    if (totalSpent > 0) return 1;
-    return 0;
-  })();
 
   return (
     <div className="space-y-4">
@@ -236,19 +228,6 @@ export function FanInfoBlock({ modelId, peerId, fan }: Props) {
               </div>
             </div>
           ))}
-        </div>
-        <div className="mt-2 flex items-center gap-2 text-[10px] text-[#6b7280]">
-          <span className="uppercase tracking-wide">Buying power</span>
-          <div className="flex items-center gap-1">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <span
-                key={i}
-                className={`block w-2 h-2 rounded-full ${
-                  i <= buyingPowerDots ? "bg-[#00AFF0]" : "bg-[#2a2d35]"
-                }`}
-              />
-            ))}
-          </div>
         </div>
       </div>
     </div>

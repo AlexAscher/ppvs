@@ -574,16 +574,30 @@ export default function LandingPage() {
               </h2>
               <div className="flex flex-col gap-3">
                 {[
-                  "Your chatter sends a PPV offer.",
-                  "The fan pays by card or crypto.",
-                  "Content unlocks automatically.",
-                  "Your chatter gets notified instantly.",
-                  "No manual follow-up required.",
+                  "Monetize Telegram conversations",
+                  "Fans unlock blurred content without leaving the chat",
+                  "Content unlocks automatically after purchase",
+                  "All done inside Telegram",
                 ].map((line, i) => (
                   <div key={i} className="flex items-center gap-3" style={{ fontSize: "14px", color: "#d1d5db" }}>
                     <span style={{ color: OF_BLUE, fontWeight: 700 }}>✓</span>
                     {line}
                   </div>
+                ))}
+              </div>
+
+              {/* Payment methods the fan can pay with. */}
+              <div className="mt-7 flex items-center flex-wrap gap-2">
+                <span style={{ fontSize: "13px", fontWeight: 600, color: "#9ca3af" }}>Fan pays with:</span>
+                {["Apple Pay", "Visa", "Mastercard", "USDT", "USDC", "Bitcoin", "Ethereum"].map((name) => (
+                  <span
+                    key={name}
+                    title={name}
+                    className="flex items-center justify-center rounded-lg"
+                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", minWidth: "40px", height: "32px", padding: "0 9px" }}
+                  >
+                    <PayIcon name={name} />
+                  </span>
                 ))}
               </div>
             </div>
@@ -614,11 +628,10 @@ export default function LandingPage() {
               </h2>
               <div className="flex flex-col gap-3">
                 {[
-                  "Get paid instantly.",
-                  "Withdraw straight to your crypto wallet.",
-                  "No payout schedules.",
-                  "No waiting periods.",
-                  "No middlemen.",
+                  "Revenue appears instantly after every sale",
+                  "Withdraw whenever you want",
+                  "Funds go directly to your crypto wallet",
+                  "No KYC required",
                 ].map((line, i) => (
                   <div key={i} className="flex items-center gap-3" style={{ fontSize: "14px", color: "#d1d5db" }}>
                     <span style={{ color: OF_BLUE, fontWeight: 700 }}>✓</span>
@@ -629,7 +642,7 @@ export default function LandingPage() {
 
               {/* Withdrawal currencies — only USDT + USDC, inline after the text. */}
               <div className="mt-7 flex items-center flex-wrap gap-2">
-                <span style={{ fontSize: "13px", fontWeight: 600, color: "#9ca3af" }}>Withdraw in:</span>
+                <span style={{ fontSize: "13px", fontWeight: 600, color: "#9ca3af" }}>You withdraw in:</span>
                 {[
                   { name: "USDT", label: "USDT" },
                   { name: "USDC", label: "USDC" },

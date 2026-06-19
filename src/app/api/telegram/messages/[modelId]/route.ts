@@ -73,30 +73,55 @@ async function withResolvedPeer<T>(
 // cached per model). We only fall back to `out` when Telegram omits fromId.
 declare global {
   var __ppvs_self_id__: Map<string, string> | undefined;
+  var __ppvs_self_id_miss__: Map<string, number> | undefined;
   var __ppvs_msg_log_ts__: Map<string, number> | undefined;
 }
 const selfIdCache: Map<string, string> =
   globalThis.__ppvs_self_id__ ?? new Map<string, string>();
 globalThis.__ppvs_self_id__ = selfIdCache;
+const selfIdMiss: Map<string, number> =
+  globalThis.__ppvs_self_id_miss__ ?? new Map<string, number>();
+globalThis.__ppvs_self_id_miss__ = selfIdMiss;
 const msgLogTs: Map<string, number> =
   globalThis.__ppvs_msg_log_ts__ ?? new Map<string, number>();
 globalThis.__ppvs_msg_log_ts__ = msgLogTs;
 
+const SELF_ID_TIMEOUT_MS = 6_000;
+const SELF_ID_RETRY_MS = 5 * 60_000;
+
+/**
+ * Resolve the model's own user id (for message direction), cached forever on
+ * success. CRITICAL: getMe must NEVER block message loading — on a flaky
+ * session it can hang, and since this runs inside the pool's 20s operation
+ * budget a hang would make the whole getMessages fail and the chat render
+ * empty. So we race it against a short timeout and, on miss, back off for a
+ * few minutes (returning null → callers fall back to the `out` flag).
+ */
 async function getSelfId(
   tg: import("telegram").TelegramClient,
   modelId: string,
 ): Promise<string | null> {
   const cached = selfIdCache.get(modelId);
   if (cached) return cached;
+  const lastMiss = selfIdMiss.get(modelId) ?? 0;
+  if (Date.now() - lastMiss < SELF_ID_RETRY_MS) return null;
   try {
-    const me = await tg.getMe();
+    const me = await Promise.race([
+      tg.getMe(),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), SELF_ID_TIMEOUT_MS)),
+    ]);
     const id =
       me && typeof me === "object" && "id" in me && me.id != null
         ? me.id.toString()
         : null;
-    if (id) selfIdCache.set(modelId, id);
-    return id;
+    if (id) {
+      selfIdCache.set(modelId, id);
+      return id;
+    }
+    selfIdMiss.set(modelId, Date.now());
+    return null;
   } catch {
+    selfIdMiss.set(modelId, Date.now());
     return null;
   }
 }

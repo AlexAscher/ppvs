@@ -3,7 +3,7 @@ import { Api } from "telegram";
 import { generateRandomLong } from "telegram/Helpers";
 import { authorizeModelAccess } from "@/lib/telegram-authorize";
 import { withTelegramClient } from "@/lib/telegram-pool";
-import { buildPeer } from "@/lib/telegram-peer";
+import { withResolvedPeer } from "@/lib/telegram-peer";
 import { extractMessageMedia, type MessageMedia } from "@/lib/telegram-media";
 
 export type MessageItem = {
@@ -21,49 +21,6 @@ export type MessageItem = {
   // (newer Telegram protocol).
   replyTo: { msgId: number; quoteText: string | null } | null;
 };
-
-const PEER_INVALID_RE =
-  /PEER_ID_INVALID|CHAT_INVALID|CHANNEL_INVALID|USER_ID_INVALID|peer not found/i;
-
-/**
- * Run a peer-scoped operation, re-resolving the peer once if Telegram rejects
- * the cheap buildPeer() with PEER_ID_INVALID / CHAT_INVALID / etc. That error
- * means the chatter-supplied access_hash is stale (or never matched THIS
- * session — common when the dialog list was bootstrapped against a different
- * account / model session). On that specific error we fall back to
- * `tg.getInputEntity(peerId)`, which forces gramJS to resolve the user via
- * getUsers / contacts.resolve (refreshing the session's entity cache), then
- * retries the same operation against the fresh peer.
- *
- * NOTE: earlier this validated the peer with a separate `getMessages(limit:0)`
- * touch BEFORE the real call. That extra round-trip is gone — we run the real
- * op and only re-resolve on failure. The double-fetch was both wasteful and a
- * plausible cause of getHistory returning messages with the `out` flag
- * stripped, which flipped the chatter's own sent messages to the "incoming"
- * side when a dialog was re-opened.
- */
-async function withResolvedPeer<T>(
-  tg: import("telegram").TelegramClient,
-  peerId: string,
-  accessHash: string | null,
-  op: (peer: Api.TypeInputPeer) => Promise<T>,
-): Promise<T> {
-  const initial = buildPeer(peerId, accessHash);
-  try {
-    return await op(initial);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    if (!PEER_INVALID_RE.test(msg)) throw e;
-    let resolved: Api.TypeInputPeer;
-    try {
-      resolved = (await tg.getInputEntity(peerId)) as Api.TypeInputPeer;
-    } catch {
-      // Re-throw the original PEER_ID_INVALID so the caller surfaces it.
-      throw e;
-    }
-    return await op(resolved);
-  }
-}
 
 // ── message direction (self-id based) ──────────────────────────────────────
 // getHistory's `out` flag has been observed to come back falsy for the

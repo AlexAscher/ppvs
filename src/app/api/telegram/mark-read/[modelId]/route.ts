@@ -1,24 +1,7 @@
 import { NextRequest } from "next/server";
-import { Api } from "telegram";
 import { authorizeModelAccess } from "@/lib/telegram-authorize";
 import { withTelegramClient } from "@/lib/telegram-pool";
-import bigInt from "big-integer";
-
-function buildPeer(peerId: string, accessHash: string | null): Api.TypeInputPeer {
-  if (peerId.startsWith("-100")) {
-    return new Api.InputPeerChannel({
-      channelId: bigInt(peerId.slice(4)),
-      accessHash: bigInt(accessHash ?? "0"),
-    });
-  }
-  if (peerId.startsWith("-")) {
-    return new Api.InputPeerChat({ chatId: bigInt(peerId.slice(1)) });
-  }
-  return new Api.InputPeerUser({
-    userId: bigInt(peerId),
-    accessHash: bigInt(accessHash ?? "0"),
-  });
-}
+import { withResolvedPeer } from "@/lib/telegram-peer";
 
 export async function POST(
   req: NextRequest,
@@ -37,11 +20,16 @@ export async function POST(
       auth.model.session_string,
       auth.model.api_id,
       auth.model.api_hash,
-      async (tg) => {
-        const peer = buildPeer(peerId, accessHash ?? null);
-        // No `message` argument → mark the whole history of this dialog read.
-        await tg.markAsRead(peer);
-      },
+      async (tg) =>
+        // The peerId comes from the chatter's stored dialog list; that
+        // access_hash sometimes goes stale across reconnects. withResolvedPeer
+        // re-resolves on PEER_ID_INVALID instead of just logging the error,
+        // which was spamming logs every few seconds while the user was
+        // viewing a dialog.
+        withResolvedPeer(tg, peerId, accessHash ?? null, (peer) =>
+          // No `message` argument → mark the whole history of this dialog read.
+          tg.markAsRead(peer),
+        ),
     );
 
     return Response.json({ ok: true });

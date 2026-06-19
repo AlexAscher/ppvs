@@ -39,20 +39,25 @@ export async function middleware(request: NextRequest) {
   const method = request.method;
 
   // ── 0. Subdomain → section rewrite ────────────────────────────────────────
-  // chatter.ppvs.io serves the chatter workspace; mini.ppvs.io serves the
-  // Telegram mini-app. Only the bare root is remapped so deep paths (/api,
-  // /_next, /login, static assets) still resolve normally on the subdomain.
+  // chatter.ppvs.io serves the chatter workspace; the Telegram mini-app is
+  // hosted on its own domain ppvs.tech (kept off the main marketing domain
+  // both for branding and as a fallback if .io gets blocked in any region).
+  // Only the bare root is remapped so deep paths (/api, /_next, /login,
+  // static assets) still resolve normally on each host.
   // No auth gating needed here: the chatter page self-guards (redirects to
   // /login when there's no session) and the mini-app authenticates via
   // Telegram initData.
   if (pathname === "/") {
     const host = (request.headers.get("host") ?? "").toLowerCase();
-    if (host.startsWith("chatter.")) {
+    // Strip any :port suffix so dev (localhost:3000) + prod match consistently.
+    const hostname = host.split(":")[0];
+    if (hostname.startsWith("chatter.")) {
       const url = request.nextUrl.clone();
       url.pathname = "/chatter";
       return NextResponse.rewrite(url);
     }
-    if (host.startsWith("mini.")) {
+    // Mini-app lives on ppvs.tech (apex) and the legacy mini. subdomain.
+    if (hostname === "ppvs.tech" || hostname.startsWith("mini.")) {
       const url = request.nextUrl.clone();
       url.pathname = "/mini";
       return NextResponse.rewrite(url);

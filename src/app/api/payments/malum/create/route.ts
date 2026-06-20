@@ -2,7 +2,6 @@ import { NextRequest } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase-server";
 import { createMalumPayment } from "@/lib/malum";
 import { consume, getClientIp, tooManyRequests } from "@/lib/rate-limit";
-import { PLATFORM_FEE_PCT } from "@/lib/platform";
 
 export const maxDuration = 30;
 
@@ -87,8 +86,11 @@ export async function POST(req: NextRequest) {
       if (!Number.isFinite(basePrice) || basePrice <= 0) {
         return Response.json({ error: "Invalid order amount" }, { status: 400 });
       }
-      // Buyer pays base + platform surcharge (covers Malum's gateway fee).
-      amount = Math.round(basePrice * (1 + PLATFORM_FEE_PCT) * 100) / 100;
+      // Buyer is charged the chatter's base price; Malum adds its gateway fee
+      // on top at checkout (buyer_pays_fees). The platform's 12% margin comes
+      // from the agency deduct (agencyNet on the base), so there is NO buyer-
+      // facing surcharge here anymore — that would double-charge the gateway.
+      amount = Math.round(basePrice * 100) / 100;
       productTitle = `PPV unlock · ${code}`;
       productDescription = send.caption ?? undefined;
       persist = async (txn: string) => {
@@ -133,7 +135,10 @@ export async function POST(req: NextRequest) {
         webhook_url: `${baseUrl}/api/webhooks/malum`,
         success_url: `${baseUrl}/pay/${encodeURIComponent(code)}/success`,
         cancel_url: `${baseUrl}/pay/${encodeURIComponent(code)}`,
-        merchant_pays_gw_fees: true,
+        // Buyer covers the gateway fee on top of the base price (shown as a
+        // separate line on the Malum checkout). Mutually exclusive with
+        // merchant_pays_gw_fees.
+        buyer_pays_fees: true,
         // The pay code is the authoritative key the webhook resolves on.
         metadata: code.slice(0, 254),
         product_title: productTitle,

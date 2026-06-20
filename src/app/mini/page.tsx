@@ -307,31 +307,10 @@ export default function MiniAppPage() {
           </div>
         )}
 
-        {/* Price breakdown — show ONLY for PPV (tips have no platform fee
-            so basePrice === total there, would just be visual noise). The
-            fan sees one chatter-set base price + 10% service fee + total
-            so the difference between the chat caption price ($15) and the
-            checkout total ($16.50) is no longer mysterious. */}
-        {boot.kind === "ppv" && boot.total > boot.basePrice && (
-          <div className="bg-[#161b22] border border-[#30363d] rounded-xl px-4 py-3 mb-4 space-y-2">
-            <div className="flex items-center justify-between text-[13px]">
-              <span className="text-[#9ca3af]">Content</span>
-              <span className="text-white font-medium">${boot.basePrice.toFixed(2)}</span>
-            </div>
-            <div className="flex items-center justify-between text-[13px]">
-              <span className="text-[#9ca3af]">Service fee (12%)</span>
-              <span className="text-white font-medium">
-                ${(boot.total - boot.basePrice).toFixed(2)}
-              </span>
-            </div>
-            <div className="border-t border-[#30363d] pt-2 mt-1 flex items-center justify-between">
-              <span className="text-[14px] font-semibold text-white">Total</span>
-              <span className="text-[18px] font-bold text-[#00AFF0]">
-                ${boot.total.toFixed(2)}
-              </span>
-            </div>
-          </div>
-        )}
+        {/* No price breakdown here: the Mini App shows only the chatter's
+            base price (on the Unlock button). The gateway fee is added and
+            itemised on the Malum checkout page itself, so we don't duplicate
+            a "service fee" line in the app. */}
 
         {/* Email — required by the payment provider for the receipt. */}
         <input
@@ -353,8 +332,8 @@ export default function MiniAppPage() {
           {state === "loading"
             ? "Opening checkout…"
             : boot.kind === "ppv"
-              ? `🔓 Unlock for $${boot.total.toFixed(2)}`
-              : `💸 Send tip $${boot.total.toFixed(2)}`}
+              ? `🔓 Unlock for $${boot.basePrice.toFixed(2)}`
+              : `💸 Send tip $${boot.basePrice.toFixed(2)}`}
         </button>
 
         {errMsg && (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 /**
  * /mini — Telegram Mini App entry.
@@ -83,6 +83,37 @@ export default function MiniAppPage() {
   const [errMsg, setErrMsg] = useState("");
   const [email, setEmail] = useState("");
 
+  // Poll /api/mini/init until the webhook flips the order to paid/delivered,
+  // then flip the screen. The webhook delivers the PPV/tip server-side
+  // regardless, so even if the fan closes the app the content still lands in
+  // their Telegram chat. Stable (useCallback) so the boot effect can depend on
+  // it without re-running.
+  const pollUntilPaid = useCallback(async () => {
+    const tg = window.Telegram?.WebApp;
+    const initData = tg?.initData ?? "";
+    const url = new URL(window.location.href);
+    const startParam = tg?.initDataUnsafe?.start_param ?? url.searchParams.get("code") ?? "";
+    const deadline = Date.now() + 10 * 60_000; // give up after 10 min
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 4000));
+      try {
+        const r = await fetch("/api/mini/init", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ initData, startParam }),
+        });
+        const j = (await r.json().catch(() => ({}))) as { status?: string };
+        if (j.status === "paid" || j.status === "delivered") {
+          tg?.HapticFeedback?.notificationOccurred?.("success");
+          setState("delivered");
+          return;
+        }
+      } catch {
+        /* transient — keep polling */
+      }
+    }
+  }, []);
+
   // Boot: load the TG SDK script, then call /api/mini/init with initData.
   useEffect(() => {
     let cancelled = false;
@@ -121,8 +152,15 @@ export default function MiniAppPage() {
           }
           if (cancelled) return;
           setBoot(j as InitResponse);
-          if ((j as InitResponse).status === "delivered" || (j as InitResponse).status === "paid") {
+          const s = (j as InitResponse).status;
+          if (s === "delivered" || s === "paid") {
             setState("delivered");
+          } else if (url.searchParams.get("paid") === "1") {
+            // We just came back from the Malum checkout (success_url). The
+            // webhook may not have flipped the order yet — show the waiting
+            // screen and poll until it lands as paid/delivered.
+            setState("waiting");
+            void pollUntilPaid();
           }
         })
         .catch((e: unknown) => {
@@ -134,39 +172,9 @@ export default function MiniAppPage() {
       cancelled = true;
       script.remove();
     };
-  }, []);
+  }, [pollUntilPaid]);
 
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-
-  // After opening the Malum checkout, poll /api/mini/init until the webhook
-  // flips the order to paid/delivered, then flip the screen. The webhook
-  // delivers the PPV/tip server-side regardless, so even if the fan closes
-  // the app the content still lands in their Telegram chat.
-  async function pollUntilPaid() {
-    const tg = window.Telegram?.WebApp;
-    const initData = tg?.initData ?? "";
-    const url = new URL(window.location.href);
-    const startParam = tg?.initDataUnsafe?.start_param ?? url.searchParams.get("code") ?? "";
-    const deadline = Date.now() + 10 * 60_000; // give up after 10 min
-    while (Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 4000));
-      try {
-        const r = await fetch("/api/mini/init", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ initData, startParam }),
-        });
-        const j = (await r.json().catch(() => ({}))) as { status?: string };
-        if (j.status === "paid" || j.status === "delivered") {
-          tg?.HapticFeedback?.notificationOccurred?.("success");
-          setState("delivered");
-          return;
-        }
-      } catch {
-        /* transient — keep polling */
-      }
-    }
-  }
 
   async function handlePay() {
     if (!boot) return;
@@ -185,7 +193,13 @@ export default function MiniAppPage() {
       const res = await fetch("/api/payments/malum/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: boot.code, email: email.trim().toLowerCase() }),
+        body: JSON.stringify({
+          code: boot.code,
+          email: email.trim().toLowerCase(),
+          // Keep the checkout INSIDE the Mini App: we navigate this webview to
+          // the hosted page (below) and ask Malum to return us into /mini.
+          source: "mini",
+        }),
       });
       const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
       if (!res.ok || data.error || !data.url) {
@@ -194,11 +208,11 @@ export default function MiniAppPage() {
         setState("error");
         return;
       }
-      // Open the hosted checkout (Telegram in-app browser, else a new tab).
-      if (tg?.openLink) tg.openLink(data.url);
-      else window.open(data.url, "_blank");
-      setState("waiting");
-      void pollUntilPaid();
+      // Navigate the Mini App's own webview to the hosted checkout instead of
+      // popping a separate browser (tg.openLink). The page loads inside the
+      // Telegram Mini App window; Malum's success_url returns us to
+      // /mini?code=…&paid=1, where the boot effect polls until delivered.
+      window.location.href = data.url;
     } catch (e: unknown) {
       setErrMsg(e instanceof Error ? e.message : "Network error");
       setState("error");

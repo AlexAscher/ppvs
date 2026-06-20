@@ -19,7 +19,7 @@ export const maxDuration = 30;
  * Returns `{ url }` — the client redirects the browser to it.
  */
 
-type Body = { code?: string; email?: string };
+type Body = { code?: string; email?: string; source?: string };
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -33,6 +33,10 @@ export async function POST(req: NextRequest) {
     const body = (await req.json().catch(() => null)) as Body | null;
     const code = typeof body?.code === "string" ? body.code.trim() : "";
     const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
+    // The Mini App navigates its OWN webview to the checkout (stays inside
+    // Telegram), so it needs Malum to return the buyer back into /mini rather
+    // than the web /pay success page. The web flow leaves `source` unset.
+    const fromMini = body?.source === "mini";
 
     if (!code || code.length < 6 || code.length > 16 || !/^[a-z0-9]+$/.test(code)) {
       return Response.json({ error: "Invalid code" }, { status: 400 });
@@ -133,8 +137,14 @@ export async function POST(req: NextRequest) {
         currency: "USD",
         customer_email: email,
         webhook_url: `${baseUrl}/api/webhooks/malum`,
-        success_url: `${baseUrl}/pay/${encodeURIComponent(code)}/success`,
-        cancel_url: `${baseUrl}/pay/${encodeURIComponent(code)}`,
+        // Mini App returns into /mini (with ?paid=1 so the app polls for the
+        // webhook to flip the order to delivered); web flow uses /pay success.
+        success_url: fromMini
+          ? `${baseUrl}/mini?code=${encodeURIComponent(code)}&paid=1`
+          : `${baseUrl}/pay/${encodeURIComponent(code)}/success`,
+        cancel_url: fromMini
+          ? `${baseUrl}/mini?code=${encodeURIComponent(code)}`
+          : `${baseUrl}/pay/${encodeURIComponent(code)}`,
         // Buyer covers the gateway fee on top of the base price (shown as a
         // separate line on the Malum checkout). Mutually exclusive with
         // merchant_pays_gw_fees.

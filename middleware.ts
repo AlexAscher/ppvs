@@ -91,7 +91,15 @@ export async function middleware(request: NextRequest) {
   const method = request.method;
 
   // ── 1. CSRF: same-origin only for mutating /api/* calls ───────────────────
-  if (pathname.startsWith("/api/") && MUTATING.has(method)) {
+  // EXCEPT inbound webhooks (Malum etc.) — they're server-to-server, have no
+  // Origin/Referer matching us, and are authenticated by HMAC signature in
+  // the route handler. Blocking them here would silently drop real payment
+  // notifications.
+  if (
+    pathname.startsWith("/api/") &&
+    !pathname.startsWith("/api/webhooks/") &&
+    MUTATING.has(method)
+  ) {
     const host = request.headers.get("host");
     const origin = request.headers.get("origin");
     const referer = request.headers.get("referer");

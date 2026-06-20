@@ -130,5 +130,18 @@ export function verifyMalumWebhookSignature(event: MalumWebhookEvent): boolean {
     .update(`${event.txn}|${event.timestamp}|${key}`)
     .digest("hex")
     .toLowerCase();
-  return expected === String(event.signature).toLowerCase();
+  const ok = expected === String(event.signature).toLowerCase();
+  if (!ok) {
+    // Observability: a mismatch means either the wrong webhook key is loaded
+    // (e.g. test panel signed with the Live key while env holds the sandbox
+    // key) or the payload was tampered with. Log the inputs (NOT the secret
+    // key — only its last 6 chars) so a real failure can be diagnosed from
+    // the server logs without guessing.
+    console.warn(
+      `[malum] webhook signature MISMATCH txn=${event.txn} ts=${event.timestamp} ` +
+        `status=${event.status} recv=${event.signature} expected=${expected} ` +
+        `keyTail=…${key.slice(-6)}`,
+    );
+  }
+  return ok;
 }

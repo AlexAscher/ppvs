@@ -79,9 +79,13 @@ declare global {
 export default function MiniAppPage() {
   const [boot, setBoot] = useState<InitResponse | null>(null);
   const [bootError, setBootError] = useState("");
-  const [state, setState] = useState<"locked" | "loading" | "waiting" | "delivered" | "error">("locked");
+  const [state, setState] = useState<"locked" | "loading" | "ready" | "waiting" | "delivered" | "error">("locked");
   const [errMsg, setErrMsg] = useState("");
   const [email, setEmail] = useState("");
+  // Hosted checkout URL from Malum. Held so the "ready" screen can offer BOTH
+  // an in-webview "Pay now" (stays inside the Mini App) and an "Open in
+  // browser" fallback (for gateways whose page hangs inside the webview).
+  const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
 
   // Poll /api/mini/init until the webhook flips the order to paid/delivered,
   // then flip the screen. The webhook delivers the PPV/tip server-side
@@ -208,11 +212,13 @@ export default function MiniAppPage() {
         setState("error");
         return;
       }
-      // Navigate the Mini App's own webview to the hosted checkout instead of
-      // popping a separate browser (tg.openLink). The page loads inside the
-      // Telegram Mini App window; Malum's success_url returns us to
-      // /mini?code=…&paid=1, where the boot effect polls until delivered.
-      window.location.href = data.url;
+      // Show the "ready" screen with two ways to pay: in-webview (stays inside
+      // the Mini App) or open-in-browser (fallback for gateways that hang in
+      // the webview, e.g. Stix). We can't auto-navigate AND keep a fallback
+      // button — once the webview navigates away our UI is gone — so we let
+      // the buyer choose here.
+      setCheckoutUrl(data.url);
+      setState("ready");
     } catch (e: unknown) {
       setErrMsg(e instanceof Error ? e.message : "Network error");
       setState("error");
@@ -241,6 +247,46 @@ export default function MiniAppPage() {
   }
 
   if (state === "delivered") return <DeliveredScreen boot={boot} />;
+
+  if (state === "ready" && checkoutUrl) {
+    const url = checkoutUrl;
+    const tg = typeof window !== "undefined" ? window.Telegram?.WebApp : undefined;
+    return (
+      <Shell>
+        <div className="px-4 py-10 text-center">
+          <div className="text-[40px] mb-3">💳</div>
+          <div className="text-[16px] font-semibold text-white mb-2">Your payment is ready</div>
+          <div className="text-[13px] text-[#9ca3af] max-w-[320px] mx-auto leading-relaxed mb-6">
+            Tap “Pay now” to pay here. If the payment page doesn’t load, use “Open
+            in browser”. Your {boot.kind === "tip" ? "tip" : "content"} arrives in
+            this chat once payment is confirmed.
+          </div>
+          {/* Primary: navigate the Mini App's own webview to the checkout. */}
+          <button
+            onClick={() => {
+              tg?.HapticFeedback?.impactOccurred?.("medium");
+              window.location.href = url;
+            }}
+            className="w-full py-3.5 bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] rounded-xl text-white font-semibold text-[15px] active:scale-[0.98] transition-all mb-3"
+          >
+            💳 Pay now
+          </button>
+          {/* Fallback: open in an external browser, then poll for the webhook. */}
+          <button
+            onClick={() => {
+              if (tg?.openLink) tg.openLink(url);
+              else window.open(url, "_blank");
+              setState("waiting");
+              void pollUntilPaid();
+            }}
+            className="w-full py-3 bg-[#161b22] border border-[#30363d] rounded-xl text-[#9ca3af] font-medium text-[13px] active:scale-[0.98] transition-all"
+          >
+            Open in browser ↗
+          </button>
+        </div>
+      </Shell>
+    );
+  }
 
   if (state === "waiting") {
     return (

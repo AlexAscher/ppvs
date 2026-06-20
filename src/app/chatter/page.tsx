@@ -303,7 +303,12 @@ export default function ChatterPage() {
       } = await supabase.auth.getUser();
       if (cancelled) return;
       if (!user) {
-        router.replace("/login");
+        // Full-page nav (not router.replace): on chatter.ppvs.io the
+        // middleware 307s /login to the apex, and the Next client router
+        // can't follow a cross-origin RSC redirect — it would strand the
+        // page on the blank `role === null` render (the "black screen").
+        // A document navigation follows the cross-host redirect cleanly.
+        window.location.href = "/login";
         return;
       }
       const r = (user.user_metadata?.role as "agency" | "chatter") ?? "chatter";
@@ -1379,7 +1384,9 @@ export default function ChatterPage() {
 
   async function handleLogout() {
     await supabase.auth.signOut();
-    router.replace("/login");
+    // Full-page nav so the cross-subdomain /login → apex redirect completes
+    // (router.replace can't follow a cross-origin RSC redirect).
+    window.location.href = "/login";
   }
 
   // ── fan profile mutations ─────────────────────────────────────────────────
@@ -1707,7 +1714,15 @@ export default function ChatterPage() {
     [models, selectedModelId],
   );
 
-  if (role === null) return null;
+  // While auth resolves, show a spinner — never a bare `return null`, which
+  // renders as a black screen if the redirect above is mid-flight or stalls.
+  if (role === null) {
+    return (
+      <div className="h-[100dvh] w-full flex items-center justify-center bg-[#0d1117]">
+        <div className="inline-block w-8 h-8 border-2 border-[#374151] border-t-[#00AFF0] rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   // Both agency and chatter render the same indigo design
   // (Create_prompt_design → chatter-page-classic/*). No more per-role size

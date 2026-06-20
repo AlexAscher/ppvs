@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { LogoWord } from "../logo";
 import { createClient } from "@/lib/supabase";
+import { homeUrl } from "@/lib/host-routes";
 
 type Role = "chatter" | "agency";
 
@@ -49,6 +50,11 @@ export default function SignupPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  // Same chatter-subdomain loop fix as /login — set href after hydration so
+  // the link points back to the apex landing instead of looping the chatter
+  // workspace's auth bounce.
+  const [backHref, setBackHref] = useState("/");
+  useEffect(() => { setBackHref(homeUrl()); }, []);
   const supabase = createClient();
 
   async function handleSubmit(e: React.FormEvent) {
@@ -87,7 +93,7 @@ export default function SignupPage() {
 
       <div className="relative z-10 w-full max-w-[420px]">
         <Link
-          href="/"
+          href={backHref}
           className="flex items-center gap-1.5 text-[12px] text-[var(--text-3)] hover:text-[var(--text-2)] transition-colors mb-8"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

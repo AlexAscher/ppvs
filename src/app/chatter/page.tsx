@@ -27,6 +27,7 @@ import type { FanRow, FanNote } from "@/lib/fan-types";
 import { QuickReplyModal } from "@/components/chatter-page/QuickReplyModal";
 import { DeleteMessageModal } from "@/components/chatter-page/DeleteMessageModal";
 import { FanProfileDrawer } from "@/components/chatter-page/FanProfileDrawer";
+import { dashboardUrl } from "@/lib/host-routes";
 
 export type StatsPayload = {
   todayNet: number;
@@ -1724,7 +1725,13 @@ export default function ChatterPage() {
         displayName={displayName}
         sales="$0"
         onLogout={handleLogout}
-        onBack={() => router.push("/dashboard")}
+        onBack={() => {
+          // Agency goes back to ppvs.io/dashboard; chatter stays on chatter.ppvs.io/dashboard.
+          // Use a full-page nav (window.location) because it may cross subdomains.
+          const target = dashboardUrl(role ?? "chatter");
+          if (/^https?:/i.test(target)) window.location.href = target;
+          else router.push(target);
+        }}
         reloading={reloading}
         onReload={async () => {
           if (reloading) return;

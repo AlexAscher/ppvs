@@ -6,6 +6,7 @@ import { MessageSquare, LogOut, DollarSign, Mail, Check, X, Menu } from "lucide-
 import { createClient } from "@/lib/supabase";
 import { Invitation, ChatterModel } from "./types";
 import { SettingsTab } from "@/components/settings/SettingsTab";
+import { chatterWorkspaceUrl } from "@/lib/host-routes";
 
 type ChatterTab = "dashboard" | "settings";
 
@@ -30,6 +31,10 @@ function ChatterSidebar({
   const [showLogout, setShowLogout] = useState(false);
   const [userEmail, setUserEmail] = useState("");
   const [userInitials, setUserInitials] = useState("CH");
+  // Computed after hydration so the link points at chatter.ppvs.io on prod
+  // (SSR has no window so the helper returns "/chatter" as a safe default).
+  const [chatterHref, setChatterHref] = useState("/chatter");
+  useEffect(() => { setChatterHref(chatterWorkspaceUrl()); }, []);
   const popupRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -71,9 +76,18 @@ function ChatterSidebar({
         }`}
       >
       <div className="h-[52px] border-b border-[#2a2d35] px-5 flex items-center gap-2">
-        <div className="w-8 h-8 bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-lg flex items-center justify-center">
-          <span className="text-white font-bold text-[14px]">P</span>
-        </div>
+        {/* Same brand mark used in the agency sidebar (PPVS.IO P-key logo).
+            Explicit width/height attrs + inline style as a defence-in-depth
+            against Tailwind sizing not loading on this nested route. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/brand-mark.png"
+          alt="ppvs.io"
+          width={32}
+          height={32}
+          className="w-8 h-8 shrink-0 rounded-lg"
+          style={{ width: 32, height: 32, flex: "0 0 32px", objectFit: "contain" }}
+        />
         <div className="text-[15px] font-semibold">
           ppvs<span className="text-[#00AFF0]">.io</span>
         </div>
@@ -100,13 +114,15 @@ function ChatterSidebar({
 
         <div className="my-4 border-t border-[#2a2d35]" />
 
-        <button
-          onClick={() => router.push("/chatter")}
+        <a
+          href={chatterHref}
+          target="_blank"
+          rel="noopener"
           className="w-full px-4 py-2.5 rounded-lg flex items-center gap-3 text-[#9ca3af] hover:bg-[#1f2937] hover:text-white transition-all"
         >
           <MessageSquare className="w-4 h-4" />
           <span className="text-[13px] font-medium">Go to Chatting</span>
-        </button>
+        </a>
       </div>
 
       <div className="p-4 border-t border-[#2a2d35] relative" ref={popupRef}>
@@ -229,11 +245,37 @@ function fmtMoney(n: number): string {
   return `$${n.toLocaleString("en-US", { maximumFractionDigits: n < 100 ? 2 : 0 })}`;
 }
 
+type ActivityItem = {
+  id: string;
+  kind: "ppv" | "tip";
+  amount: number;
+  net: number;
+  fanName: string | null;
+  peerId: string;
+  modelId: string;
+  paidAt: string;
+};
+
+function formatActivityTime(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffMin = Math.floor(diffMs / 60_000);
+  if (diffMin < 1) return "just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) return `${diffH}h ago`;
+  const diffD = Math.floor(diffH / 24);
+  if (diffD < 7) return `${diffD}d ago`;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 function ChatterDashboardTab() {
   const supabase = createClient();
   const [agency, setAgency] = useState<AgencyInfo | null>(null);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [stats, setStats] = useState<ChatterStatsPayload | null>(null);
+  const [activity, setActivity] = useState<ActivityItem[] | null>(null);
 
   const load = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -298,16 +340,24 @@ function ChatterDashboardTab() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Pull headline numbers from the new /api/chatter/stats endpoint. Refresh
+  // Pull headline numbers + recent activity from /api/chatter/*. Refresh
   // every 60s while the tab is open so a fresh sale shows up quickly.
   useEffect(() => {
     let cancelled = false;
     async function loadStats() {
       try {
-        const r = await fetch("/api/chatter/stats");
-        if (!r.ok) return;
-        const data = (await r.json()) as ChatterStatsPayload;
-        if (!cancelled) setStats(data);
+        const [statsRes, actRes] = await Promise.all([
+          fetch("/api/chatter/stats"),
+          fetch("/api/chatter/recent-activity"),
+        ]);
+        if (statsRes.ok) {
+          const data = (await statsRes.json()) as ChatterStatsPayload;
+          if (!cancelled) setStats(data);
+        }
+        if (actRes.ok) {
+          const data = (await actRes.json()) as { activity: ActivityItem[] };
+          if (!cancelled) setActivity(data.activity ?? []);
+        }
       } catch { /* best-effort */ }
     }
     void loadStats();
@@ -401,9 +451,50 @@ function ChatterDashboardTab() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="md:col-span-2 bg-[#161a22] border border-[#2a2d35] rounded-lg p-5 flex flex-col">
             <h2 className="text-[16px] font-semibold text-white mb-4">Recent Activities 🔔</h2>
-            <div className="flex-1 flex items-center justify-center py-10 text-[#6b7280] text-[13px]">
-              No recent activity yet
-            </div>
+            {activity == null ? (
+              <div className="flex-1 flex items-center justify-center py-10 text-[#6b7280] text-[13px]">
+                Loading…
+              </div>
+            ) : activity.length === 0 ? (
+              <div className="flex-1 flex items-center justify-center py-10 text-[#6b7280] text-[13px]">
+                No recent activity yet
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {activity.map((it) => (
+                  <div
+                    key={it.id}
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-md bg-[#1f2937]/40 border border-[#2a2d35]"
+                  >
+                    <span className="text-[18px] shrink-0">
+                      {it.kind === "ppv" ? "🔒" : "🎁"}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[13px] text-white truncate">
+                        {it.kind === "ppv" ? "PPV sale" : "Tip"}
+                        {it.fanName ? (
+                          <>
+                            <span className="text-[#6b7280] mx-1.5">·</span>
+                            <span className="text-[#9ca3af]">{it.fanName}</span>
+                          </>
+                        ) : null}
+                      </div>
+                      <div className="text-[11px] text-[#6b7280]">
+                        {formatActivityTime(it.paidAt)}
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="text-[14px] font-semibold text-[#00AFF0]">
+                        +${it.amount.toFixed(it.amount < 100 ? 2 : 0)}
+                      </div>
+                      <div className="text-[10px] text-[#6b7280]">
+                        net ${it.net.toFixed(it.net < 100 ? 2 : 0)}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-5 flex flex-col">
             <h2 className="text-[16px] font-semibold text-white mb-4">Top Fans 🏆</h2>

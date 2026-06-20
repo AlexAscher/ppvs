@@ -6,22 +6,26 @@ import type { NextRequest } from "next/server";
 // hot path) shaves dev-mode overhead per polling request.
 
 /**
- * Two jobs:
+ * Three jobs:
  *   1. Same-origin enforcement (CSRF) on mutating /api/* requests. Cookie-
  *      authed POSTs from another origin are rejected with 403. SameSite=lax
  *      on the Supabase cookie already blocks most of this; the Origin/Referer
  *      check is a belt-and-suspenders defense.
- *   2. Page auth + role gating. Some pages require an "agency" role; chatters
- *      hitting them bounce to /dashboard instead of seeing data their role
- *      isn't supposed to touch.
+ *   2. Page auth: if unauthenticated, redirect to /login (same host).
+ *   3. Role-aware canonical host: agency users live on ppvs.io for the
+ *      dashboard and on chatter.ppvs.io for the chat workspace. Chatter
+ *      users live entirely on chatter.ppvs.io. If a logged-in user lands on
+ *      the wrong host, redirect them to the canonical one — this keeps URLs
+ *      consistent even when someone hand-types or shares a link.
  *
- * /admin gates itself server-side (ADMIN_EMAILS) and is not listed here, so
- * non-admins can't even reach the role check on it.
+ * Subdomain → path rewriting (chatter.ppvs.io/ → /chatter) is done by Caddy
+ * BEFORE the request reaches Next, so we don't repeat it here.
+ *
+ * /admin gates itself server-side (ADMIN_EMAILS) and is not listed below.
  */
 
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
-// Page paths that need auth, with optional role requirement.
 const PAGE_RULES: { prefix: string; role?: "agency" | "chatter" }[] = [
   { prefix: "/dashboard" },
   { prefix: "/chatter" },
@@ -34,35 +38,57 @@ function matchesPage(pathname: string, prefix: string): boolean {
   return pathname === prefix || pathname.startsWith(prefix + "/");
 }
 
+const CHATTER_PREFIX = "chatter.";
+
+function hostnameOf(request: NextRequest): string {
+  return (request.headers.get("host") ?? "").toLowerCase().split(":")[0];
+}
+
+function cookieDomainFor(hostname: string): string | undefined {
+  if (hostname === "ppvs.io" || hostname.endsWith(".ppvs.io")) return ".ppvs.io";
+  return undefined;
+}
+
+/**
+ * For a given role + current host, return the canonical absolute URL the user
+ * SHOULD be on for `pathname`, or null if they're already in the right place.
+ *
+ *   agency  + /dashboard*       → ppvs.io
+ *   agency  + /chatter*         → chatter.ppvs.io
+ *   chatter + (/dashboard | /chatter)*  → chatter.ppvs.io  (chatters live there)
+ *
+ * Only fires on prod-style ppvs.io hosts; localhost / nip.io / IP hosts have no
+ * subdomain split and stay where they are.
+ */
+function canonicalHostUrl(
+  request: NextRequest,
+  role: "agency" | "chatter",
+  pathname: string,
+): string | null {
+  const host = hostnameOf(request);
+  if (host !== "ppvs.io" && !host.endsWith(".ppvs.io")) return null;
+  const onChatter = host.startsWith(CHATTER_PREFIX);
+  const apex = onChatter ? host.slice(CHATTER_PREFIX.length) : host;
+
+  const wantsChatterHost =
+    role === "chatter" ||
+    (role === "agency" && pathname.startsWith("/chatter"));
+
+  if (wantsChatterHost && !onChatter) {
+    // /chatter on the apex shouldn't carry the path — Caddy rewrites bare /
+    // on the chatter subdomain back to /chatter, so the user-facing URL is just /.
+    const targetPath = pathname === "/chatter" ? "/" : pathname;
+    return `https://${CHATTER_PREFIX}${apex}${targetPath}${request.nextUrl.search}`;
+  }
+  if (!wantsChatterHost && onChatter) {
+    return `https://${apex}${pathname}${request.nextUrl.search}`;
+  }
+  return null;
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const method = request.method;
-
-  // ── 0. Subdomain → section rewrite ────────────────────────────────────────
-  // chatter.ppvs.io serves the chatter workspace; the Telegram mini-app is
-  // hosted on its own domain ppvs.tech (kept off the main marketing domain
-  // both for branding and as a fallback if .io gets blocked in any region).
-  // Only the bare root is remapped so deep paths (/api, /_next, /login,
-  // static assets) still resolve normally on each host.
-  // No auth gating needed here: the chatter page self-guards (redirects to
-  // /login when there's no session) and the mini-app authenticates via
-  // Telegram initData.
-  if (pathname === "/") {
-    const host = (request.headers.get("host") ?? "").toLowerCase();
-    // Strip any :port suffix so dev (localhost:3000) + prod match consistently.
-    const hostname = host.split(":")[0];
-    if (hostname.startsWith("chatter.")) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/chatter";
-      return NextResponse.rewrite(url);
-    }
-    // Mini-app lives on ppvs.tech (apex) and the legacy mini. subdomain.
-    if (hostname === "ppvs.tech" || hostname.startsWith("mini.")) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/mini";
-      return NextResponse.rewrite(url);
-    }
-  }
 
   // ── 1. CSRF: same-origin only for mutating /api/* calls ───────────────────
   if (pathname.startsWith("/api/") && MUTATING.has(method)) {
@@ -89,9 +115,12 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // ── 2. Page auth + role gating ────────────────────────────────────────────
+  // ── 2. Page auth + role gating + canonical host ───────────────────────────
   const rule = PAGE_RULES.find((r) => matchesPage(pathname, r.prefix));
   if (!rule) return NextResponse.next();
+
+  const hostname = hostnameOf(request);
+  const cookieDomain = cookieDomainFor(hostname);
 
   let response = NextResponse.next({ request });
   const { createServerClient } = await import("@supabase/ssr");
@@ -99,6 +128,7 @@ export async function middleware(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      ...(cookieDomain ? { cookieOptions: { domain: cookieDomain } } : {}),
       cookies: {
         getAll: () => request.cookies.getAll(),
         setAll: (cookiesToSet) => {
@@ -106,9 +136,10 @@ export async function middleware(request: NextRequest) {
             request.cookies.set(name, value),
           );
           response = NextResponse.next({ request });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options),
-          );
+          cookiesToSet.forEach(({ name, value, options }) => {
+            const opts = cookieDomain ? { ...options, domain: cookieDomain } : options;
+            response.cookies.set(name, value, opts);
+          });
         },
       },
     },
@@ -124,20 +155,25 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  if (rule.role) {
-    const role = (user.user_metadata?.role as string) ?? "chatter";
-    if (role !== rule.role) {
-      return NextResponse.redirect(new URL("/dashboard", request.url));
-    }
+  const role = ((user.user_metadata?.role as string) ?? "chatter") as
+    | "agency"
+    | "chatter";
+
+  // Role gate (some pages are agency-only). Send a chatter to their dashboard
+  // on the chatter subdomain rather than dumping them on a permissions error.
+  if (rule.role && role !== rule.role) {
+    const fallback = canonicalHostUrl(request, role, "/dashboard");
+    return NextResponse.redirect(fallback ?? new URL("/dashboard", request.url));
   }
+
+  const canonical = canonicalHostUrl(request, role, pathname);
+  if (canonical) return NextResponse.redirect(canonical);
 
   return response;
 }
 
 export const config = {
   matcher: [
-    // Root is matched so the chatter./mini. subdomain rewrite can fire.
-    "/",
     "/dashboard/:path*",
     "/chatter/:path*",
     "/vault/:path*",

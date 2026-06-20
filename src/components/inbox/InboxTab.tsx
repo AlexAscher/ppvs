@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import { Search, RefreshCw } from "lucide-react";
+import { chatterWorkspaceUrl } from "@/lib/host-routes";
 
 type InboxItem = {
   modelId: string;
@@ -48,7 +48,6 @@ function initials(name: string): string {
  * (preserved via ?modelId=&peerId= deep link).
  */
 export function InboxTab() {
-  const router = useRouter();
   const [items, setItems] = useState<InboxItem[] | null>(null);
   const [models, setModels] = useState<InboxModel[]>([]);
   const [scopeModelId, setScopeModelId] = useState<string | null>(null);
@@ -96,7 +95,9 @@ export function InboxTab() {
 
   function openChat(item: InboxItem) {
     const qs = new URLSearchParams({ modelId: item.modelId, peerId: item.peerId });
-    router.push(`/chatter?${qs.toString()}`);
+    // Open chatter workspace in a new tab on the chatter subdomain (prod),
+    // so the agency can keep the inbox view open in parallel.
+    window.open(chatterWorkspaceUrl(qs.toString()), "_blank", "noopener");
   }
 
   return (

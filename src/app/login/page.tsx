@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { LogoWord } from "../logo";
 import { createClient } from "@/lib/supabase";
+import { homeUrl } from "@/lib/host-routes";
 
 function LoginForm() {
   const router = useRouter();
@@ -13,6 +14,12 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  // "Back to home" needs an absolute URL when we're on chatter.ppvs.io —
+  // otherwise <Link href="/"> resolves to chatter.ppvs.io/ which Caddy
+  // rewrites to /chatter, auth-bouncing back to /login (infinite loop).
+  // Set after hydration so SSR/CSR markup matches.
+  const [backHref, setBackHref] = useState("/");
+  useEffect(() => { setBackHref(homeUrl()); }, []);
   const supabase = createClient();
 
   // If we land on /login while a session already exists, forward straight to
@@ -56,7 +63,7 @@ function LoginForm() {
 
       <div className="relative z-10 w-full max-w-[380px]">
         <Link
-          href="/"
+          href={backHref}
           className="flex items-center gap-1.5 text-[12px] text-[var(--text-3)] hover:text-[var(--text-2)] transition-colors mb-8"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

@@ -1,9 +1,21 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { homeUrl } from "@/lib/host-routes";
+
 /**
  * 404 catch-all. Replaces Next.js's default localized fallback so users
  * (including Telegram WebApp viewers on a non-English locale) always see
  * an English page instead of a localized "Страница не найдена".
+ *
+ * Client component for one reason: the Back-to-home href must point to the
+ * apex (ppvs.io) when the visitor is on a `chatter.*` subdomain, otherwise
+ * clicking it sends them into the chatter workspace's auth bounce instead
+ * of the public landing.
  */
 export default function NotFound() {
+  const [backHref, setBackHref] = useState("/");
+  useEffect(() => { setBackHref(homeUrl()); }, []);
   return (
     <div
       style={{
@@ -44,7 +56,7 @@ export default function NotFound() {
           This link is broken, expired, or never existed.
         </p>
         <a
-          href="/"
+          href={backHref}
           style={{
             display: "inline-block",
             background: "#00AFF0",

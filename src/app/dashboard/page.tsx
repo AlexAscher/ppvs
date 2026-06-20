@@ -8,6 +8,7 @@ import { ChatterDashboardLayout } from "@/components/chatters/ChatterDashboardLa
 import { SettingsTab } from "@/components/settings/SettingsTab";
 import { InboxTab } from "@/components/inbox/InboxTab";
 import { createClient } from "@/lib/supabase";
+import { chatterWorkspaceUrl } from "@/lib/host-routes";
 import {
   MessageSquare,
   TrendingUp, DollarSign,
@@ -55,6 +56,10 @@ function AgencySidebar({
   // display name; final fallback "Agency Owner".
   const [accountDisplay, setAccountDisplay] = useState("Agency Owner");
   const [isAdmin, setIsAdmin] = useState(false);
+  // Computed client-side after hydration so the link points at chatter.ppvs.io
+  // when we're on the apex (otherwise SSR returns the relative /chatter path).
+  const [chatterHref, setChatterHref] = useState("/chatter");
+  useEffect(() => { setChatterHref(chatterWorkspaceUrl()); }, []);
   const popupRef = useRef<HTMLDivElement>(null);
 
   // Show the Admin link only for platform owners (ADMIN_EMAILS). The check is
@@ -161,13 +166,15 @@ function AgencySidebar({
 
         <div className="my-4 border-t border-[#2a2d35]" />
 
-        <button
-          onClick={() => router.push("/chatter")}
+        <a
+          href={chatterHref}
+          target="_blank"
+          rel="noopener"
           className="w-full px-4 py-2.5 rounded-lg flex items-center gap-3 text-[#9ca3af] hover:bg-[#1f2937] hover:text-white transition-all"
         >
           <MessageSquare className="w-4 h-4" />
           <span className="text-[13px] font-medium">Go to Chatter</span>
-        </button>
+        </a>
 
         {isAdmin && (
           <button

@@ -34,6 +34,11 @@ const PAGE_RULES: { prefix: string; role?: "agency" | "chatter" }[] = [
   { prefix: "/team", role: "agency" },
 ];
 
+// Routes the middleware looks at WITHOUT auth-gating: it needs to inspect the
+// session to decide canonical-host redirects, but unauthenticated visitors are
+// allowed through (the page itself decides what to render).
+const PUBLIC_HOST_AWARE: string[] = ["/login"];
+
 function matchesPage(pathname: string, prefix: string): boolean {
   return pathname === prefix || pathname.startsWith(prefix + "/");
 }
@@ -123,9 +128,35 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // ── 2. Page auth + role gating + canonical host ───────────────────────────
+  // ── 2. /login canonicalisation ───────────────────────────────────────────
+  // Login form is canonicalised to the apex; chatter.ppvs.io/login → ppvs.io/login.
+  // The check is cheap (host string) and runs even without a session so a
+  // bookmarked chatter.*/login on a logged-out browser still ends up at the
+  // right URL.
+  const hostnameEarly = hostnameOf(request);
+  const onChatterEarly =
+    hostnameEarly.startsWith(CHATTER_PREFIX) && hostnameEarly.endsWith("ppvs.io");
+  if (pathname === "/login" && onChatterEarly) {
+    const apex = hostnameEarly.slice(CHATTER_PREFIX.length);
+    return NextResponse.redirect(
+      `https://${apex}/login${request.nextUrl.search}`,
+    );
+  }
+
+  // /login on the apex still needs the session check (logged-in users get
+  // hopped to their role's dashboard). Short-circuit when there's no Supabase
+  // cookie so anonymous /login hits don't pay the auth round-trip.
+  const publicHostAware = PUBLIC_HOST_AWARE.includes(pathname);
   const rule = PAGE_RULES.find((r) => matchesPage(pathname, r.prefix));
-  if (!rule) return NextResponse.next();
+  if (!rule && !publicHostAware) return NextResponse.next();
+
+  const hasSupabaseCookie = request.cookies
+    .getAll()
+    .some((c) => c.name.startsWith("sb-"));
+  if (publicHostAware && !rule && !hasSupabaseCookie) {
+    // Anonymous on a public host-aware route → nothing to do.
+    return NextResponse.next();
+  }
 
   const hostname = hostnameOf(request);
   const cookieDomain = cookieDomainFor(hostname);
@@ -157,7 +188,10 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  // Public host-aware path with no session (e.g. landing on apex while logged
+  // out, after the cookie expired): just serve the page.
   if (!user) {
+    if (publicHostAware && !rule) return response;
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("next", pathname);
     return NextResponse.redirect(loginUrl);
@@ -167,8 +201,23 @@ export async function middleware(request: NextRequest) {
     | "agency"
     | "chatter";
 
+  // /login for any logged-in user goes to the role's dashboard on the
+  // canonical host (agency → apex, chatter → chatter subdomain). Landing (/)
+  // is intentionally left alone — both roles see the marketing page when they
+  // visit the apex, and the role-redirect only fires when they click Login.
+  if (publicHostAware && !rule) {
+    if (pathname === "/login") {
+      const target = canonicalHostUrl(request, role, "/dashboard");
+      return NextResponse.redirect(
+        target ?? new URL("/dashboard", request.url),
+      );
+    }
+    return response;
+  }
+
   // Role gate (some pages are agency-only). Send a chatter to their dashboard
   // on the chatter subdomain rather than dumping them on a permissions error.
+  if (!rule) return response;
   if (rule.role && role !== rule.role) {
     const fallback = canonicalHostUrl(request, role, "/dashboard");
     return NextResponse.redirect(fallback ?? new URL("/dashboard", request.url));
@@ -182,6 +231,7 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
+    "/login",
     "/dashboard/:path*",
     "/chatter/:path*",
     "/vault/:path*",

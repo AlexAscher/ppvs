@@ -1173,6 +1173,10 @@ function WalletTab() {
   const [confirmCorrect, setConfirmCorrect] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [msg, setMsg] = useState("");
+  // Persistent payout wallet (USDC · Polygon) — card2crypto sends the agency's
+  // 90% here. Shares the `address` state with the withdraw form.
+  const [savingWallet, setSavingWallet] = useState(false);
+  const [walletMsg, setWalletMsg] = useState("");
 
 
   useEffect(() => {
@@ -1248,6 +1252,30 @@ function WalletTab() {
     }
   }
 
+  async function handleSaveWallet() {
+    setWalletMsg("");
+    const addr = address.trim();
+    if (!/^0x[0-9a-fA-F]{40}$/.test(addr)) {
+      setWalletMsg("Enter a valid USDC (Polygon) address — starts with 0x.");
+      return;
+    }
+    setSavingWallet(true);
+    try {
+      const res = await fetch("/api/settings/payout-wallet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address: addr }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setWalletMsg("✓ Wallet saved.");
+    } catch (e: unknown) {
+      setWalletMsg(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSavingWallet(false);
+    }
+  }
+
   const money = (n: number | null) =>
     n == null ? "…" : `$${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
   const statusCls = (s: string) =>
@@ -1265,6 +1293,32 @@ function WalletTab() {
         <div className="mb-6">
           <h1 className="text-[24px] font-bold text-white mb-1">Wallet 💰</h1>
           <p className="text-[14px] text-[#9ca3af]">Manage your earnings and withdraw your funds.</p>
+        </div>
+
+        {/* Persistent payout wallet — card2crypto pays the agency's 90% here
+            automatically; also the default for manual withdrawals. */}
+        <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-4 md:p-5 mb-6">
+          <h2 className="text-[15px] font-semibold text-white mb-1">Payout wallet · USDC (Polygon)</h2>
+          <p className="text-[12px] text-[#9ca3af] mb-3">
+            Where your earnings are sent. Card payments via card2crypto pay your share here automatically. Use a self-custodial USDC (Polygon) wallet.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              placeholder="0x…"
+              spellCheck={false}
+              className="flex-1 bg-[#0d1117] border border-[#2a2d35] rounded-lg px-3 py-2.5 text-[13px] text-white placeholder-[#6b7280] outline-none focus:border-[#00AFF0] font-mono"
+            />
+            <button
+              onClick={handleSaveWallet}
+              disabled={savingWallet}
+              className="px-5 py-2.5 bg-[#00AFF0] hover:bg-[#0098D4] disabled:opacity-60 rounded-lg text-[13px] font-semibold text-white shrink-0"
+            >
+              {savingWallet ? "Saving…" : "Save"}
+            </button>
+          </div>
+          {walletMsg && <div className="text-[12px] mt-2 text-[#9ca3af]">{walletMsg}</div>}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">

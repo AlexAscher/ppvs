@@ -115,7 +115,7 @@ const faqGroups = [
     items: [
       { q: "How do fans pay?", a: "Fans pay by card (Visa, Mastercard, Apple Pay) or crypto. No account creation needed — they click the link, pay, and the content unlocks instantly." },
       { q: "How do I get paid?", a: "Revenue lands in your ppvs.io balance after each transaction. Withdraw anytime to USDT, BTC, or ETH. Minimum withdrawal is $20. No KYC required to withdraw." },
-      { q: "What is the 12% fee exactly?", a: "We take 12% of every transaction that goes through the platform. This covers payment processing, hosting, and our platform fee. There are no other fees — no monthly cost, no setup fee, no per-seat pricing." },
+      { q: "What is the 10% fee exactly?", a: "We take 10% of every transaction that goes through the platform. This covers payment processing, hosting, and our platform fee. There are no other fees — no monthly cost, no setup fee, no per-seat pricing." },
       { q: "Are there chargebacks?", a: "Crypto payments are irreversible — no chargebacks ever." },
     ],
   },
@@ -398,7 +398,7 @@ export default function LandingPage() {
             </h1>
             <p className="mb-8" style={{ fontSize: "16px", color: "#8b95a8", maxWidth: "520px", lineHeight: 1.7 }}>
               Sell PPVs, manage chatters, and get paid instantly.<br />
-              No monthly fees — just a 12% platform fee.
+              No monthly fees — just a 10% platform fee.
             </p>
             <div className="flex flex-col items-start gap-3 mb-6">
               <Link href={startHref} className="px-8 py-3.5 rounded-xl text-white transition-all hover:opacity-90 active:scale-95" style={{ background: OF_BLUE, fontSize: "15px", fontWeight: 700, display: "inline-block" }}>
@@ -453,7 +453,7 @@ export default function LandingPage() {
               "NO KYC REQUIRED",
               "OPEN IN 5 MINUTES",
               "INSTANT CRYPTO WITHDRAWALS",
-              "12% PLATFORM FEE",
+              "10% PLATFORM FEE",
               "WITHOUT LEAVING TELEGRAM",
             ].map((label, i) => (
               <div key={`${dup}-${i}`} className="flex items-center gap-3 mx-6" style={{ whiteSpace: "nowrap" }}>
@@ -666,7 +666,7 @@ export default function LandingPage() {
               Keep more. Pay less. 💎
             </h2>
             <p style={{ fontSize: "16px", color: "#6b7280", maxWidth: "520px", margin: "0 auto", lineHeight: 1.7 }}>
-              Our platform fee is just 12% — about half the industry standard. No subscriptions, no setup fees, and no contracts.
+              Our platform fee is just 10% — about half the industry standard. No subscriptions, no setup fees, and no contracts.
             </p>
           </div>
 
@@ -681,7 +681,7 @@ export default function LandingPage() {
                 <div style={{ fontSize: "14px", color: "#6b7280", lineHeight: 1.6 }}>We only make money when you make money.</div>
               </div>
               <div className="mb-8 flex items-baseline gap-2">
-                <span className="text-white" style={{ fontSize: "44px", fontWeight: 800, letterSpacing: "-0.03em" }}>12%</span>
+                <span className="text-white" style={{ fontSize: "44px", fontWeight: 800, letterSpacing: "-0.03em" }}>10%</span>
                 <span style={{ fontSize: "14px", color: "#6b7280" }}>of sales</span>
               </div>
               <div className="flex flex-col gap-3 mb-8 flex-1">

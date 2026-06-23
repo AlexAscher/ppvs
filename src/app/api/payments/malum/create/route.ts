@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
         return Response.json({ error: "Invalid order amount" }, { status: 400 });
       }
       // Buyer is charged the chatter's base price; Malum adds its gateway fee
-      // on top at checkout (buyer_pays_fees). The platform's 12% margin comes
+      // on top at checkout (buyer_pays_fees). The platform's 10% margin comes
       // from the agency deduct (agencyNet on the base), so there is NO buyer-
       // facing surcharge here anymore — that would double-charge the gateway.
       amount = Math.round(basePrice * 100) / 100;

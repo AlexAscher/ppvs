@@ -1240,6 +1240,8 @@ export default function ChatterPage() {
 
   async function handleSendPpv() {
     if (!selectedDialog || !selectedModelId || !selectedItems.length) return;
+    const dialogAtSend = selectedDialog;
+    const modelIdAtSend = selectedModelId;
     // Preserve the chatter's selection order — the server uses `ppvIds`
     // ordering to lay out the album and the /pay grid.
     const ordered = selectedItems.filter((id) => ppvItems.some((p) => p.id === id));
@@ -1250,6 +1252,16 @@ export default function ChatterPage() {
       Number.isFinite(parsedPrice) && parsedPrice > 0
         ? Math.round(parsedPrice * 100) / 100
         : 0;
+    // Snapshot for the optimistic bubble before the compose inputs are cleared.
+    const capturedCaption = caption;
+    const itemCount = ordered.length;
+    const wasScheduled = !!scheduleAt;
+    // Negative id (same approach as the text-send path's handleSend) so the
+    // message-merge keeps the bubble until the real send lands. This is an
+    // event handler, not render, so Date.now() is safe — the purity rule
+    // misfires here because the value flows into pollPpvSendStatus.
+    // eslint-disable-next-line react-hooks/purity
+    const optimisticPpvId = -Date.now();
     setSending(true);
     setError("");
     setNotice("");
@@ -1258,10 +1270,10 @@ export default function ChatterPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          modelId: selectedModelId,
-          peerId: selectedDialog.id,
-          accessHash: selectedDialog.accessHash,
-          peerUsername: selectedDialog.username,
+          modelId: modelIdAtSend,
+          peerId: dialogAtSend.id,
+          accessHash: dialogAtSend.accessHash,
+          peerUsername: dialogAtSend.username,
           caption,
           ppvIds: ordered,
           totalPrice: priceForSend,
@@ -1274,14 +1286,28 @@ export default function ChatterPage() {
       if (!res.ok || data.error) {
         throw new Error(data.error || `HTTP ${res.status}`);
       }
-      // POST returns immediately now — Telegram upload runs in background
-      // via next/server `after()`. Clear UI optimistically and follow the
-      // outcome by polling the status endpoint.
+      // Optimistic bubble so the chatter sees the PPV "sent" immediately — the
+      // real blurred-preview message only lands after the background Telegram
+      // upload (can take many seconds). Skipped for scheduled sends (nothing
+      // posts to the chat now). Replaced by the real message once
+      // pollPpvSendStatus sees delivery.
+      if (!wasScheduled) {
+        const placeholder = capturedCaption.trim()
+          ? capturedCaption
+          : priceForSend > 0
+            ? `🔒 PPV · ${itemCount} item${itemCount > 1 ? "s" : ""} · $${priceForSend.toFixed(2)}`
+            : `🎁 Free content · ${itemCount} item${itemCount > 1 ? "s" : ""}`;
+        setApiMessages((prev) => [
+          ...prev,
+          { id: optimisticPpvId, text: placeholder, date: Math.floor(Date.now() / 1000), isOutgoing: true },
+        ]);
+      }
+      // POST returns immediately — Telegram upload runs in background via
+      // next/server `after()`. Clear the compose UI and follow the outcome.
       setSelectedItems([]);
       setCaption("");
       setPriceInput("");
       setExpiresInHours(0);
-      const wasScheduled = !!scheduleAt;
       setScheduleAt(null);
       setNotice(
         wasScheduled
@@ -1291,9 +1317,15 @@ export default function ChatterPage() {
             : "Sending free content to fan…",
       );
       const sentCode = data.code;
-      const modelIdForRefresh = selectedModelId;
       if (sentCode) {
-        void pollPpvSendStatus(sentCode, modelIdForRefresh);
+        // Only hand the poll an id to clear when we actually added a bubble
+        // (scheduled sends don't post to the chat now).
+        void pollPpvSendStatus(
+          sentCode,
+          modelIdAtSend,
+          wasScheduled ? null : optimisticPpvId,
+          dialogAtSend,
+        );
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? `PPV send failed: ${e.message}` : "PPV send failed");
@@ -1304,23 +1336,40 @@ export default function ChatterPage() {
 
   // Polls the background delivery state for ~90s. Resolves silently when
   // status reaches a terminal state; surfaces failure as a setError call.
-  async function pollPpvSendStatus(code: string, modelIdForRefresh: string) {
+  async function pollPpvSendStatus(
+    code: string,
+    modelIdForRefresh: string,
+    optimisticId: number | null,
+    dialog: Dialog,
+  ) {
     const start = Date.now();
     const POLL_INTERVAL_MS = 2_000;
     const MAX_WAIT_MS = 90_000;
+    const clearOptimistic = () => {
+      if (optimisticId != null) {
+        setApiMessages((prev) => prev.filter((m) => m.id !== optimisticId));
+      }
+    };
     while (Date.now() - start < MAX_WAIT_MS) {
       try {
         const res = await fetch(`/api/ppv/send/status?code=${encodeURIComponent(code)}`);
         const data = (await res.json()) as { status?: string; error?: string | null };
         if (data.status === "sent" || data.status === "paid" || data.status === "delivered") {
           setNotice("✅ PPV delivered to fan");
-          // refresh sidebar so the new outgoing messages appear in the chat
+          // Drop the optimistic bubble, then pull the real message into the
+          // open chat (only if the chatter is still on that dialog) + refresh
+          // the sidebar.
+          clearOptimistic();
+          if (selectedDialogRef.current?.id === dialog.id) {
+            void fetchMessages(modelIdForRefresh, dialog);
+          }
           void fetchDialogs(modelIdForRefresh, false);
           // auto-dismiss the success notice after a few seconds
           setTimeout(() => setNotice((n) => (n === "✅ PPV delivered to fan" ? "" : n)), 4_000);
           return;
         }
         if (data.status === "failed") {
+          clearOptimistic();
           setNotice("");
           setError(`PPV send failed: ${data.error ?? "unknown error"}`);
           return;
@@ -1330,6 +1379,8 @@ export default function ChatterPage() {
       }
       await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
     }
+    // Timed out waiting for a terminal status — leave the optimistic bubble
+    // (delivery is most likely still finishing) and just surface a hint.
     setNotice("");
     setError("PPV send is taking too long — check /pay link or retry.");
   }

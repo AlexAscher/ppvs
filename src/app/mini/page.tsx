@@ -180,7 +180,7 @@ export default function MiniAppPage() {
 
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
-  async function handlePay() {
+  async function handlePay(gateway: "card2crypto" | "malum") {
     if (!boot) return;
     if (!emailValid) {
       setErrMsg("Enter a valid email for your receipt.");
@@ -191,19 +191,22 @@ export default function MiniAppPage() {
     setState("loading");
     setErrMsg("");
     try {
-      // Open a real Malum checkout (PPV + tips both resolve by code). The
-      // webhook settles the payment + delivers; we just open the page and
-      // then poll for completion.
-      const res = await fetch("/api/payments/malum/create", {
+      // Both gateways resolve by code; the webhook settles + delivers. We open
+      // the hosted page and poll for completion. card2crypto pays the agency's
+      // 90% directly (auto), Malum pools to the platform. `source: "mini"` (Malum
+      // only) returns the buyer into /mini; card2crypto's page has no return URL.
+      const endpoint =
+        gateway === "card2crypto"
+          ? "/api/payments/card2crypto/create"
+          : "/api/payments/malum/create";
+      const payload =
+        gateway === "card2crypto"
+          ? { code: boot.code, email: email.trim().toLowerCase() }
+          : { code: boot.code, email: email.trim().toLowerCase(), source: "mini" };
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          code: boot.code,
-          email: email.trim().toLowerCase(),
-          // Keep the checkout INSIDE the Mini App: we navigate this webview to
-          // the hosted page (below) and ask Malum to return us into /mini.
-          source: "mini",
-        }),
+        body: JSON.stringify(payload),
       });
       const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
       if (!res.ok || data.error || !data.url) {
@@ -383,17 +386,25 @@ export default function MiniAppPage() {
           className="w-full px-4 py-3 mb-3 bg-[#161b22] border border-[#30363d] rounded-xl text-[14px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#00AFF0]"
         />
 
-        {/* Pay button */}
+        {/* Pay buttons — buyer picks a gateway. card2crypto is the primary
+            (clean card UX); Malum is the alternative. */}
         <button
-          onClick={handlePay}
+          onClick={() => handlePay("card2crypto")}
           disabled={state === "loading" || !emailValid}
           className="w-full py-3.5 bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] rounded-xl text-white font-semibold text-[15px] disabled:opacity-60 transition-all active:scale-[0.98]"
         >
           {state === "loading"
             ? "Opening checkout…"
             : boot.kind === "ppv"
-              ? `🔓 Unlock for $${boot.basePrice.toFixed(2)}`
-              : `💸 Send tip $${boot.basePrice.toFixed(2)}`}
+              ? `💳 Pay by card · $${boot.basePrice.toFixed(2)}`
+              : `💳 Send tip by card · $${boot.basePrice.toFixed(2)}`}
+        </button>
+        <button
+          onClick={() => handlePay("malum")}
+          disabled={state === "loading" || !emailValid}
+          className="w-full py-3 mt-2 bg-[#161b22] border border-[#30363d] rounded-xl text-[#9ca3af] font-medium text-[13px] disabled:opacity-60 transition-all active:scale-[0.98]"
+        >
+          Other payment options
         </button>
 
         {errMsg && (

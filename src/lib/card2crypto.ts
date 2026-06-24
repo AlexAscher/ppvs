@@ -95,18 +95,32 @@ export async function createForwardingAddress(
 }
 
 /**
- * Hosted checkout URL to redirect the buyer to. We build the string by hand
- * (not URLSearchParams) because `addressIn` is already URL-encoded by the API
- * and must be preserved verbatim.
+ * Valid card2crypto provider slugs for the direct checkout (process-payment.php
+ * ?provider=…). Used to validate the buyer's choice. The generic `pay.php`
+ * chooser is NOT used — it shows an empty "select a method" at low amounts; we
+ * route straight to a specific provider instead.
+ */
+export const CARD2CRYPTO_PROVIDERS = new Set([
+  "stripe", "transak", "moonpay", "revolut", "banxa", "simplex", "rampnetwork",
+  "bitnovo", "binance", "sardine", "topper", "transfi", "utorg", "paypal",
+  "robinhood", "interac", "upi",
+]);
+
+/**
+ * Direct hosted checkout URL for a SPECIFIC provider. We build the string by
+ * hand (not URLSearchParams) because `addressIn` is already URL-encoded by the
+ * API and must be preserved verbatim.
  */
 export function buildPayUrl(params: {
   addressIn: string;
   amountUsd: number;
   email: string;
+  provider: string;
 }): string {
   return (
-    `${PAY_BASE}/pay.php?address=${params.addressIn}` +
+    `${PAY_BASE}/process-payment.php?address=${params.addressIn}` +
     `&amount=${encodeURIComponent(params.amountUsd)}` +
+    `&provider=${encodeURIComponent(params.provider)}` +
     `&email=${encodeURIComponent(params.email)}` +
     `&currency=USD`
   );

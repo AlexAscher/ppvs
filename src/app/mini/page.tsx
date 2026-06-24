@@ -76,10 +76,31 @@ declare global {
   }
 }
 
+// card2crypto providers shown in the picker. `min` is the provider's minimum
+// USD (card2crypto enforces the real one; we use it to hide options the order
+// is too small for). Slugs match CARD2CRYPTO_PROVIDERS on the server.
+const C2C_PROVIDERS: { slug: string; label: string; min: number }[] = [
+  { slug: "stripe", label: "Card · Stripe (US)", min: 2 },
+  { slug: "rampnetwork", label: "Ramp", min: 4 },
+  { slug: "robinhood", label: "Robinhood (US)", min: 5 },
+  { slug: "paypal", label: "PayPal (US)", min: 5 },
+  { slug: "revolut", label: "Revolut", min: 8 },
+  { slug: "bitnovo", label: "Bitnovo · card", min: 10 },
+  { slug: "sardine", label: "Sardine", min: 10 },
+  { slug: "topper", label: "Topper", min: 10 },
+  { slug: "binance", label: "Binance Pay", min: 15 },
+  { slug: "transak", label: "Transak", min: 15 },
+  { slug: "transfi", label: "TransFi", min: 15 },
+  { slug: "utorg", label: "Utorg", min: 15 },
+  { slug: "moonpay", label: "MoonPay", min: 20 },
+  { slug: "banxa", label: "Banxa", min: 20 },
+  { slug: "simplex", label: "Simplex", min: 20 },
+];
+
 export default function MiniAppPage() {
   const [boot, setBoot] = useState<InitResponse | null>(null);
   const [bootError, setBootError] = useState("");
-  const [state, setState] = useState<"locked" | "loading" | "ready" | "waiting" | "delivered" | "error">("locked");
+  const [state, setState] = useState<"locked" | "providers" | "loading" | "ready" | "waiting" | "delivered" | "error">("locked");
   const [errMsg, setErrMsg] = useState("");
   const [email, setEmail] = useState("");
   // Hosted checkout URL from Malum. Held so the "ready" screen can offer BOTH
@@ -180,7 +201,7 @@ export default function MiniAppPage() {
 
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
-  async function handlePay(gateway: "card2crypto" | "malum") {
+  async function handlePay(gateway: "card2crypto" | "malum", provider?: string) {
     if (!boot) return;
     if (!emailValid) {
       setErrMsg("Enter a valid email for your receipt.");
@@ -201,7 +222,7 @@ export default function MiniAppPage() {
           : "/api/payments/malum/create";
       const payload =
         gateway === "card2crypto"
-          ? { code: boot.code, email: email.trim().toLowerCase() }
+          ? { code: boot.code, email: email.trim().toLowerCase(), provider }
           : { code: boot.code, email: email.trim().toLowerCase(), source: "mini" };
       const res = await fetch(endpoint, {
         method: "POST",
@@ -286,6 +307,54 @@ export default function MiniAppPage() {
           >
             Open in browser ↗
           </button>
+        </div>
+      </Shell>
+    );
+  }
+
+  if (state === "providers") {
+    const price = boot.basePrice;
+    const eligible = C2C_PROVIDERS.filter((p) => price >= p.min);
+    const list = eligible.length > 0 ? eligible : C2C_PROVIDERS.slice(0, 1);
+    return (
+      <Shell>
+        <div className="px-4 py-6">
+          <div className="text-center mb-4">
+            <div className="text-[18px] font-bold text-white mb-1">Choose payment method</div>
+            <div className="text-[12px] text-[#9ca3af]">
+              Pay by card · ${price.toFixed(2)} — a small provider fee is added at checkout.
+            </div>
+          </div>
+          <div className="space-y-2">
+            {list.map((p) => (
+              <button
+                key={p.slug}
+                onClick={() => handlePay("card2crypto", p.slug)}
+                className="w-full py-3 px-4 bg-[#161b22] border border-[#30363d] rounded-xl text-white text-[14px] font-medium text-left hover:border-[#00AFF0] transition-all active:scale-[0.98] flex items-center justify-between"
+              >
+                <span>{p.label}</span>
+                <span className="text-[#6b7280] text-[12px]">→</span>
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => setState("locked")}
+            className="w-full py-2.5 mt-3 text-[#9ca3af] text-[13px]"
+          >
+            ← Back
+          </button>
+          {errMsg && <div className="text-[12px] text-red-400 text-center mt-2">{errMsg}</div>}
+        </div>
+      </Shell>
+    );
+  }
+
+  if (state === "loading") {
+    return (
+      <Shell>
+        <div className="px-4 py-12 text-center">
+          <div className="inline-block w-8 h-8 border-2 border-[#374151] border-t-[#00AFF0] rounded-full animate-spin mb-4" />
+          <div className="text-[14px] text-[#9ca3af]">Opening checkout…</div>
         </div>
       </Shell>
     );
@@ -389,19 +458,24 @@ export default function MiniAppPage() {
         {/* Pay buttons — buyer picks a gateway. card2crypto is the primary
             (clean card UX); Malum is the alternative. */}
         <button
-          onClick={() => handlePay("card2crypto")}
-          disabled={state === "loading" || !emailValid}
+          onClick={() => {
+            if (!emailValid) {
+              setErrMsg("Enter a valid email for your receipt.");
+              return;
+            }
+            setErrMsg("");
+            setState("providers");
+          }}
+          disabled={!emailValid}
           className="w-full py-3.5 bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] rounded-xl text-white font-semibold text-[15px] disabled:opacity-60 transition-all active:scale-[0.98]"
         >
-          {state === "loading"
-            ? "Opening checkout…"
-            : boot.kind === "ppv"
-              ? `💳 Pay by card · $${boot.basePrice.toFixed(2)}`
-              : `💳 Send tip by card · $${boot.basePrice.toFixed(2)}`}
+          {boot.kind === "ppv"
+            ? `💳 Pay by card · $${boot.basePrice.toFixed(2)}`
+            : `💳 Send tip by card · $${boot.basePrice.toFixed(2)}`}
         </button>
         <button
           onClick={() => handlePay("malum")}
-          disabled={state === "loading" || !emailValid}
+          disabled={!emailValid}
           className="w-full py-3 mt-2 bg-[#161b22] border border-[#30363d] rounded-xl text-[#9ca3af] font-medium text-[13px] disabled:opacity-60 transition-all active:scale-[0.98]"
         >
           Other payment options

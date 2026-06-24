@@ -5,6 +5,7 @@ import {
   createForwardingAddress,
   buildPayUrl,
   card2cryptoNonce,
+  CARD2CRYPTO_PROVIDERS,
 } from "@/lib/card2crypto";
 import { consume, getClientIp, tooManyRequests } from "@/lib/rate-limit";
 
@@ -20,7 +21,7 @@ export const maxDuration = 30;
  * money with nowhere to forward it). Returns { url } — the hosted pay page.
  */
 
-type Body = { code?: string; email?: string };
+type Body = { code?: string; email?: string; provider?: string };
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function POST(req: NextRequest) {
@@ -31,11 +32,15 @@ export async function POST(req: NextRequest) {
     const body = (await req.json().catch(() => null)) as Body | null;
     const code = typeof body?.code === "string" ? body.code.trim() : "";
     const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
+    const provider = typeof body?.provider === "string" ? body.provider.trim().toLowerCase() : "stripe";
     if (!code || code.length < 6 || code.length > 16 || !/^[a-z0-9]+$/.test(code)) {
       return Response.json({ error: "Invalid code" }, { status: 400 });
     }
     if (!email || email.length > 254 || !EMAIL_RE.test(email)) {
       return Response.json({ error: "Enter a valid email" }, { status: 400 });
+    }
+    if (!CARD2CRYPTO_PROVIDERS.has(provider)) {
+      return Response.json({ error: "Unsupported payment provider" }, { status: 400 });
     }
 
     const admin = createAdminSupabaseClient();
@@ -115,7 +120,7 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: msg }, { status: 502 });
     }
 
-    const url = buildPayUrl({ addressIn, amountUsd: usd, email });
+    const url = buildPayUrl({ addressIn, amountUsd: usd, email, provider });
     return Response.json({ url });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Failed";

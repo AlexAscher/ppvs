@@ -1,6 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect } from "react";
+
+// useLayoutEffect on the client, no-op on the server (SSR has no layout phase).
+// We run the emoji swap synchronously before the browser paints so the user
+// never sees the unswapped system-font glyph flash before the Apple PNG.
+const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 import {
   EMOJI_BASE,
   EMOJI_REGEX_SOURCE,
@@ -30,7 +35,7 @@ import {
  *     via `data-no-emoji="1"` on a parent.
  */
 export function GlobalEmojiSwap() {
-  useEffect(() => {
+  useIsoLayoutEffect(() => {
     // Recompile the regex here (with /g/u flags) so we can scan
     // arbitrary strings. The /g state is per-instance so we reset
     // lastIndex on every use.

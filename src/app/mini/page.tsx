@@ -300,6 +300,10 @@ export default function MiniAppPage() {
 
   if (state === "providers") {
     const price = boot.basePrice;
+    // Only show methods whose minimum the order meets — hiding others keeps
+    // the list short and avoids tap-tease.
+    const eligible = C2C_PROVIDERS.filter((p) => price >= p.min);
+    const list = eligible.length > 0 ? eligible : C2C_PROVIDERS.slice(0, 1);
     return (
       <Shell>
         <div className="px-4 py-6">
@@ -310,29 +314,21 @@ export default function MiniAppPage() {
             </div>
           </div>
           <div className="space-y-2">
-            {C2C_PROVIDERS.map((p) => {
-              const eligible = price >= p.min;
+            {list.map((p) => {
               const { fee, total } = grossWithFee(price, p.slug);
               return (
                 <button
                   key={p.slug}
-                  onClick={() => eligible && handlePay("card2crypto", p.slug)}
-                  disabled={!eligible}
-                  className={`w-full py-3 px-4 rounded-xl text-left transition-all flex items-center justify-between border ${
-                    eligible
-                      ? "bg-[#161b22] border-[#30363d] text-white hover:border-[#00AFF0] active:scale-[0.98]"
-                      : "bg-[#0d1117] border-[#1f2630] text-[#4b5563] cursor-not-allowed"
-                  }`}
+                  onClick={() => handlePay("card2crypto", p.slug)}
+                  className="w-full py-3 px-4 rounded-xl text-left transition-all flex items-center justify-between border bg-[#161b22] border-[#30363d] text-white hover:border-[#00AFF0] active:scale-[0.98]"
                 >
                   <div className="min-w-0">
                     <div className="text-[14px] font-medium">{p.label}</div>
                     <div className="text-[11px] text-[#6b7280]">
-                      {eligible
-                        ? `Total $${total.toFixed(2)} · incl. gateway fee $${fee.toFixed(2)}`
-                        : `min $${p.min}`}
+                      Total ${total.toFixed(2)} · incl. gateway fee ${fee.toFixed(2)}
                     </div>
                   </div>
-                  <span className="text-[12px] shrink-0 ml-2">{eligible ? "→" : "🔒"}</span>
+                  <span className="text-[12px] shrink-0 ml-2">→</span>
                 </button>
               );
             })}
@@ -469,9 +465,7 @@ export default function MiniAppPage() {
           disabled={!emailValid}
           className="w-full py-3.5 bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] rounded-xl text-white font-semibold text-[15px] disabled:opacity-60 transition-all active:scale-[0.98]"
         >
-          {boot.kind === "ppv"
-            ? `💳 Pay by card · $${boot.basePrice.toFixed(2)}`
-            : `💳 Send tip by card · $${boot.basePrice.toFixed(2)}`}
+          Continue
         </button>
         <button
           onClick={() => handlePay("malum")}

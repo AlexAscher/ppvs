@@ -416,7 +416,9 @@ export async function sendBlurredPreviewWithLink(
   const cleanCaption = caption.trim();
   const priceFmt = totalPrice.toFixed(2);
   const unlockLabel = `Unlock for $${priceFmt} ↗`;
-  const captionBlock = cleanCaption ? `${cleanCaption}\n` : "";
+  // Blank line between the chatter's caption and the Unlock link for breathing
+  // room (offset below is captionBlock.length, so it adjusts automatically).
+  const captionBlock = cleanCaption ? `${cleanCaption}\n\n` : "";
   const messageCaption = `${captionBlock}${unlockLabel}`;
 
   // Compute the UTF-16 offset of unlockLabel within messageCaption.

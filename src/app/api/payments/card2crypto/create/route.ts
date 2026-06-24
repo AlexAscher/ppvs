@@ -5,8 +5,8 @@ import {
   createForwardingAddress,
   buildPayUrl,
   card2cryptoNonce,
-  CARD2CRYPTO_PROVIDERS,
 } from "@/lib/card2crypto";
+import { isC2cProvider, grossWithFee } from "@/lib/card2crypto-providers";
 import { consume, getClientIp, tooManyRequests } from "@/lib/rate-limit";
 
 export const maxDuration = 30;
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     if (!email || email.length > 254 || !EMAIL_RE.test(email)) {
       return Response.json({ error: "Enter a valid email" }, { status: 400 });
     }
-    if (!CARD2CRYPTO_PROVIDERS.has(provider)) {
+    if (!isC2cProvider(provider)) {
       return Response.json({ error: "Unsupported payment provider" }, { status: 400 });
     }
 
@@ -103,9 +103,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // amount is already USD (chatter prices are USD). convertToUsd is a no-op
-    // for USD but kept for symmetry / future non-USD support.
-    const usd = await convertToUsd(amount, "USD");
+    // Gross up the content price by the provider's estimated fee so the pool
+    // still receives ~the content price after the gateway takes its cut. The
+    // buyer pays content + gateway fee (shown as a breakdown in the Mini App).
+    const { total } = grossWithFee(amount, provider);
+    const usd = await convertToUsd(total, "USD");
 
     const nonce = card2cryptoNonce(code);
     const callback = `${baseUrl}/api/webhooks/card2crypto?code=${encodeURIComponent(code)}&nonce=${nonce}`;

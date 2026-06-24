@@ -387,8 +387,10 @@ export default function LandingPage() {
       </nav>
 
       {/* ── HERO — text+CTA+feature chips left, phone right (pic 3) ── */}
-      <section className="px-8" style={{ background: "#080b12", paddingTop: "120px", paddingBottom: "60px" }}>
-        <div className="max-w-[1200px] mx-auto w-full grid items-center gap-8" style={{ gridTemplateColumns: "minmax(0, 1.1fr) minmax(0, 1fr)" }}>
+      {/* px-8 lives on the inner max-w box (matching the nav) so the hero
+          text's left edge lines up exactly with the logo's. */}
+      <section style={{ background: "#080b12", paddingTop: "120px", paddingBottom: "60px" }}>
+        <div className="max-w-[1200px] mx-auto w-full px-8 grid items-center gap-8" style={{ gridTemplateColumns: "minmax(0, 1.1fr) minmax(0, 1fr)" }}>
           {/* Left */}
           <div>
             <h1 className="text-white mb-6" style={{ fontSize: "60px", fontWeight: 800, lineHeight: 1.1, letterSpacing: "-0.03em" }}>

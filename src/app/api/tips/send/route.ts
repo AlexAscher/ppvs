@@ -100,7 +100,9 @@ export async function POST(req: NextRequest) {
     //   Tip for $X.XX ↗     ← TextUrl entity, URL hidden from body
     const priceFmt = Number(amount).toFixed(2);
     const tipLabel = `Tip for $${priceFmt} ↗`;
-    const messageBlock = message ? `${message}\n` : "";
+    // Blank line between the chatter's message and the Tip link (offset below
+    // is messageBlock.length, so it adjusts automatically).
+    const messageBlock = message ? `${message}\n\n` : "";
     const tipText = `${messageBlock}${tipLabel}`;
 
     const tipEntity = new Api.MessageEntityTextUrl({

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { C2C_PROVIDERS, grossWithFee } from "@/lib/card2crypto-providers";
 
 /**
  * /mini — Telegram Mini App entry.
@@ -75,27 +76,6 @@ declare global {
     Telegram?: { WebApp?: TGWebApp };
   }
 }
-
-// card2crypto providers shown in the picker. `min` is the provider's minimum
-// USD (card2crypto enforces the real one; we use it to hide options the order
-// is too small for). Slugs match CARD2CRYPTO_PROVIDERS on the server.
-const C2C_PROVIDERS: { slug: string; label: string; min: number }[] = [
-  { slug: "stripe", label: "Card · Stripe (US)", min: 2 },
-  { slug: "rampnetwork", label: "Ramp", min: 4 },
-  { slug: "robinhood", label: "Robinhood (US)", min: 5 },
-  { slug: "paypal", label: "PayPal (US)", min: 5 },
-  { slug: "revolut", label: "Revolut", min: 8 },
-  { slug: "bitnovo", label: "Bitnovo · card", min: 10 },
-  { slug: "sardine", label: "Sardine", min: 10 },
-  { slug: "topper", label: "Topper", min: 10 },
-  { slug: "binance", label: "Binance Pay", min: 15 },
-  { slug: "transak", label: "Transak", min: 15 },
-  { slug: "transfi", label: "TransFi", min: 15 },
-  { slug: "utorg", label: "Utorg", min: 15 },
-  { slug: "moonpay", label: "MoonPay", min: 20 },
-  { slug: "banxa", label: "Banxa", min: 20 },
-  { slug: "simplex", label: "Simplex", min: 20 },
-];
 
 export default function MiniAppPage() {
   const [boot, setBoot] = useState<InitResponse | null>(null);
@@ -307,6 +287,12 @@ export default function MiniAppPage() {
           >
             Open in browser ↗
           </button>
+          <button
+            onClick={() => setState("locked")}
+            className="w-full py-2.5 mt-3 text-[#9ca3af] text-[13px]"
+          >
+            ← Back
+          </button>
         </div>
       </Shell>
     );
@@ -314,28 +300,42 @@ export default function MiniAppPage() {
 
   if (state === "providers") {
     const price = boot.basePrice;
-    const eligible = C2C_PROVIDERS.filter((p) => price >= p.min);
-    const list = eligible.length > 0 ? eligible : C2C_PROVIDERS.slice(0, 1);
     return (
       <Shell>
         <div className="px-4 py-6">
           <div className="text-center mb-4">
             <div className="text-[18px] font-bold text-white mb-1">Choose payment method</div>
             <div className="text-[12px] text-[#9ca3af]">
-              Pay by card · ${price.toFixed(2)} — a small provider fee is added at checkout.
+              Content ${price.toFixed(2)} · a gateway fee is added per method below.
             </div>
           </div>
           <div className="space-y-2">
-            {list.map((p) => (
-              <button
-                key={p.slug}
-                onClick={() => handlePay("card2crypto", p.slug)}
-                className="w-full py-3 px-4 bg-[#161b22] border border-[#30363d] rounded-xl text-white text-[14px] font-medium text-left hover:border-[#00AFF0] transition-all active:scale-[0.98] flex items-center justify-between"
-              >
-                <span>{p.label}</span>
-                <span className="text-[#6b7280] text-[12px]">→</span>
-              </button>
-            ))}
+            {C2C_PROVIDERS.map((p) => {
+              const eligible = price >= p.min;
+              const { fee, total } = grossWithFee(price, p.slug);
+              return (
+                <button
+                  key={p.slug}
+                  onClick={() => eligible && handlePay("card2crypto", p.slug)}
+                  disabled={!eligible}
+                  className={`w-full py-3 px-4 rounded-xl text-left transition-all flex items-center justify-between border ${
+                    eligible
+                      ? "bg-[#161b22] border-[#30363d] text-white hover:border-[#00AFF0] active:scale-[0.98]"
+                      : "bg-[#0d1117] border-[#1f2630] text-[#4b5563] cursor-not-allowed"
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <div className="text-[14px] font-medium">{p.label}</div>
+                    <div className="text-[11px] text-[#6b7280]">
+                      {eligible
+                        ? `Total $${total.toFixed(2)} · incl. gateway fee $${fee.toFixed(2)}`
+                        : `min $${p.min}`}
+                    </div>
+                  </div>
+                  <span className="text-[12px] shrink-0 ml-2">{eligible ? "→" : "🔒"}</span>
+                </button>
+              );
+            })}
           </div>
           <button
             onClick={() => setState("locked")}

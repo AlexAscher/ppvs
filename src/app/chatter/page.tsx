@@ -1245,12 +1245,13 @@ export default function ChatterPage() {
     // Preserve the chatter's selection order — the server uses `ppvIds`
     // ordering to lay out the album and the /pay grid.
     const ordered = selectedItems.filter((id) => ppvItems.some((p) => p.id === id));
-    // Resolve the chatter's price input. Empty / 0 / NaN means a free gift
-    // (server skips the blurred preview, just pushes originals to TG).
+    // Chatter's price is now in Telegram Stars (integer). Empty / 0 / NaN
+    // means a free gift (server skips the blurred preview + pay link, just
+    // pushes originals to TG).
     const parsedPrice = Number(priceInput);
     const priceForSend =
       Number.isFinite(parsedPrice) && parsedPrice > 0
-        ? Math.round(parsedPrice * 100) / 100
+        ? Math.max(1, Math.round(parsedPrice))
         : 0;
     // Snapshot for the optimistic bubble before the compose inputs are cleared.
     const capturedCaption = caption;
@@ -1276,7 +1277,7 @@ export default function ChatterPage() {
           peerUsername: dialogAtSend.username,
           caption,
           ppvIds: ordered,
-          totalPrice: priceForSend,
+          priceStars: priceForSend,
           expiresInHours: priceForSend > 0 ? expiresInHours : 0,
           scheduleDate: scheduleAt ?? undefined,
         }),
@@ -1295,7 +1296,7 @@ export default function ChatterPage() {
         const placeholder = capturedCaption.trim()
           ? capturedCaption
           : priceForSend > 0
-            ? `🔒 PPV · ${itemCount} item${itemCount > 1 ? "s" : ""} · $${priceForSend.toFixed(2)}`
+            ? `🔒 PPV · ${itemCount} item${itemCount > 1 ? "s" : ""} · ${priceForSend} ⭐`
             : `🎁 Free content · ${itemCount} item${itemCount > 1 ? "s" : ""}`;
         setApiMessages((prev) => [
           ...prev,
@@ -1387,8 +1388,8 @@ export default function ChatterPage() {
 
   async function handleSendTip() {
     if (!selectedDialog || !selectedModelId || !tipAmount) return;
-    const amount = Number(String(tipAmount).replace(/[^0-9.]/g, ""));
-    if (!amount || amount <= 0) return;
+    const stars = Math.max(1, Math.round(Number(String(tipAmount).replace(/[^0-9]/g, ""))));
+    if (!Number.isFinite(stars) || stars <= 0) return;
     setSending(true);
     setError("");
     setNotice("");
@@ -1401,7 +1402,7 @@ export default function ChatterPage() {
           peerId: selectedDialog.id,
           accessHash: selectedDialog.accessHash,
           peerUsername: selectedDialog.username,
-          amount,
+          priceStars: stars,
           message: tipMessage.trim() || null,
           scheduleDate: scheduleAt ?? undefined,
         }),
@@ -1421,7 +1422,7 @@ export default function ChatterPage() {
       // away instead of only after the chatter re-enters the dialog. Skip for
       // scheduled tips — nothing posts to the chat until they fire.
       if (!wasScheduled) void fetchMessages(selectedModelId, selectedDialog);
-      setNotice(wasScheduled ? `✅ Tip scheduled ($${amount.toFixed(2)})` : `✅ Tip request sent ($${amount.toFixed(2)})`);
+      setNotice(wasScheduled ? `✅ Tip scheduled (${stars} ⭐)` : `✅ Tip request sent (${stars} ⭐)`);
       setTimeout(
         () => setNotice((n) => (n.startsWith("✅ Tip") ? "" : n)),
         4_000,

@@ -26,11 +26,19 @@ function botToken(): string {
   return t;
 }
 
+function starsPerUsd(): number {
+  const rate = Number(process.env.STARS_PER_USD);
+  return Number.isFinite(rate) && rate > 0 ? rate : 77;
+}
+
 /** Integer Stars for a USD price. Default 77 Stars/USD (~$0.013/Star). */
 export function usdToStars(usd: number): number {
-  const rate = Number(process.env.STARS_PER_USD);
-  const perUsd = Number.isFinite(rate) && rate > 0 ? rate : 77;
-  return Math.max(1, Math.round(usd * perUsd));
+  return Math.max(1, Math.round(usd * starsPerUsd()));
+}
+
+/** USD equivalent of a Stars amount (for display + accounting). */
+export function starsToUsd(stars: number): number {
+  return Math.round((stars / starsPerUsd()) * 100) / 100;
 }
 
 async function botCall<T = unknown>(method: string, body: unknown): Promise<T> {

@@ -365,7 +365,7 @@ export async function sendBlurredPreviewWithLink(
   items: PpvPreviewItem[],
   caption: string,
   payUrl: string,
-  totalPrice: number,
+  priceStars: number,
   onBackfillPreview?: (ppvId: string, jpeg: Buffer) => Promise<void>,
   scheduleDate?: number,
 ): Promise<void> {
@@ -405,17 +405,17 @@ export async function sendBlurredPreviewWithLink(
   });
 
   // Build the caption. Layout:
-  //   <chatter caption>         ← only if non-empty, single \n separator
-  //   Unlock for $X.XX ↗        ← TextUrl entity hides the URL behind the
-  //                                colored "Unlock for $X.XX ↗" label.
+  //   <chatter caption>         ← only if non-empty, blank line separator
+  //   Pay X ⭐ ↗                ← TextUrl entity hides the URL behind the
+  //                                colored "Pay X ⭐ ↗" label. The URL is a
+  //                                native Telegram Stars invoice deep link
+  //                                (`t.me/$<hash>`) → tap = native pay sheet.
   //
   // We deliberately do NOT include the raw URL in the visible text — it
   // makes the message look spammy. The entity is what Telegram renders as
-  // a clickable hyperlink; the URL lives only in the entity payload,
-  // hidden from the message body.
+  // a clickable hyperlink; the URL lives only in the entity payload.
   const cleanCaption = caption.trim();
-  const priceFmt = totalPrice.toFixed(2);
-  const unlockLabel = `Unlock for $${priceFmt} ↗`;
+  const unlockLabel = `Pay ${priceStars} ⭐ ↗`;
   // Blank line between the chatter's caption and the Unlock link for breathing
   // room (offset below is captionBlock.length, so it adjusts automatically).
   const captionBlock = cleanCaption ? `${cleanCaption}\n\n` : "";

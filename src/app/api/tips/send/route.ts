@@ -4,6 +4,7 @@ import { authorizeModelAccess } from "@/lib/telegram-authorize";
 import { withTelegramClient } from "@/lib/telegram-pool";
 import { createAdminSupabaseClient } from "@/lib/supabase-server";
 import { generatePpvCode } from "@/lib/ppv-delivery";
+import { createStarsInvoiceLink, starsToUsd } from "@/lib/stars";
 
 export const maxDuration = 60;
 
@@ -12,7 +13,8 @@ type TipSendBody = {
   peerId: string;
   accessHash: string | null;
   peerUsername?: string | null;
-  amount: number;
+  /** Chatter-supplied tip in Telegram Stars (integer). */
+  priceStars: number;
   message?: string | null;
   scheduleDate?: number | null;
 };
@@ -34,7 +36,10 @@ export async function POST(req: NextRequest) {
     const raw = (await req.json().catch(() => null)) as Partial<TipSendBody> | null;
     const modelId = typeof raw?.modelId === "string" ? raw.modelId : "";
     const peerId = typeof raw?.peerId === "string" ? raw.peerId : "";
-    const amount = typeof raw?.amount === "number" ? raw.amount : 0;
+    const rawStars = typeof raw?.priceStars === "number" ? raw.priceStars : 0;
+    const priceStars = Number.isFinite(rawStars) && rawStars > 0 ? Math.max(1, Math.round(rawStars)) : 0;
+    // USD equivalent for accounting (tips.amount + reports).
+    const amount = priceStars > 0 ? starsToUsd(priceStars) : 0;
     const accessHash = raw?.accessHash ?? null;
     const peerUsername = typeof raw?.peerUsername === "string" ? raw.peerUsername : null;
     const message =
@@ -42,8 +47,8 @@ export async function POST(req: NextRequest) {
     const scheduleDate =
       typeof raw?.scheduleDate === "number" && raw.scheduleDate > 0 ? raw.scheduleDate : undefined;
 
-    if (!modelId || !peerId || amount <= 0) {
-      return Response.json({ error: "modelId, peerId and amount required" }, { status: 400 });
+    if (!modelId || !peerId || priceStars <= 0) {
+      return Response.json({ error: "modelId, peerId and priceStars required" }, { status: 400 });
     }
 
     const auth = await authorizeModelAccess(modelId);
@@ -84,22 +89,26 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: "Could not generate unique code" }, { status: 500 });
     }
 
-    // Tip link prefers the brand-neutral Telegram bot Mini App deep
-    // link (`t.me/<bot>/<app>?startapp=<code>`) so the fan never sees a
-    // domain preview in chat. Falls back to /tip/<code> if no bot is
-    // configured.
-    const baseUrl =
-      process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ||
-      `${req.nextUrl.protocol}//${req.nextUrl.host}`;
-    const { buildMiniAppLink } = await import("@/lib/telegram-webapp");
-    const tipUrl =
-      buildMiniAppLink({ startParam: code }) ?? `${baseUrl}/tip/${code}`;
+    // Tip link: native Telegram Stars invoice deep link (`t.me/$<hash>`).
+    // Tap opens the native pay sheet — no mini-app, no web.
+    let tipUrl: string;
+    try {
+      tipUrl = await createStarsInvoiceLink({
+        title: "Send a tip",
+        description: message?.trim() || "Send a tip",
+        payload: code,
+        stars: priceStars,
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "createInvoiceLink failed";
+      console.error("[tips/send] stars invoice failed:", msg);
+      return Response.json({ error: msg }, { status: 502 });
+    }
 
     // Build the message:
     //   <optional chatter message>
-    //   Tip for $X.XX ↗     ← TextUrl entity, URL hidden from body
-    const priceFmt = Number(amount).toFixed(2);
-    const tipLabel = `Tip for $${priceFmt} ↗`;
+    //   Tip X ⭐ ↗    ← TextUrl entity, URL hidden from body
+    const tipLabel = `Tip ${priceStars} ⭐ ↗`;
     // Blank line between the chatter's message and the Tip link (offset below
     // is messageBlock.length, so it adjusts automatically).
     const messageBlock = message ? `${message}\n\n` : "";

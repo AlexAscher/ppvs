@@ -454,22 +454,23 @@ export function ActionPanel({
                   <span className="text-[11px] text-[#9ca3af] font-medium">Price</span>
                   <div className="flex items-center gap-2">
                     <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-[#6b7280] pointer-events-none">$</span>
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[12px] text-[#6b7280] pointer-events-none">⭐</span>
                       <input
                         type="text"
-                        inputMode="decimal"
+                        inputMode="numeric"
                         value={priceInput}
                         onChange={(e) => {
-                          const clean = e.target.value
-                            .replace(/[^0-9.]/g, "")
-                            .replace(/^(\d*\.\d{0,2}).*$/, "$1");
+                          // Stars are integer.
+                          const clean = e.target.value.replace(/[^0-9]/g, "");
                           onPriceInputChange(clean);
                         }}
                         placeholder="0"
-                        className="w-24 pl-6 pr-3 py-1.5 bg-[#1f2937] border border-[#374151] rounded-md text-[12px] text-right text-white font-semibold focus:outline-none focus:border-[#00AFF0]"
+                        className="w-28 pl-3 pr-7 py-1.5 bg-[#1f2937] border border-[#374151] rounded-md text-[12px] text-right text-white font-semibold focus:outline-none focus:border-[#00AFF0]"
                       />
                     </div>
-                    <span className="text-[12px] text-[#6b7280]">{selectedItems.length} items</span>
+                    <span className="text-[11px] text-[#6b7280] tabular-nums">
+                      {parsedPrice > 0 ? `(≈ $${(parsedPrice / 77).toFixed(2)})` : `${selectedItems.length} items`}
+                    </span>
                   </div>
                 </div>
 
@@ -582,16 +583,20 @@ export function ActionPanel({
             <div className="rounded-xl border border-[#2a2d35] bg-gradient-to-br from-[#0d1117] to-[#161a22] px-4 py-3.5">
               <div className="text-[10px] uppercase tracking-wider text-[#9ca3af]">You&apos;ll request</div>
               <div className="text-[28px] font-bold text-white leading-none mt-1">
-                ${tipAmount && Number(tipAmount) > 0 ? Number(tipAmount).toFixed(2) : "0.00"}
+                {tipAmount && Number(tipAmount) > 0 ? Number(tipAmount) : 0} ⭐
               </div>
-              <div className="text-[10px] text-[#6b7280] mt-1">from {recipientLabel}</div>
+              <div className="text-[10px] text-[#6b7280] mt-1">
+                {tipAmount && Number(tipAmount) > 0
+                  ? `≈ $${(Number(tipAmount) / 77).toFixed(2)} · from ${recipientLabel}`
+                  : `from ${recipientLabel}`}
+              </div>
             </div>
 
-            {/* Preset amounts — bigger, friendlier */}
+            {/* Preset amounts (in Stars) */}
             <div>
               <div className="text-[10px] text-[#9ca3af] uppercase tracking-wider mb-2">Quick amounts</div>
               <div className="grid grid-cols-4 gap-2">
-                {["20", "50", "100", "200"].map((amount) => {
+                {["100", "500", "1000", "2500"].map((amount) => {
                   const active = tipAmount === amount;
                   return (
                     <button
@@ -603,24 +608,25 @@ export function ActionPanel({
                           : "bg-[#1f2937] border border-[#374151] text-white hover:bg-[#252b36] hover:border-[#4b5563]"
                       }`}
                     >
-                      ${amount}
+                      {amount} ⭐
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            {/* Custom amount — pill-styled with $ prefix */}
+            {/* Custom amount — Stars */}
             <div>
               <div className="text-[10px] text-[#9ca3af] uppercase tracking-wider mb-1.5">Custom amount</div>
               <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[14px] text-[#6b7280] pointer-events-none">$</span>
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[14px] text-[#6b7280] pointer-events-none">⭐</span>
                 <input
                   type="text"
+                  inputMode="numeric"
                   value={tipAmount}
-                  onChange={(e) => onTipAmountChange(e.target.value.replace(/[^0-9.]/g, ""))}
-                  placeholder="0.00"
-                  className="w-full pl-8 pr-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#00AFF0]"
+                  onChange={(e) => onTipAmountChange(e.target.value.replace(/[^0-9]/g, ""))}
+                  placeholder="0"
+                  className="w-full pl-4 pr-9 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#00AFF0]"
                 />
               </div>
             </div>

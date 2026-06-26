@@ -12,6 +12,7 @@ import {
 } from "@/lib/ppv-delivery";
 import { ppvMediaPathFromUrl } from "@/lib/ppv-storage";
 import { consume, getClientIp, tooManyRequests } from "@/lib/rate-limit";
+import { createStarsInvoiceLink, starsToUsd } from "@/lib/stars";
 
 // PPV send delivery can take 30–120s on slow networks. Allow the route's
 // after() callback to run that long on serverful platforms (Vercel limits
@@ -25,8 +26,8 @@ type SendBody = {
   peerUsername?: string | null;
   caption?: string;
   ppvIds: string[];
-  /** Chatter-supplied price. 0 → free send (originals straight to TG). */
-  totalPrice?: number;
+  /** Chatter-supplied price in Telegram Stars (integer). 0 → free send. */
+  priceStars?: number;
   /** Urgency timer: hours until the pay link expires. 0/undefined = never. */
   expiresInHours?: number;
   /** Unix timestamp (seconds) to schedule Telegram delivery. */
@@ -56,10 +57,13 @@ export async function POST(req: NextRequest) {
     const caption = typeof raw?.caption === "string" ? raw.caption.slice(0, 4096) : undefined;
     const accessHash = typeof raw?.accessHash === "string" || raw?.accessHash === null ? raw.accessHash ?? null : null;
     const peerUsername = typeof raw?.peerUsername === "string" || raw?.peerUsername === null ? raw?.peerUsername ?? null : null;
-    // Chatter-set price. Anything non-finite or negative is clamped to 0 (free).
-    const rawPrice = typeof raw?.totalPrice === "number" ? raw.totalPrice : 0;
-    const chatterPrice =
-      Number.isFinite(rawPrice) && rawPrice > 0 ? Math.round(rawPrice * 100) / 100 : 0;
+    // Chatter-set price IN STARS (integer). Anything non-finite/negative → 0 (free).
+    const rawStars = typeof raw?.priceStars === "number" ? raw.priceStars : 0;
+    const priceStars =
+      Number.isFinite(rawStars) && rawStars > 0 ? Math.max(1, Math.round(rawStars)) : 0;
+    // USD derivation for accounting (ppv_sends.total_price + reports). Stays a
+    // function of the configured STARS_PER_USD rate.
+    const chatterPrice = priceStars > 0 ? starsToUsd(priceStars) : 0;
     // Urgency timer. Clamp 0 < hours ≤ 720 (30 days); anything else = no expiry.
     const rawHours = typeof raw?.expiresInHours === "number" ? raw.expiresInHours : 0;
     const expiresInHours = Number.isFinite(rawHours) && rawHours > 0 ? Math.min(rawHours, 720) : 0;
@@ -68,7 +72,7 @@ export async function POST(req: NextRequest) {
     if (!modelId || !peerId || ppvIds.length === 0 || ppvIds.length > 50) {
       return Response.json({ error: "modelId, peerId and ppvIds (1–50) required" }, { status: 400 });
     }
-    const body: SendBody = { modelId, peerId, ppvIds, caption, accessHash, peerUsername, totalPrice: chatterPrice, scheduleDate };
+    const body: SendBody = { modelId, peerId, ppvIds, caption, accessHash, peerUsername, priceStars, scheduleDate };
 
     const auth = await authorizeModelAccess(body.modelId);
     if ("errorResponse" in auth) return auth.errorResponse;
@@ -173,16 +177,27 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: `DB items: ${linkErr.message}` }, { status: 500 });
     }
 
-    // Build the public pay URL. Prefer the brand-neutral Telegram bot
-    // Mini App deep link (`t.me/<bot>/<app>?startapp=<code>`) so fans
-    // never see the platform domain in chat. Falls back to the legacy
-    // /pay/<code> web URL if NEXT_PUBLIC_PAY_BOT_USERNAME is unset.
-    const baseUrl =
-      process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ||
-      `${req.nextUrl.protocol}//${req.nextUrl.host}`;
-    const { buildMiniAppLink } = await import("@/lib/telegram-webapp");
-    const payUrl =
-      buildMiniAppLink({ startParam: code }) ?? `${baseUrl}/pay/${code}`;
+    // Pay URL: native Telegram Stars invoice deep link (`t.me/$<hash>`) — tap
+    // opens the native pay sheet, no mini-app, no web. Created upfront (not on
+    // demand) and hidden behind the "Pay X ⭐ ↗" TextUrl entity on the album
+    // caption. For free sends (priceStars === 0) we don't need an invoice.
+    let payUrl = "";
+    if (!isFreeSend) {
+      try {
+        payUrl = await createStarsInvoiceLink({
+          title: "Unlock content",
+          description: caption?.trim() || "Unlock your private content",
+          payload: code,
+          stars: priceStars,
+        });
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "createInvoiceLink failed";
+        console.error("[ppv/send] stars invoice failed:", msg);
+        // Roll back the half-created send so the chatter can retry cleanly.
+        await admin.from("ppv_sends").delete().eq("id", sendId);
+        return Response.json({ error: msg }, { status: 502 });
+      }
+    }
 
     const previewItems: PpvPreviewItem[] = ordered
       .filter((p): p is PpvRow & { media_url: string } => !!p.media_url)
@@ -216,7 +231,7 @@ export async function POST(req: NextRequest) {
       originalItems,
       mediaUrlByPpvId,
       payUrl,
-      totalPrice,
+      priceStars,
       isFreeSend,
       scheduleDate,
     };
@@ -295,7 +310,7 @@ export async function POST(req: NextRequest) {
                 sendCtx.previewItems,
                 sendCtx.caption,
                 sendCtx.payUrl,
-                sendCtx.totalPrice,
+                sendCtx.priceStars,
                 backfillPreview,
                 sendCtx.scheduleDate,
               );

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
@@ -930,179 +930,13 @@ function SettingsView() {
   );
 }
 
-// ─── Admin Wallet (platform pool) ───────────────────────────────────────────
-
-type WalletData = {
-  poolAddress: string | null;
-  adminWallet: string;
-  keyConfigured: boolean;
-  keyMatches: boolean;
-  poolUsdc: number | null;
-  poolPol: number | null;
-  lowGas: boolean;
-  rpcError: string | null;
-};
-
-function WalletView() {
-  const [data, setData] = useState<WalletData | null>(null);
-  const [wallet, setWallet] = useState("");
-  const [amount, setAmount] = useState("");
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [loading, setLoading] = useState(true);
-
-  async function load() {
-    try {
-      const res = await fetch("/api/admin/wallet");
-      if (res.ok) {
-        const d = (await res.json()) as WalletData;
-        setData(d);
-        setWallet((w) => w || d.adminWallet || "");
-        if (d.poolUsdc != null) setAmount((a) => a || String(d.poolUsdc));
-      }
-    } finally {
-      setLoading(false);
-    }
-  }
-  useEffect(() => {
-    void load();
-  }, []);
-
-  async function saveWallet() {
-    setMsg(null);
-    setBusy(true);
-    try {
-      const res = await fetch("/api/admin/wallet", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "set", address: wallet.trim() }),
-      });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error || "Failed");
-      setMsg({ ok: true, text: "✓ Wallet saved" });
-      void load();
-    } catch (e) {
-      setMsg({ ok: false, text: e instanceof Error ? e.message : "Failed" });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function sweep() {
-    setMsg(null);
-    setBusy(true);
-    try {
-      const res = await fetch("/api/admin/wallet", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "sweep", amount: Number(amount) }),
-      });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error || "Failed");
-      setMsg({ ok: true, text: `✓ Sent — tx ${d.tx}` });
-      void load();
-    } catch (e) {
-      setMsg({ ok: false, text: e instanceof Error ? e.message : "Failed" });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="p-4 md:p-6">
-      <div className="max-w-[560px] mx-auto space-y-6">
-        <div>
-          <h1 className="text-[24px] font-bold text-white mb-1">Wallet 💰</h1>
-          <p className="text-[14px] text-[#9ca3af]">
-            Platform pool — your 10% from card2crypto sales. (Malum earnings are in your Malum balance, separate.)
-          </p>
-        </div>
-
-        <Panel title="Pool balance">
-          {loading ? (
-            <div className="text-[13px] text-[#6b7280]">Loading…</div>
-          ) : data?.rpcError ? (
-            <div className="text-[13px] text-red-400">RPC error: {data.rpcError}</div>
-          ) : (
-            <div className="space-y-2">
-              <div className="flex items-baseline gap-2">
-                <span className="text-[32px] font-bold text-[#00AFF0]">${(data?.poolUsdc ?? 0).toFixed(2)}</span>
-                <span className="text-[13px] text-[#9ca3af]">USDC available to sweep</span>
-              </div>
-              <div className="text-[12px] text-[#9ca3af]">
-                Gas: {(data?.poolPol ?? 0).toFixed(3)} POL{" "}
-                {data?.lowGas && <span className="text-amber-400">⚠️ low — top up POL on the pool wallet</span>}
-              </div>
-              <div className="text-[11px] text-[#6b7280] font-mono break-all">{data?.poolAddress}</div>
-              <div className="text-[12px]">
-                {data?.keyMatches ? (
-                  <span className="text-emerald-400">✓ Pool key configured</span>
-                ) : (
-                  <span className="text-amber-400">
-                    ⚠️ Pool private key not set / mismatch — auto-payouts &amp; sweep won&apos;t run until POOL_WALLET_PRIVATE_KEY is set
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-        </Panel>
-
-        <Panel title="Your payout wallet · USDC (Polygon)">
-          <div className="flex flex-col sm:flex-row gap-2">
-            <input
-              value={wallet}
-              onChange={(e) => setWallet(e.target.value)}
-              placeholder="0x…"
-              spellCheck={false}
-              className="flex-1 bg-[#1f2937] border border-[#374151] rounded-lg px-3.5 py-2.5 text-[13px] text-white placeholder:text-[#6b7280] outline-none focus:border-[#00AFF0] font-mono"
-            />
-            <button
-              onClick={saveWallet}
-              disabled={busy}
-              className="px-4 py-2.5 rounded-lg text-[13px] font-semibold bg-[#1f2937] border border-[#374151] text-white disabled:opacity-50"
-            >
-              Save
-            </button>
-          </div>
-        </Panel>
-
-        <Panel title="Sweep to your wallet">
-          <div className="space-y-3">
-            <div>
-              <label className="block text-[12px] text-[#9ca3af] mb-1.5">Amount (USDC)</label>
-              <input
-                type="number"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="0.00"
-                className="w-full bg-[#1f2937] border border-[#374151] rounded-lg px-3.5 py-2.5 text-[14px] text-white placeholder:text-[#6b7280] outline-none focus:border-[#00AFF0]"
-              />
-            </div>
-            <button
-              onClick={sweep}
-              disabled={busy || !data?.keyMatches}
-              className="px-4 py-2.5 rounded-lg text-[13px] font-semibold bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] text-white disabled:opacity-50"
-            >
-              {busy ? "Sending…" : "Sweep to my wallet"}
-            </button>
-          </div>
-        </Panel>
-
-        {msg && (
-          <div className={`text-[12px] break-all ${msg.ok ? "text-[#10b981]" : "text-red-400"}`}>{msg.text}</div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ─── Shell ──────────────────────────────────────────────────────────────────
-type Tab = "overview" | "agencies" | "vault" | "wallet" | "settings";
+// Wallet tab will be rebuilt for TON in batch 56 (after Stars pay-in lands).
+type Tab = "overview" | "agencies" | "vault" | "settings";
 const NAV: { id: Tab; label: string; emoji: string }[] = [
   { id: "overview", label: "Overview", emoji: "📊" },
   { id: "agencies", label: "Agencies", emoji: "🏢" },
   { id: "vault", label: "Vault", emoji: "🔒" },
-  { id: "wallet", label: "Wallet", emoji: "💰" },
   { id: "settings", label: "Settings", emoji: "⚙️" },
 ];
 
@@ -1228,7 +1062,6 @@ export function AdminClient() {
               </div>
             </div>
           )}
-          {tab === "wallet" && <WalletView />}
           {tab === "settings" && <SettingsView />}
         </main>
       </div>

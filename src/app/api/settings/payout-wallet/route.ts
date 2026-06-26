@@ -4,20 +4,18 @@ import { createSupabaseServerClient, createAdminSupabaseClient } from "@/lib/sup
 /**
  * POST /api/settings/payout-wallet { address }
  *
- * Saves the agency's payout wallet (USDC on Polygon) to
- * user_metadata.payout_address. This is the address card2crypto forwards the
- * agency's 90% to (and the default for Malum withdrawals). Only the agency can
- * set its own wallet.
+ * Saves the agency's payout wallet (USDT on TON) to
+ * user_metadata.payout_address. After the Stars migration this is where the
+ * server auto-sends the agency's 85% share. Only the agency can set its own
+ * wallet.
  *
- * Validation: must be an EVM 0x address (40 hex). We reject the USDC token
- * CONTRACT address — a common mistake that would burn funds — same guard the
- * official card2crypto WooCommerce plugin uses.
+ * Validation: must be a TON address in user-friendly base64url form — starts
+ * with `EQ` (bounceable, default for wallets) or `UQ` (non-bounceable),
+ * 48 characters total. We accept either; the TON SDK normalises both.
  */
 
-// Polygon USDC token contract — NOT a wallet. Rejecting it avoids a costly
-// paste mistake.
-const USDC_POLYGON_CONTRACT = "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359";
-const EVM_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+// TON address in user-friendly base64url form. EQ/UQ + 46 base64url chars.
+const TON_ADDRESS_RE = /^[EU]Q[A-Za-z0-9_-]{46}$/;
 
 export async function POST(req: NextRequest) {
   const ssr = await createSupabaseServerClient();
@@ -31,15 +29,9 @@ export async function POST(req: NextRequest) {
 
   const body = (await req.json().catch(() => null)) as { address?: string } | null;
   const address = (body?.address ?? "").trim();
-  if (!EVM_ADDRESS_RE.test(address)) {
+  if (!TON_ADDRESS_RE.test(address)) {
     return Response.json(
-      { error: "Enter a valid USDC (Polygon) wallet address — it should start with 0x." },
-      { status: 400 },
-    );
-  }
-  if (address.toLowerCase() === USDC_POLYGON_CONTRACT) {
-    return Response.json(
-      { error: "That's the USDC token contract, not your wallet. Paste your own wallet address." },
+      { error: "Enter a valid TON wallet address — it should start with EQ or UQ (48 characters)." },
       { status: 400 },
     );
   }

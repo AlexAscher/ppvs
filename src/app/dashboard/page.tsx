@@ -1255,8 +1255,8 @@ function WalletTab() {
   async function handleSaveWallet() {
     setWalletMsg("");
     const addr = address.trim();
-    if (!/^0x[0-9a-fA-F]{40}$/.test(addr)) {
-      setWalletMsg("Enter a valid USDC (Polygon) address — starts with 0x.");
+    if (!/^[EU]Q[A-Za-z0-9_-]{46}$/.test(addr)) {
+      setWalletMsg("Enter a valid TON address — starts with EQ or UQ (48 chars).");
       return;
     }
     setSavingWallet(true);
@@ -1295,12 +1295,12 @@ function WalletTab() {
           <p className="text-[14px] text-[#9ca3af]">Manage your earnings and withdraw your funds.</p>
         </div>
 
-        {/* Persistent payout wallet — card2crypto pays the agency's 90% here
-            automatically; also the default for manual withdrawals. */}
+        {/* Persistent payout wallet — the server will auto-send your 85%
+            share here in USDT-TON after each Stars payment lands. */}
         <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-4 md:p-5 mb-6">
-          <h2 className="text-[15px] font-semibold text-white mb-1">Payout wallet · USDC (Polygon)</h2>
+          <h2 className="text-[15px] font-semibold text-white mb-1">Payout wallet · USDT on TON</h2>
           <p className="text-[12px] text-[#9ca3af] mb-3">
-            Where your earnings are sent. Card payments via card2crypto pay your share here automatically. Use a self-custodial USDC (Polygon) wallet.
+            Where your earnings are sent. Paste your TON wallet address — the @wallet bot inside Telegram works (Settings → Address). Starts with EQ or UQ.
           </p>
           <div className="flex flex-col sm:flex-row gap-2">
             <input

@@ -50,6 +50,11 @@ type TGWebApp = {
   close?: () => void;
   initData?: string;
   initDataUnsafe?: { start_param?: string };
+  openInvoice?: (url: string, callback?: (status: string) => void) => void;
+  HapticFeedback?: {
+    impactOccurred?: (style: "light" | "medium" | "heavy") => void;
+    notificationOccurred?: (style: "success" | "warning" | "error") => void;
+  };
 };
 
 declare global {
@@ -61,6 +66,8 @@ declare global {
 export default function MiniAppPage() {
   const [boot, setBoot] = useState<InitResponse | null>(null);
   const [bootError, setBootError] = useState("");
+  const [payState, setPayState] = useState<"idle" | "loading" | "paid" | "error">("idle");
+  const [payErr, setPayErr] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -109,6 +116,49 @@ export default function MiniAppPage() {
     };
   }, []);
 
+  async function handlePay() {
+    if (!boot) return;
+    const tg = window.Telegram?.WebApp;
+    tg?.HapticFeedback?.impactOccurred?.("medium");
+    setPayState("loading");
+    setPayErr("");
+    try {
+      const res = await fetch("/api/payments/stars/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: boot.code }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { link?: string; error?: string };
+      if (!res.ok || data.error || !data.link) {
+        setPayErr(data.error || `HTTP ${res.status}`);
+        setPayState("error");
+        return;
+      }
+      if (!tg?.openInvoice) {
+        setPayErr("Open this from inside Telegram to pay with Stars.");
+        setPayState("error");
+        return;
+      }
+      // Native Telegram Stars sheet. The bot webhook is the source of truth for
+      // delivery; the callback just drives this screen's UI.
+      tg.openInvoice(data.link, (status: string) => {
+        if (status === "paid") {
+          tg.HapticFeedback?.notificationOccurred?.("success");
+          setPayState("paid");
+        } else if (status === "failed") {
+          setPayErr("Payment failed. Please try again.");
+          setPayState("error");
+        } else {
+          // "cancelled" / "pending" → back to the button.
+          setPayState("idle");
+        }
+      });
+    } catch (e: unknown) {
+      setPayErr(e instanceof Error ? e.message : "Network error");
+      setPayState("error");
+    }
+  }
+
   if (bootError) {
     return (
       <Shell>
@@ -130,7 +180,23 @@ export default function MiniAppPage() {
     );
   }
 
-  // Locked screen — preview + disabled Stars CTA.
+  if (payState === "paid") {
+    return (
+      <Shell>
+        <div className="text-center px-4 py-12">
+          <div className="text-[56px] mb-4">🎉</div>
+          <div className="text-[20px] font-bold text-white mb-2">Payment received</div>
+          <div className="text-[13px] text-[#9ca3af]">
+            {boot.kind === "tip"
+              ? "Your tip is on its way — thank you!"
+              : "Your content is flying to this chat 💌"}
+          </div>
+        </div>
+      </Shell>
+    );
+  }
+
+  // Locked screen — preview + Stars CTA.
   const itemCount = boot.kind === "ppv" ? boot.items.length : 1;
 
   return (
@@ -189,16 +255,20 @@ export default function MiniAppPage() {
           </div>
         )}
 
-        {/* Stars placeholder — actual sendInvoice(XTR) flow lands in batch 55.
-            Disabled so a fan can't trigger a broken checkout in the meantime. */}
         <button
-          disabled
-          className="w-full py-3.5 bg-[#1f2937] border border-[#30363d] rounded-xl text-[#6b7280] font-semibold text-[15px] cursor-not-allowed"
+          onClick={handlePay}
+          disabled={payState === "loading"}
+          className="w-full py-3.5 bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] rounded-xl text-white font-semibold text-[15px] disabled:opacity-60 transition-all active:scale-[0.98]"
         >
-          ⭐ Pay with Telegram Stars · ${boot.basePrice.toFixed(2)}
+          {payState === "loading"
+            ? "Opening…"
+            : boot.kind === "ppv"
+              ? `⭐ Unlock for $${boot.basePrice.toFixed(2)}`
+              : `⭐ Send tip · $${boot.basePrice.toFixed(2)}`}
         </button>
-        <div className="text-[11px] text-[#6b7280] text-center mt-2">
-          Payments are being upgraded — back online very soon.
+        {payErr && <div className="text-[12px] text-red-400 text-center mt-3">{payErr}</div>}
+        <div className="text-[10px] text-[#6b7280] text-center mt-4">
+          Pay with Telegram Stars · instant
         </div>
       </div>
     </Shell>

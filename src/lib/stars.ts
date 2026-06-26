@@ -16,8 +16,13 @@
 const API = "https://api.telegram.org";
 
 function botToken(): string {
-  const t = process.env.TELEGRAM_PAY_BOT_TOKEN;
-  if (!t) throw new Error("TELEGRAM_PAY_BOT_TOKEN not configured");
+  // Dedicated Stars bot (separate from the mini-app bot referenced by
+  // TELEGRAM_PAY_BOT_TOKEN in lib/telegram-webapp.ts — that one signs initData
+  // and is used for the t.me/<bot>/<app> link; this one issues Stars invoices
+  // and accumulates the revenue). Two bots so we can swap one without
+  // breaking the other.
+  const t = process.env.TELEGRAM_STARS_BOT_TOKEN;
+  if (!t) throw new Error("TELEGRAM_STARS_BOT_TOKEN not configured");
   return t;
 }
 
@@ -71,7 +76,7 @@ export async function answerPreCheckout(id: string, ok: boolean, errorMessage?: 
 
 /** Constant-time-ish check of the webhook secret Telegram echoes back. */
 export function verifyWebhookSecret(headerValue: string | null): boolean {
-  const expected = process.env.TELEGRAM_PAY_BOT_SECRET;
+  const expected = process.env.TELEGRAM_STARS_BOT_SECRET;
   if (!expected) return false;
   return !!headerValue && headerValue === expected;
 }

@@ -51,7 +51,7 @@ export default function TermsPage() {
           heading: "Fees",
           blocks: [
             { kind: "p", text: "Use of the Service is subject to the fees displayed on the platform." },
-            { kind: "p", text: "Unless otherwise stated, ppvs.io charges a platform fee equal to ten percent (10%) of completed sales processed through the Service." },
+            { kind: "p", text: "Unless otherwise stated, ppvs.io charges a platform fee equal to fifteen percent (15%) of completed sales processed through the Service." },
             { kind: "p", text: "Fees may be updated at any time upon notice." },
             { kind: "p", text: "All fees are non-refundable except where required by law." },
           ],

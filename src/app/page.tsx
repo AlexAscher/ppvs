@@ -74,7 +74,7 @@ const agencyFeatures = [
     emoji: "💰",
     label: "Wallet",
     tagline: "Get paid instantly.",
-    desc: "Revenue appears in your balance after every sale. Withdraw to USDT, BTC, or ETH anytime with no KYC and a low minimum withdrawal.",
+    desc: "Revenue appears in your balance after every sale. Request a payout in USDT on TON — no KYC, low minimum.",
   },
 ];
 
@@ -113,10 +113,10 @@ const faqGroups = [
   {
     group: "Payments & Payouts",
     items: [
-      { q: "How do fans pay?", a: "Fans pay by card (Visa, Mastercard, Apple Pay) or crypto. No account creation needed — they click the link, pay, and the content unlocks instantly." },
-      { q: "How do I get paid?", a: "Revenue lands in your ppvs.io balance after each transaction. Withdraw anytime to USDT, BTC, or ETH. Minimum withdrawal is $20. No KYC required to withdraw." },
-      { q: "What is the 10% fee exactly?", a: "We take 10% of every transaction that goes through the platform. This covers payment processing, hosting, and our platform fee. There are no other fees — no monthly cost, no setup fee, no per-seat pricing." },
-      { q: "Are there chargebacks?", a: "Crypto payments are irreversible — no chargebacks ever." },
+      { q: "How do fans pay?", a: "Fans pay with Telegram Stars — one tap, right inside Telegram, no card details or account creation. They tap the locked content, confirm Stars, and it unlocks instantly." },
+      { q: "How do I get paid?", a: "Revenue accrues in your balance in real time. After Telegram's clearing period you request a payout and we send your share in USDT on TON — straight to your wallet, no KYC. Minimum $20." },
+      { q: "What is the 15% fee exactly?", a: "We keep 15% of each sale; you keep 85% — versus 20% on OnlyFans, so creators take home more. We cover the Stars→TON conversion cost out of our cut. No monthly cost, no setup fee, no per-seat pricing." },
+      { q: "When can I withdraw?", a: "Telegram holds Stars for a clearing period after each sale (we use 30 days per PPV to prevent refund abuse). After that the funds are eligible — request a payout anytime and we send the TON." },
     ],
   },
   {
@@ -400,7 +400,7 @@ export default function LandingPage() {
             </h1>
             <p className="mb-8" style={{ fontSize: "16px", color: "#8b95a8", maxWidth: "520px", lineHeight: 1.7 }}>
               Sell PPVs, manage chatters, and get paid instantly.<br />
-              No monthly fees — just a 10% platform fee.
+              Paid in Telegram Stars · just a 15% platform fee.
             </p>
             <div className="flex flex-col items-start gap-3 mb-6">
               <Link href={startHref} className="px-8 py-3.5 rounded-xl text-white transition-all hover:opacity-90 active:scale-95" style={{ background: OF_BLUE, fontSize: "15px", fontWeight: 700, display: "inline-block" }}>
@@ -417,7 +417,7 @@ export default function LandingPage() {
                 { label: "Send PPVs\n& Tips", Icon: Lock },
                 { label: "Manage\nChatters", Icon: Users },
                 { label: "Track\nRevenue", Icon: TrendingUp },
-                { label: "Withdraw\nin Crypto", Icon: WalletIcon },
+                { label: "Payout\nin TON", Icon: WalletIcon },
               ].map(({ label, Icon }, i) => (
                 <div key={i} className="rounded-lg flex flex-col items-center justify-center text-center" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", padding: "10px 6px" }}>
                   <Icon className="w-5 h-5 mb-1.5" style={{ color: OF_BLUE }} />
@@ -454,8 +454,9 @@ export default function LandingPage() {
               "NO MONTHLY FEES",
               "NO KYC REQUIRED",
               "OPEN IN 5 MINUTES",
-              "INSTANT CRYPTO WITHDRAWALS",
-              "10% PLATFORM FEE",
+              "PAY WITH TELEGRAM STARS",
+              "PAYOUTS IN TON",
+              "15% PLATFORM FEE",
               "WITHOUT LEAVING TELEGRAM",
             ].map((label, i) => (
               <div key={`${dup}-${i}`} className="flex items-center gap-3 mx-6" style={{ whiteSpace: "nowrap" }}>
@@ -588,19 +589,15 @@ export default function LandingPage() {
                 ))}
               </div>
 
-              {/* Payment methods the fan can pay with. */}
+              {/* Fans pay with Telegram Stars — one tap, native in Telegram. */}
               <div className="mt-7 flex items-center flex-wrap gap-2">
                 <span style={{ fontSize: "13px", fontWeight: 600, color: "#9ca3af" }}>Fan pays with:</span>
-                {["Apple Pay", "Visa", "Mastercard", "USDT", "USDC", "Bitcoin", "Ethereum"].map((name) => (
-                  <span
-                    key={name}
-                    title={name}
-                    className="flex items-center justify-center rounded-lg"
-                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", minWidth: "40px", height: "32px", padding: "0 9px" }}
-                  >
-                    <PayIcon name={name} />
-                  </span>
-                ))}
+                <span
+                  className="flex items-center gap-1.5 rounded-lg"
+                  style={{ background: "rgba(0,175,240,0.08)", border: "1px solid rgba(0,175,240,0.2)", height: "32px", padding: "0 12px", fontSize: "13px", fontWeight: 600, color: "#e5e7eb" }}
+                >
+                  ⭐ Telegram Stars
+                </span>
               </div>
             </div>
             {/* Image */}
@@ -630,9 +627,9 @@ export default function LandingPage() {
               </h2>
               <div className="flex flex-col gap-3">
                 {[
-                  "Revenue appears instantly after every sale",
-                  "Withdraw whenever you want",
-                  "Funds go directly to your crypto wallet",
+                  "Revenue accrues instantly after every sale",
+                  "Request a payout once funds clear",
+                  "Sent in USDT on TON, straight to your wallet",
                   "No KYC required",
                 ].map((line, i) => (
                   <div key={i} className="flex items-center gap-3" style={{ fontSize: "14px", color: "#d1d5db" }}>
@@ -642,12 +639,11 @@ export default function LandingPage() {
                 ))}
               </div>
 
-              {/* Withdrawal currencies — only USDT + USDC, inline after the text. */}
+              {/* Payout currency — USDT on TON. */}
               <div className="mt-7 flex items-center flex-wrap gap-2">
-                <span style={{ fontSize: "13px", fontWeight: 600, color: "#9ca3af" }}>You withdraw in:</span>
+                <span style={{ fontSize: "13px", fontWeight: 600, color: "#9ca3af" }}>You get paid in:</span>
                 {[
-                  { name: "USDT", label: "USDT" },
-                  { name: "USDC", label: "USDC" },
+                  { name: "USDT", label: "USDT · TON" },
                 ].map((c) => (
                   <div key={c.label} className="flex items-center gap-2 px-3 py-1.5 rounded-full" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
                     <span className="flex items-center justify-center shrink-0"><PayIcon name={c.name} /></span>
@@ -668,7 +664,7 @@ export default function LandingPage() {
               Keep more. Pay less. 💎
             </h2>
             <p style={{ fontSize: "16px", color: "#6b7280", maxWidth: "520px", margin: "0 auto", lineHeight: 1.7 }}>
-              Our platform fee is just 10% — about half the industry standard. No subscriptions, no setup fees, and no contracts.
+              Our platform fee is just 15% — lower than the 20% you pay on OnlyFans, so creators keep more. No subscriptions, no setup fees, and no contracts.
             </p>
           </div>
 
@@ -683,7 +679,7 @@ export default function LandingPage() {
                 <div style={{ fontSize: "14px", color: "#6b7280", lineHeight: 1.6 }}>We only make money when you make money.</div>
               </div>
               <div className="mb-8 flex items-baseline gap-2">
-                <span className="text-white" style={{ fontSize: "44px", fontWeight: 800, letterSpacing: "-0.03em" }}>10%</span>
+                <span className="text-white" style={{ fontSize: "44px", fontWeight: 800, letterSpacing: "-0.03em" }}>15%</span>
                 <span style={{ fontSize: "14px", color: "#6b7280" }}>of sales</span>
               </div>
               <div className="flex flex-col gap-3 mb-8 flex-1">

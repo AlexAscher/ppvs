@@ -8,7 +8,7 @@
 
 const RAW = Number(process.env.PLATFORM_FEE_PCT);
 export const PLATFORM_FEE_PCT =
-  Number.isFinite(RAW) && RAW >= 0 && RAW < 1 ? RAW : 0.10;
+  Number.isFinite(RAW) && RAW >= 0 && RAW < 1 ? RAW : 0.15;
 
 /** Platform's cut of a gross sales figure. */
 export function platformFee(gross: number): number {

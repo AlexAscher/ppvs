@@ -1012,6 +1012,19 @@ function PayoutsView({ onOpenAgency }: { onOpenAgency: (id: string) => void }) {
   const [tab, setTab] = useState<"pending" | "all">("pending");
   const [rows, setRows] = useState<AdminPayoutRow[] | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [botStars, setBotStars] = useState<{ stars: number; usd: number } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/admin/star-balance");
+        const j = await res.json();
+        if (!cancelled && res.ok) setBotStars({ stars: Number(j.stars ?? 0), usd: Number(j.usd ?? 0) });
+      } catch { /* best-effort */ }
+    })();
+    return () => { cancelled = true; };
+  }, [reloadKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1063,12 +1076,30 @@ function PayoutsView({ onOpenAgency }: { onOpenAgency: (id: string) => void }) {
               Cross-agency queue. Withdraw Stars→TON on Fragment, send USDT-TON to the listed address, then mark paid.
             </p>
           </div>
-          {tab === "pending" && (
+          <div className="flex items-stretch gap-3 flex-wrap">
+            {/* Stars sitting on our bot — what's withdrawable on Fragment. */}
             <div className="bg-[#161a22] border border-[#2a2d35] rounded-xl px-5 py-3">
-              <div className="text-[11px] uppercase tracking-wider text-[#9ca3af]">Total pending</div>
-              <div className="text-[22px] font-bold text-white">{money(totalPending)}</div>
+              <div className="text-[11px] uppercase tracking-wider text-[#9ca3af]">⭐ on bot (withdrawable)</div>
+              <div className="text-[22px] font-bold text-white">
+                {botStars ? `${botStars.stars.toLocaleString("en-US")} ⭐` : "…"}
+                {botStars && <span className="text-[13px] font-normal text-[#9ca3af] ml-2">~{money(botStars.usd)}</span>}
+              </div>
+              <a
+                href="https://fragment.com/stars"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] text-[#00AFF0] hover:underline"
+              >
+                Withdraw via Fragment ↗
+              </a>
             </div>
-          )}
+            {tab === "pending" && (
+              <div className="bg-[#161a22] border border-[#2a2d35] rounded-xl px-5 py-3">
+                <div className="text-[11px] uppercase tracking-wider text-[#9ca3af]">Total pending (to agencies)</div>
+                <div className="text-[22px] font-bold text-white">{money(totalPending)}</div>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-2">

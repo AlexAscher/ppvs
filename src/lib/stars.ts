@@ -73,6 +73,12 @@ export async function createStarsInvoiceLink(params: {
   });
 }
 
+/** Current Stars balance on the bot (accumulated PPV/tip revenue). */
+export async function getBotStarBalance(): Promise<number> {
+  const r = await botCall<{ amount?: number }>("getMyStarBalance", {});
+  return Number(r?.amount ?? 0);
+}
+
 /** Approve (or reject) a pre_checkout_query — must answer within ~10s. */
 export async function answerPreCheckout(id: string, ok: boolean, errorMessage?: string): Promise<void> {
   await botCall("answerPreCheckoutQuery", {

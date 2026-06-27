@@ -117,6 +117,10 @@ interface TelegramChatProps {
   messages: Message[];
   /** Fan's lifetime spend, pre-formatted ("$245"). Shown in the header. */
   totalSpent: string;
+  /** When true, render `chat.username` as a plain name (no `@` prefix). The
+   *  chatter sees fans by first+last name from Telegram; only the agency
+   *  (who is one of the people we're protecting fan handles from) sees @. */
+  hideUsername?: boolean;
   inputText: string;
   onInputChange: (v: string) => void;
   onSend: () => void;
@@ -521,6 +525,7 @@ export function TelegramChat({
   onDeleteMessage,
   mobileView,
   onMobileBack,
+  hideUsername = false,
 }: TelegramChatProps) {
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const atBottomRef = useRef(true);
@@ -763,7 +768,7 @@ export function TelegramChat({
               </div>
               <div className="flex-1 min-w-0 text-left">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[13px] font-medium text-white truncate">@{chat.username}</span>
+                  <span className="text-[13px] font-medium text-white truncate">{hideUsername ? chat.username : `@${chat.username}`}</span>
                   <div className="flex items-center gap-0.5 flex-shrink-0 ml-1">
                     {(chat.tags ?? []).map((t, i) => (
                       <span key={i} className="text-[11px] leading-none">{t}</span>
@@ -818,7 +823,7 @@ export function TelegramChat({
             )}
             <div className="text-left min-w-0">
               <div className="text-[14px] font-semibold text-white truncate">
-                {selected ? `@${selected.username}` : ""}
+                {selected ? (hideUsername ? selected.username : `@${selected.username}`) : ""}
               </div>
               <div
                 className={`text-[11px] ${
@@ -874,6 +879,14 @@ export function TelegramChat({
 
         {/* Messages Area — p-5 space-y-3 from design */}
         <div ref={messagesRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-3 md:p-5 space-y-3">
+          {selected && chunks.length === 0 && (
+            <div className="h-full w-full flex items-center justify-center text-[12px] text-[#6b7280]">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full border-2 border-[#374151] border-t-[#9ca3af] animate-spin" />
+                Loading messages…
+              </div>
+            </div>
+          )}
           {chunks.map((chunk) => {
             // System banner — centered, dim, with "Customer doesn't see this"
             // footnote so the chatter understands fans never see this line.

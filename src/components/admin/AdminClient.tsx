@@ -600,6 +600,28 @@ function AgencyDetail({ agencyId, onBack }: { agencyId: string; onBack: () => vo
 
   const feePct = data ? Math.round(data.feePct * 100) : 10;
 
+  async function seedTestSale() {
+    const raw = window.prompt("Test sale amount in USD (90 = cleared past 30-day hold; small = pending):", "90");
+    if (raw == null) return;
+    const amount = Number(raw);
+    if (!(amount > 0)) { alert("Amount must be > 0"); return; }
+    const daysAgoRaw = window.prompt("How many days ago should it be marked paid? 0 = pending, 31 = available:", "31");
+    if (daysAgoRaw == null) return;
+    const daysAgo = Math.max(0, Math.floor(Number(daysAgoRaw)));
+    try {
+      const res = await fetch("/api/admin/seed-sale", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agencyId, amount, daysAgo }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
+      setReloadKey((k) => k + 1);
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "Failed");
+    }
+  }
+
   async function processPayout(id: string, action: "paid" | "rejected") {
     let txHash = "";
     if (action === "paid") {
@@ -752,7 +774,17 @@ function AgencyDetail({ agencyId, onBack }: { agencyId: string; onBack: () => vo
         <AgencyVaultPanel agencyId={agencyId} />
 
         {/* Payouts */}
-        <Panel title="Payouts 💸">
+        <Panel
+          title="Payouts 💸"
+          right={
+            <button
+              onClick={seedTestSale}
+              className="px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-[#1f2937] text-[#9ca3af] border border-[#374151] hover:text-white"
+            >
+              + Seed test sale
+            </button>
+          }
+        >
           {(data?.payouts ?? []).length === 0 ? (
             <div className="py-6 text-center text-[13px] text-[#6b7280]">{data ? "No payout requests." : "Loading…"}</div>
           ) : (
@@ -960,13 +992,170 @@ function SettingsView() {
   );
 }
 
+// ─── Payouts (cross-agency queue) ───────────────────────────────────────────
+type AdminPayoutRow = {
+  id: string;
+  agencyId: string;
+  agencyName: string;
+  savedAddress: string | null;
+  amount: number;
+  address: string | null;
+  currency: string | null;
+  network: string | null;
+  status: string;
+  createdAt: string;
+  paidAt: string | null;
+  txHash: string | null;
+};
+
+function PayoutsView({ onOpenAgency }: { onOpenAgency: (id: string) => void }) {
+  const [tab, setTab] = useState<"pending" | "all">("pending");
+  const [rows, setRows] = useState<AdminPayoutRow[] | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    setRows(null);
+    (async () => {
+      try {
+        const res = await fetch(`/api/admin/payouts?status=${tab}`);
+        const j = await res.json();
+        if (cancelled) return;
+        if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
+        setRows(j.payouts as AdminPayoutRow[]);
+      } catch {
+        if (!cancelled) setRows([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [tab, reloadKey]);
+
+  async function processPayout(id: string, action: "paid" | "rejected") {
+    let txHash = "";
+    if (action === "paid") {
+      txHash = window.prompt("TON tx hash (optional):") ?? "";
+    } else if (!window.confirm("Reject this payout? The amount returns to the agency's available balance.")) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/admin/payouts/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, txHash }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
+      setReloadKey((k) => k + 1);
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "Failed");
+    }
+  }
+
+  const totalPending = (rows ?? []).filter((p) => p.status === "pending").reduce((s, p) => s + p.amount, 0);
+
+  return (
+    <div className="p-4 md:p-6">
+      <div className="max-w-[1400px] mx-auto space-y-6">
+        <div className="flex items-start justify-between flex-wrap gap-3">
+          <div>
+            <h1 className="text-[24px] font-bold text-white mb-1">Payouts 💸</h1>
+            <p className="text-[13px] text-[#9ca3af]">
+              Cross-agency queue. Withdraw Stars→TON on Fragment, send USDT-TON to the listed address, then mark paid.
+            </p>
+          </div>
+          {tab === "pending" && (
+            <div className="bg-[#161a22] border border-[#2a2d35] rounded-xl px-5 py-3">
+              <div className="text-[11px] uppercase tracking-wider text-[#9ca3af]">Total pending</div>
+              <div className="text-[22px] font-bold text-white">{money(totalPending)}</div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          {(["pending", "all"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`px-3.5 py-1.5 rounded-full text-[12px] font-medium ${
+                tab === t ? "bg-[#00AFF0] text-white" : "bg-[#1f2937] text-[#9ca3af] hover:text-white"
+              }`}
+            >
+              {t === "pending" ? "Pending" : "All"}
+            </button>
+          ))}
+        </div>
+
+        <Panel title="">
+          {rows == null ? (
+            <div className="py-8 text-center text-[13px] text-[#6b7280]">Loading…</div>
+          ) : rows.length === 0 ? (
+            <div className="py-8 text-center text-[13px] text-[#6b7280]">No payout requests.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-[13px]">
+                <thead>
+                  <tr className="text-left text-[#9ca3af] border-b border-[#2a2d35]">
+                    <th className="px-3 py-2 font-medium">Requested</th>
+                    <th className="px-3 py-2 font-medium">Agency</th>
+                    <th className="px-3 py-2 font-medium">Amount (USDT·TON)</th>
+                    <th className="px-3 py-2 font-medium">Destination</th>
+                    <th className="px-3 py-2 font-medium">Status</th>
+                    <th className="px-3 py-2 font-medium" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((p) => {
+                    const mismatch = p.address && p.savedAddress && p.address !== p.savedAddress;
+                    return (
+                      <tr key={p.id} className="border-b border-[#2a2d35]/40 align-top">
+                        <td className="px-3 py-3 text-[#9ca3af] whitespace-nowrap">{fmtDateTime(p.createdAt)}</td>
+                        <td className="px-3 py-3">
+                          <button onClick={() => onOpenAgency(p.agencyId)} className="text-[#00AFF0] hover:underline font-medium">
+                            {p.agencyName}
+                          </button>
+                        </td>
+                        <td className="px-3 py-3 text-white font-medium">{money(p.amount)}</td>
+                        <td className="px-3 py-3">
+                          <div className="font-mono text-[11px] text-[#d1d5db] break-all max-w-[260px]">{p.address ?? "—"}</div>
+                          {mismatch && (
+                            <div className="text-[10px] text-amber-400 mt-1">⚠ differs from saved {p.savedAddress}</div>
+                          )}
+                          {p.txHash && <div className="text-[10px] text-emerald-400/80 font-mono mt-1 break-all">tx: {p.txHash}</div>}
+                        </td>
+                        <td className="px-3 py-3">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${statusColor(p.status)}`}>{p.status}</span>
+                        </td>
+                        <td className="px-3 py-3 whitespace-nowrap">
+                          {p.status === "pending" ? (
+                            <div className="flex items-center gap-1.5 justify-end">
+                              <button onClick={() => processPayout(p.id, "paid")} className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25">Mark paid</button>
+                              <button onClick={() => processPayout(p.id, "rejected")} className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-red-500/15 text-red-400 hover:bg-red-500/25">Reject</button>
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-[#6b7280]">{p.paidAt ? fmtDateTime(p.paidAt) : "—"}</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
 // ─── Shell ──────────────────────────────────────────────────────────────────
 // Wallet tab will be rebuilt for TON in batch 56 (after Stars pay-in lands).
-type Tab = "overview" | "agencies" | "vault" | "settings";
+type Tab = "overview" | "agencies" | "vault" | "payouts" | "settings";
 const NAV: { id: Tab; label: string; emoji: string }[] = [
   { id: "overview", label: "Overview", emoji: "📊" },
   { id: "agencies", label: "Agencies", emoji: "🏢" },
   { id: "vault", label: "Vault", emoji: "🔒" },
+  { id: "payouts", label: "Payouts", emoji: "💸" },
   { id: "settings", label: "Settings", emoji: "⚙️" },
 ];
 
@@ -1092,6 +1281,7 @@ export function AdminClient() {
               </div>
             </div>
           )}
+          {tab === "payouts" && <PayoutsView onOpenAgency={openAgency} />}
           {tab === "settings" && <SettingsView />}
         </main>
       </div>

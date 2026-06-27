@@ -707,6 +707,23 @@ export default function ChatterPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
       const list: ApiMessage[] = data.messages ?? [];
+      // Some peers (rarely-used entities, or right after a session reconnect)
+      // come back empty on the first getHistory even when the dialog list says
+      // there's a real conversation. Retry once after a brief warmup — peer
+      // resolution is cached on the server pool, so the second call usually
+      // succeeds.
+      if (list.length === 0 && (dialog.unreadCount ?? 0) === 0 && (dialog.lastMessageDate ?? 0) > 0) {
+        await new Promise((r) => setTimeout(r, 600));
+        try {
+          const r2 = await fetch(url.toString());
+          if (r2.ok) {
+            const d2 = await r2.json();
+            if (Array.isArray(d2.messages) && d2.messages.length > 0) {
+              list.push(...(d2.messages as ApiMessage[]));
+            }
+          }
+        } catch { /* keep empty */ }
+      }
       if (eventsRes.ok) {
         const ev = (await eventsRes.json()) as {
           events?: { id: string; kind: "tip_paid" | "ppv_paid"; body: string; created_at: string }[];
@@ -1593,7 +1610,9 @@ export default function ChatterPage() {
     }
     return list.map((d) => ({
       id: d.id,
-      username: d.username ?? d.title,
+      // Chatters see fan first+last name from Telegram (`title`); only the
+      // agency in chatter view sees the actual @handle.
+      username: role === "chatter" ? d.title : (d.username ?? d.title),
       lastMessage: d.lastMessage || "—",
       time: formatTime(d.lastMessageDate),
       unread: d.unreadCount ?? 0,
@@ -1602,7 +1621,7 @@ export default function ChatterPage() {
       tags: fanTagsByPeer[d.id] ?? [],
       spent: fanSpentByPeer[d.id] ?? 0,
     }));
-  }, [currentDialogs, search, fanTagsByPeer, fanSpentByPeer, activeGroupId, groupIdsByPeer]);
+  }, [currentDialogs, search, fanTagsByPeer, fanSpentByPeer, activeGroupId, groupIdsByPeer, role]);
 
   const chatMessages = useMemo(
     (): ChatMessage[] =>
@@ -1731,14 +1750,14 @@ export default function ChatterPage() {
     else if (activity?.online) status = "online";
     return {
       id: source.id,
-      username: source.username ?? source.title,
+      username: role === "chatter" ? source.title : (source.username ?? source.title),
       lastMessage: source.lastMessage || "—",
       time: formatTime(source.lastMessageDate),
       unread: source.unreadCount ?? 0,
       avatar: initialsFromTitle(source.title),
       status,
     };
-  }, [selectedDialog, currentDialogs, activity]);
+  }, [selectedDialog, currentDialogs, activity, role]);
 
   // Chatter sets the price manually now — no derived total from item prices.
 
@@ -1854,6 +1873,7 @@ export default function ChatterPage() {
           selectedChat={selectedDialog?.id ?? ""}
           onSelectChat={handleDialogSelect}
           selected={selectedChatItem}
+          hideUsername={role === "chatter"}
           modelId={selectedModelId}
           readOutboxMaxId={selectedDialog?.readOutboxMaxId}
           groups={fanGroups}

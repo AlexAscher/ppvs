@@ -24,9 +24,18 @@ type SuccessfulPayment = {
   invoice_payload?: string;
   telegram_payment_charge_id?: string;
 };
+type BusinessConnection = {
+  id: string;
+  user?: { id?: number };
+  user_chat_id?: number;
+  rights?: Record<string, unknown> | null;
+  can_reply?: boolean;
+  is_enabled?: boolean;
+};
 type Update = {
   pre_checkout_query?: PreCheckoutQuery;
   message?: { successful_payment?: SuccessfulPayment };
+  business_connection?: BusinessConnection;
 };
 
 const CODE_RE = /^[a-z0-9]{6,16}$/i;
@@ -44,6 +53,36 @@ export async function POST(req: NextRequest) {
   }
 
   const admin = createAdminSupabaseClient();
+
+  // ── business_connection: model connected/updated our bot via Chat Automation
+  // Store it so the PPV send path can sendPaidMedia on her behalf. Keyed by the
+  // model's Telegram user id (resolved at send time via gramJS getMe).
+  if (update.business_connection) {
+    const bc = update.business_connection;
+    try {
+      const rights = bc.rights ?? null;
+      const canReply =
+        bc.can_reply ?? (rights ? Boolean((rights as { can_reply?: boolean }).can_reply) : false);
+      await admin.from("business_connections").upsert(
+        {
+          connection_id: bc.id,
+          tg_user_id: String(bc.user?.id ?? ""),
+          user_chat_id: bc.user_chat_id != null ? String(bc.user_chat_id) : null,
+          can_reply: canReply,
+          rights,
+          is_enabled: bc.is_enabled ?? true,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "connection_id" },
+      );
+      console.log(
+        `[webhooks/telegram] business_connection id=${bc.id} user=${bc.user?.id} enabled=${bc.is_enabled} canReply=${canReply}`,
+      );
+    } catch (e) {
+      console.error("[webhooks/telegram] business_connection store failed:", e instanceof Error ? e.message : e);
+    }
+    return Response.json({ ok: true });
+  }
 
   // ── pre_checkout_query: approve quickly (≤10s) ────────────────────────────
   if (update.pre_checkout_query) {

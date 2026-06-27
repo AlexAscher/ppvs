@@ -600,6 +600,27 @@ function AgencyDetail({ agencyId, onBack }: { agencyId: string; onBack: () => vo
 
   const feePct = data ? Math.round(data.feePct * 100) : 10;
 
+  async function processPayout(id: string, action: "paid" | "rejected") {
+    let txHash = "";
+    if (action === "paid") {
+      txHash = window.prompt("TON tx hash for this payout (optional):") ?? "";
+    } else if (!window.confirm("Reject this payout request? The amount returns to the agency's available balance.")) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/admin/payouts/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, txHash }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
+      setReloadKey((k) => k + 1);
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "Failed");
+    }
+  }
+
   return (
     <div className="p-4 md:p-6">
       <div className="max-w-[1400px] mx-auto space-y-6">
@@ -741,10 +762,19 @@ function AgencyDetail({ agencyId, onBack }: { agencyId: string; onBack: () => vo
                   <div className="flex-1 min-w-0">
                     <div className="text-[13px] font-medium text-white">{money(p.amount)}</div>
                     <div className="text-[11px] text-[#6b7280]">{fmtDateTime(p.createdAt)}</div>
+                    {p.address && <div className="text-[11px] text-[#9ca3af] font-mono truncate">→ {p.address}</div>}
+                    {p.txHash && <div className="text-[11px] text-emerald-400/80 font-mono truncate">tx: {p.txHash}</div>}
                   </div>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${statusColor(p.status)}`}>
-                    {p.status}
-                  </span>
+                  {p.status === "pending" ? (
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button onClick={() => processPayout(p.id, "paid")} className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25">Mark paid</button>
+                      <button onClick={() => processPayout(p.id, "rejected")} className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-red-500/15 text-red-400 hover:bg-red-500/25">Reject</button>
+                    </div>
+                  ) : (
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${statusColor(p.status)} shrink-0`}>
+                      {p.status}
+                    </span>
+                  )}
                 </div>
               ))}
             </div>

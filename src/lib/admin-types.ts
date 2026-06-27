@@ -84,7 +84,7 @@ export type AdminAgencySale = {
   status: string;
   createdAt: string;
 };
-export type AdminAgencyPayout = { id: string; amount: number; status: string; createdAt: string };
+export type AdminAgencyPayout = { id: string; amount: number; status: string; createdAt: string; address: string | null; txHash: string | null };
 
 export type AdminAgencyDetail = {
   id: string;

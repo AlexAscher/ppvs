@@ -3,6 +3,7 @@ import { createAdminSupabaseClient } from "@/lib/supabase-server";
 import { withTimeout } from "@/lib/with-timeout";
 import { getCachedAuthUser } from "@/lib/auth-cache";
 import { agencyNet } from "@/lib/platform";
+import { computeAgencyBalances } from "@/lib/payouts-balance";
 import {
   loadSends,
   loadFans,
@@ -221,13 +222,12 @@ export async function GET(req: NextRequest) {
       }));
     const avgOrder = sales > 0 ? netAllTime / sales : 0;
 
-    const paidOrPending = payouts
-      .filter((p) => p.status !== "rejected")
-      .reduce((sum, p) => sum + Number(p.amount ?? 0), 0);
     const pendingPayouts = payouts
       .filter((p) => p.status === "pending")
       .reduce((sum, p) => sum + Number(p.amount ?? 0), 0);
-    const availableBalance = Math.max(0, netAllTime - paidOrPending);
+    // Hold-aware available balance — same helper /api/payouts uses, so the
+    // number matches everywhere (only sales past the 30-day hold count).
+    const { available: availableBalance } = await computeAgencyBalances(admin, user.id);
 
     const modelStats: ModelStat[] = [...modelAgg.entries()]
       .map(([id, v]) => ({ id, name: nameByModel.get(id) ?? "Model", net: v.net, sales: v.sales }))

@@ -1137,14 +1137,6 @@ function ModelsTab() {
 }
 
 
-const cryptoOptions = [
-  { id: "usdt", name: "USDT", icon: "₮" },
-  { id: "usdc", name: "USDC", icon: "$" },
-];
-const networkOptions: Record<string, string[]> = {
-  usdt: ["TRC20", "BEP20"],
-  usdc: ["TRC20", "BEP20"],
-};
 
 type Payout = {
   id: string;
@@ -1157,17 +1149,17 @@ type Payout = {
   paid_at: string | null;
 };
 
-const MIN_WITHDRAWAL_USD = 30;
+const MIN_WITHDRAWAL_USD = 20;
 
 function WalletTab() {
   const supabase = createClient();
-  const [selectedCrypto, setSelectedCrypto] = useState("usdt");
-  const [selectedNetwork, setSelectedNetwork] = useState("TRC20");
   const [amount, setAmount] = useState("");
   const [address, setAddress] = useState("");
 
   const [netAllTime, setNetAllTime] = useState<number | null>(null);
   const [available, setAvailable] = useState<number | null>(null);
+  const [pending, setPending] = useState<number | null>(null);
+  const [nextRelease, setNextRelease] = useState<{ at: string; amount: number } | null>(null);
   const [platformFeeTotal, setPlatformFeeTotal] = useState<number | null>(null);
   const [payouts, setPayouts] = useState<Payout[]>([]);
   const [confirmCorrect, setConfirmCorrect] = useState(false);
@@ -1203,6 +1195,8 @@ function WalletTab() {
           const p = await payoutsRes.json();
           setPayouts((p.payouts ?? []) as Payout[]);
           if (typeof p.availableBalance === "number") setAvailable(p.availableBalance);
+          if (typeof p.pendingBalance === "number") setPending(p.pendingBalance);
+          if (p.nextReleaseAt) setNextRelease({ at: p.nextReleaseAt, amount: Number(p.nextReleaseAmount ?? 0) });
           if (typeof p.netSalesTotal === "number") setNetAllTime(p.netSalesTotal);
           if (typeof p.platformFeeTotal === "number") setPlatformFeeTotal(p.platformFeeTotal);
         }
@@ -1227,15 +1221,14 @@ function WalletTab() {
     if (!confirmCorrect) { setMsg("Please confirm the withdrawal information."); return; }
     setSubmitting(true);
     try {
-      const currencyName = cryptoOptions.find((c) => c.id === selectedCrypto)?.name ?? null;
       const res = await fetch("/api/payouts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           amount: amt,
           address: address.trim(),
-          currency: currencyName,
-          network: selectedNetwork,
+          currency: "USDT",
+          network: "TON",
         }),
       });
       const data = await res.json();
@@ -1244,7 +1237,7 @@ function WalletTab() {
       if (typeof data.availableBalance === "number") setAvailable(data.availableBalance);
       setAmount("");
       setConfirmCorrect(false);
-      setMsg("✓ Withdrawal requested — completed within 7 days.");
+      setMsg("✓ Payout requested — reviewed and paid within 7 days.");
     } catch (e: unknown) {
       setMsg(e instanceof Error ? e.message : "Request failed");
     } finally {
@@ -1285,7 +1278,8 @@ function WalletTab() {
         ? "bg-red-500/15 text-red-400"
         : "bg-[#f59e0b]/15 text-[#f59e0b]";
 
-  const cryptoName = cryptoOptions.find((c) => c.id === selectedCrypto)?.name ?? "USDT";
+  const fmtDate = (iso: string) =>
+    new Date(iso).toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
 
   return (
     <div className="flex-1 bg-[#0d1117] overflow-y-auto p-4 md:p-6">
@@ -1328,6 +1322,18 @@ function WalletTab() {
             <div className="bg-[#161a22] border border-[#2a2d35] rounded-xl p-6">
               <div className="text-[12px] uppercase tracking-wider text-[#9ca3af]">Available Balance</div>
               <div className="text-[44px] font-bold text-white mt-1 leading-none">{available != null ? available.toFixed(2) : "…"}</div>
+              <div className="text-[11px] text-[#6b7280] mt-2">Cleared the 30-day hold — ready to withdraw.</div>
+            </div>
+
+            {/* Pending (in the 30-day clearing hold) */}
+            <div className="bg-[#161a22] border border-[#2a2d35] rounded-xl p-5">
+              <div className="text-[12px] uppercase tracking-wider text-[#9ca3af]">Pending · clearing</div>
+              <div className="text-[26px] font-bold text-[#f59e0b] mt-1 leading-none">{pending != null ? money(pending) : "…"}</div>
+              <div className="text-[11px] text-[#6b7280] mt-2">
+                {nextRelease
+                  ? `Next ${money(nextRelease.amount)} releases ${fmtDate(nextRelease.at)}.`
+                  : "Telegram holds Stars ~21 days; we release each sale 30 days after purchase."}
+              </div>
             </div>
 
             {/* Net Sales Total + Platform Fee Total */}
@@ -1407,44 +1413,12 @@ function WalletTab() {
                 </div>
               </div>
 
-              {/* Currency */}
+              {/* Payout is always USDT on TON — no chooser. */}
               <div>
-                <label className="text-[12px] text-[#9ca3af] font-medium mb-1.5 block">Select Currency</label>
-                <div className="grid grid-cols-2 gap-3">
-                  {cryptoOptions.map((c) => (
-                    <button
-                      key={c.id}
-                      onClick={() => { setSelectedCrypto(c.id); setSelectedNetwork(networkOptions[c.id][0]); }}
-                      className={`flex items-center gap-3 px-4 py-3 rounded-lg border transition-all ${
-                        selectedCrypto === c.id
-                          ? "border-[#00AFF0] bg-[#00AFF0]/10"
-                          : "border-[#374151] bg-[#1f2937] hover:border-[#4b5563]"
-                      }`}
-                    >
-                      <span className="text-[20px]">{c.icon}</span>
-                      <span className="text-[14px] font-medium text-white">{c.name}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Network */}
-              <div>
-                <label className="text-[12px] text-[#9ca3af] font-medium mb-1.5 block">Select Network</label>
-                <div className="grid grid-cols-2 gap-3">
-                  {networkOptions[selectedCrypto].map((n) => (
-                    <button
-                      key={n}
-                      onClick={() => setSelectedNetwork(n)}
-                      className={`px-4 py-3 rounded-lg border text-[14px] font-medium transition-all ${
-                        selectedNetwork === n
-                          ? "border-[#00AFF0] bg-[#00AFF0]/10 text-white"
-                          : "border-[#374151] bg-[#1f2937] text-[#9ca3af] hover:border-[#4b5563]"
-                      }`}
-                    >
-                      {n}
-                    </button>
-                  ))}
+                <label className="text-[12px] text-[#9ca3af] font-medium mb-1.5 block">You receive</label>
+                <div className="flex items-center gap-2 px-4 py-3 rounded-lg border border-[#374151] bg-[#1f2937]">
+                  <span className="text-[20px]">₮</span>
+                  <span className="text-[14px] font-medium text-white">USDT on TON</span>
                 </div>
               </div>
 
@@ -1490,7 +1464,7 @@ function WalletTab() {
               </button>
 
               <p className="text-[11px] text-[#6b7280] text-center">
-                Withdrawals are completed within 7 days of submission. ({cryptoName} on {selectedNetwork})
+                Requests are reviewed and paid within 7 days, in USDT on TON.
               </p>
             </div>
           </div>

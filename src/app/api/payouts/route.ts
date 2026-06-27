@@ -1,19 +1,21 @@
 import { NextRequest } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase-server";
 import { getCachedAuthUser } from "@/lib/auth-cache";
-import { agencyNet, platformFee, PLATFORM_FEE_PCT } from "@/lib/platform";
+import { PLATFORM_FEE_PCT } from "@/lib/platform";
+import { computeAgencyBalances, MIN_WITHDRAWAL_USD } from "@/lib/payouts-balance";
 
 /**
  * Agency payout requests.
- *   GET  → list this agency's payouts (newest first), plus header totals:
- *           availableBalance, netSalesTotal, platformFeeTotal.
+ *   GET  → list this agency's payouts (newest first) + balance header:
+ *           available (cleared the 30-day hold), pending (still held),
+ *           nextRelease*, net/fee/gross lifetime totals.
  *   POST → request a withdrawal { amount, address, currency?, network? }.
- *           Min withdrawal: $30. SLA: completed within 7 days.
+ *           Min $20. Can only request what has cleared the hold.
  *
  * Agency-scoped via the SSR session; the admin client does the writes.
  */
 
-export const MIN_WITHDRAWAL_USD = 30;
+export { MIN_WITHDRAWAL_USD };
 
 export type PayoutRow = {
   id: string;
@@ -26,76 +28,32 @@ export type PayoutRow = {
   paid_at: string | null;
 };
 
-const PAID = new Set(["paid", "delivered"]);
-
-type GrossNet = { gross: number; net: number; fee: number };
-
-async function grossAndNet(
-  admin: ReturnType<typeof createAdminSupabaseClient>,
-  agencyUserId: string,
-): Promise<GrossNet> {
-  const { data: models } = await admin
-    .from("models")
-    .select("id")
-    .eq("agency_user_id", agencyUserId);
-  const modelIds = (models ?? []).map((m: { id: string }) => m.id);
-  if (modelIds.length === 0) return { gross: 0, net: 0, fee: 0 };
-
-  // PPV sends + tips, both contribute. agencyNet = (1 − PLATFORM_FEE_PCT) × gross.
-  const [sendsRes, tipsRes] = await Promise.all([
-    admin.from("ppv_sends").select("total_price, status").in("model_id", modelIds),
-    admin.from("tips").select("amount, status").in("model_id", modelIds),
-  ]);
-  let gross = 0;
-  for (const s of (sendsRes.data ?? []) as { total_price: number; status: string }[]) {
-    if (PAID.has(s.status)) gross += Number(s.total_price ?? 0);
-  }
-  for (const t of (tipsRes.data ?? []) as { amount: number; status: string }[]) {
-    if (t.status === "paid") gross += Number(t.amount ?? 0);
-  }
-  const net = agencyNet(gross);
-  const fee = platformFee(gross);
-  return { gross, net, fee };
-}
-
-async function availableBalance(
-  admin: ReturnType<typeof createAdminSupabaseClient>,
-  agencyUserId: string,
-  precomputedNet?: number,
-): Promise<number> {
-  const net = precomputedNet ?? (await grossAndNet(admin, agencyUserId)).net;
-  const { data: payouts } = await admin
-    .from("payouts")
-    .select("amount, status")
-    .eq("agency_user_id", agencyUserId);
-  const withdrawn = ((payouts ?? []) as { amount: number; status: string }[])
-    .filter((p) => p.status !== "rejected")
-    .reduce((sum, p) => sum + Number(p.amount ?? 0), 0);
-  return Math.max(0, net - withdrawn);
-}
-
 export async function GET() {
   try {
     const user = await getCachedAuthUser();
     if (!user) return Response.json({ error: "Not authenticated" }, { status: 401 });
 
     const admin = createAdminSupabaseClient();
-    const { data, error } = await admin
-      .from("payouts")
-      .select("id, amount, address, currency, network, status, created_at, paid_at")
-      .eq("agency_user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(50);
-    if (error) return Response.json({ error: error.message }, { status: 500 });
+    const [listRes, bal] = await Promise.all([
+      admin
+        .from("payouts")
+        .select("id, amount, address, currency, network, status, created_at, paid_at")
+        .eq("agency_user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(50),
+      computeAgencyBalances(admin, user.id),
+    ]);
+    if (listRes.error) return Response.json({ error: listRes.error.message }, { status: 500 });
 
-    const totals = await grossAndNet(admin, user.id);
-    const balance = await availableBalance(admin, user.id, totals.net);
     return Response.json({
-      payouts: (data ?? []) as PayoutRow[],
-      availableBalance: Math.round(balance * 100) / 100,
-      netSalesTotal: Math.round(totals.net * 100) / 100,
-      platformFeeTotal: Math.round(totals.fee * 100) / 100,
-      grossSalesTotal: Math.round(totals.gross * 100) / 100,
+      payouts: (listRes.data ?? []) as PayoutRow[],
+      availableBalance: bal.available,
+      pendingBalance: bal.pending,
+      nextReleaseAt: bal.nextReleaseAt,
+      nextReleaseAmount: bal.nextReleaseAmount,
+      netSalesTotal: bal.netLifetime,
+      platformFeeTotal: bal.feeLifetime,
+      grossSalesTotal: bal.grossLifetime,
       platformFeePct: PLATFORM_FEE_PCT,
       minWithdrawal: MIN_WITHDRAWAL_USD,
     });
@@ -130,10 +88,10 @@ export async function POST(req: NextRequest) {
     const network = (body?.network ?? "").trim().toUpperCase() || null;
 
     const admin = createAdminSupabaseClient();
-    const balance = await availableBalance(admin, user.id);
-    if (amount > balance) {
+    const bal = await computeAgencyBalances(admin, user.id);
+    if (amount > bal.available) {
       return Response.json(
-        { error: `Amount exceeds available balance ($${balance.toFixed(2)}).` },
+        { error: `Amount exceeds available balance ($${bal.available.toFixed(2)}).` },
         { status: 400 },
       );
     }
@@ -145,8 +103,8 @@ export async function POST(req: NextRequest) {
       .single();
     if (error) return Response.json({ error: error.message }, { status: 500 });
 
-    const newBalance = await availableBalance(admin, user.id);
-    return Response.json({ payout: data as PayoutRow, availableBalance: newBalance });
+    const after = await computeAgencyBalances(admin, user.id);
+    return Response.json({ payout: data as PayoutRow, availableBalance: after.available });
   } catch (e: unknown) {
     return Response.json({ error: e instanceof Error ? e.message : "Failed" }, { status: 500 });
   }

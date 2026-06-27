@@ -25,7 +25,7 @@ const Q = 15_000;
 const FANS_CAP = 2000;
 
 type ModelRow = { id: string; name: string; session_status?: string | null };
-type PayoutRow = { id: string; amount: number | string; status: string; created_at: string };
+type PayoutRow = { id: string; amount: number | string; status: string; created_at: string; address?: string | null; tx_hash?: string | null };
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ agencyId: string }> }) {
   const auth = await requireAdmin();
@@ -104,7 +104,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ age
       }),
       withTimeout(
         Promise.resolve(
-          admin.from("payouts").select("id, amount, status, created_at").eq("agency_user_id", agencyId),
+          admin.from("payouts").select("id, amount, status, created_at, address, tx_hash").eq("agency_user_id", agencyId),
         ),
         Q,
         "admin/agency: payouts",
@@ -194,6 +194,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ age
         amount: Number(p.amount ?? 0),
         status: p.status,
         createdAt: p.created_at,
+        address: p.address ?? null,
+        txHash: p.tx_hash ?? null,
       }))
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 

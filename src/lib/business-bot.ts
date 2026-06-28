@@ -58,6 +58,36 @@ export type PaidMediaItem =
   | { kind: "photo"; url: string }
   | { kind: "video"; url: string };
 
+function guessKind(url: string): "photo" | "video" {
+  const u = url.toLowerCase().split("?")[0];
+  if (/\.(mp4|mov|m4v|webm|mkv)$/.test(u)) return "video";
+  return "photo";
+}
+
+function filenameFromUrl(url: string, fallbackExt: string): string {
+  try {
+    const path = new URL(url).pathname;
+    const base = path.split("/").pop() || `file.${fallbackExt}`;
+    return base.includes(".") ? base : `${base}.${fallbackExt}`;
+  } catch {
+    return `file.${fallbackExt}`;
+  }
+}
+
+/**
+ * Download a media URL on the server and return its bytes + content-type.
+ * We do this so Telegram never has to fetch the URL itself (private bucket /
+ * geo / mime headaches surface as "failed to get HTTP URL content" or
+ * "wrong type of the web page content").
+ */
+async function fetchBytes(url: string): Promise<{ buffer: Buffer; contentType: string }> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`fetch media ${url}: HTTP ${res.status}`);
+  const ab = await res.arrayBuffer();
+  const ct = res.headers.get("content-type") || "application/octet-stream";
+  return { buffer: Buffer.from(ab), contentType: ct };
+}
+
 /**
  * Call bot API sendPaidMedia using a business_connection_id so the message
  * appears in the recipient's chat as if sent by the connected user, with
@@ -65,6 +95,11 @@ export type PaidMediaItem =
  *
  * `chatId` is the fan's Telegram numeric user id (same peer_id we already
  * store in ppv_sends).
+ *
+ * Media files are downloaded server-side and uploaded to Telegram as
+ * multipart/form-data (attach:// references) — far more reliable than letting
+ * Telegram fetch our Supabase URLs, which intermittently fails with
+ * "failed to get HTTP URL content" / "wrong type of the web page content".
  *
  * Returns the sent message's id on success, throws on failure.
  */
@@ -80,30 +115,44 @@ export async function sendPaidMediaAsBusiness(params: {
   if (media.length === 0) throw new Error("sendPaidMedia: media[] required");
   if (media.length > 10) throw new Error("sendPaidMedia: max 10 items");
 
-  const inputMedia = media.map((m) => ({ type: m.kind, media: m.url }));
-  // Telegram Bot API accepts chat_id as either number or numeric string for
-  // private chats, but a few client paths have been observed to reject the
-  // string form with PEER_ID_INVALID. Send as number when it fits a 53-bit
-  // int; otherwise fall back to the string (rare for fan ids).
+  // chat_id as integer when it fits a 53-bit safe int — string form has
+  // surfaced PEER_ID_INVALID on some routes.
   const chatIdNum = Number(chatId);
   const chatIdField: number | string =
     Number.isFinite(chatIdNum) && Number.isInteger(chatIdNum) && Math.abs(chatIdNum) <= Number.MAX_SAFE_INTEGER
       ? chatIdNum
       : chatId;
 
-  const body: Record<string, unknown> = {
-    business_connection_id: connectionId,
-    chat_id: chatIdField,
-    star_count: stars,
-    media: inputMedia,
-    payload,
-  };
-  if (caption && caption.trim()) body.caption = caption.trim().slice(0, 1024);
+  // Download each item server-side and attach as multipart so Telegram
+  // doesn't have to fetch our URLs itself.
+  const form = new FormData();
+  form.set("business_connection_id", connectionId);
+  form.set("chat_id", String(chatIdField));
+  form.set("star_count", String(stars));
+  form.set("payload", payload);
+  if (caption && caption.trim()) form.set("caption", caption.trim().slice(0, 1024));
+
+  type InputMedia = { type: "photo" | "video"; media: string };
+  const inputMedia: InputMedia[] = [];
+
+  for (let i = 0; i < media.length; i++) {
+    const item = media[i];
+    const kind = item.kind ?? guessKind(item.url);
+    const { buffer, contentType } = await fetchBytes(item.url);
+    const attachName = `media${i}`;
+    const filename = filenameFromUrl(item.url, kind === "video" ? "mp4" : "jpg");
+    form.set(
+      attachName,
+      new Blob([new Uint8Array(buffer)], { type: contentType }),
+      filename,
+    );
+    inputMedia.push({ type: kind, media: `attach://${attachName}` });
+  }
+  form.set("media", JSON.stringify(inputMedia));
 
   const res = await fetch(`${API}/bot${botToken()}/sendPaidMedia`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: form,
     cache: "no-store",
   });
   const j = (await res.json().catch(() => null)) as

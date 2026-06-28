@@ -313,11 +313,14 @@ export async function POST(req: NextRequest) {
             : null;
           if (conn) {
             try {
-              // Build sendPaidMedia inputs from media URLs. For now treat all
-              // ppv media as photo; video detection can come later from
-              // ppvs.mime_type.
+              // Build sendPaidMedia inputs from media URLs. Guess photo vs
+              // video by extension; sendPaidMediaAsBusiness downloads the file
+              // server-side and re-uploads as multipart so Telegram never has
+              // to fetch our Supabase URLs itself.
+              const isVideo = (u: string) =>
+                /\.(mp4|mov|m4v|webm|mkv)(\?|$)/i.test(u);
               const items: PaidMediaItem[] = sendCtx.previewItems.map((p) => ({
-                kind: "photo" as const,
+                kind: isVideo(p.mediaUrl) ? ("video" as const) : ("photo" as const),
                 url: p.mediaUrl,
               }));
               if (items.length > 0) {

@@ -15,6 +15,7 @@
  */
 
 import { createAdminSupabaseClient } from "@/lib/supabase-server";
+import { ppvMediaPathFromUrl } from "@/lib/ppv-storage";
 
 const API = "https://api.telegram.org";
 
@@ -73,8 +74,20 @@ function filenameFromUrl(url: string, fallbackExt: string): string {
  * We do this so Telegram never has to fetch the URL itself (private bucket /
  * geo / mime headaches surface as "failed to get HTTP URL content" or
  * "wrong type of the web page content").
+ *
+ * Supabase Storage URLs are extracted to their object path and downloaded via
+ * the admin client (service_role) so private buckets work too; other URLs go
+ * through plain fetch.
  */
 async function fetchBytes(url: string): Promise<{ buffer: Buffer; contentType: string }> {
+  const path = ppvMediaPathFromUrl(url);
+  if (path) {
+    const admin = createAdminSupabaseClient();
+    const { data, error } = await admin.storage.from("ppvs").download(path);
+    if (error || !data) throw new Error(`storage download ${path}: ${error?.message ?? "no data"}`);
+    const ab = await data.arrayBuffer();
+    return { buffer: Buffer.from(ab), contentType: data.type || "application/octet-stream" };
+  }
   const res = await fetch(url);
   if (!res.ok) throw new Error(`fetch media ${url}: HTTP ${res.status}`);
   const ab = await res.arrayBuffer();

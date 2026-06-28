@@ -331,8 +331,18 @@ function OverviewView({ onOpenAgency }: { onOpenAgency: (id: string) => void }) 
   }, [reloadKey, period]);
 
   const feePct = data ? Math.round(data.feePct * 100) : 10;
+  const [botStars, setBotStars] = useState<number | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/admin/bot-stars")
+      .then((r) => r.ok ? r.json() : null)
+      .then((j) => { if (!cancelled && j && typeof j.stars === "number") setBotStars(j.stars); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [reloadKey]);
   const cards: { label: string; value: string; emoji: string; highlight?: boolean }[] = data
     ? [
+        { label: "Bot Stars Balance", value: botStars != null ? `${botStars.toLocaleString("en-US")} ⭐` : "…", emoji: "⭐", highlight: true },
         { label: "GMV — All Time", value: money(data.gmvAllTime), emoji: "🌐" },
         { label: `Platform Rev (${feePct}%) — All Time`, value: money(data.platformRevenueAllTime), emoji: "🏦", highlight: true },
         { label: `Agencies' Net (${100 - feePct}%)`, value: money(data.agencyNetAllTime), emoji: "🤝" },

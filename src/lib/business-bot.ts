@@ -58,12 +58,6 @@ export type PaidMediaItem =
   | { kind: "photo"; url: string }
   | { kind: "video"; url: string };
 
-function guessKind(url: string): "photo" | "video" {
-  const u = url.toLowerCase().split("?")[0];
-  if (/\.(mp4|mov|m4v|webm|mkv)$/.test(u)) return "video";
-  return "photo";
-}
-
 function filenameFromUrl(url: string, fallbackExt: string): string {
   try {
     const path = new URL(url).pathname;
@@ -137,7 +131,7 @@ export async function sendPaidMediaAsBusiness(params: {
 
   for (let i = 0; i < media.length; i++) {
     const item = media[i];
-    const kind = item.kind ?? guessKind(item.url);
+    const kind = item.kind;
     const { buffer, contentType } = await fetchBytes(item.url);
     const attachName = `media${i}`;
     const filename = filenameFromUrl(item.url, kind === "video" ? "mp4" : "jpg");

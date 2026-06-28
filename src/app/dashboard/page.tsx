@@ -710,6 +710,10 @@ type Model = { id: string; name: string; username: string | null; earnings: numb
 function ModelsTab() {
   const supabase = createClient();
   const [models, setModels] = useState<Model[]>([]);
+  // Per-model "@ppvstarbot connected via Chat Automation?" status. Fetched on
+  // mount after models load. Drives the badge + the "Connect bot" modal.
+  const [connStatus, setConnStatus] = useState<Record<string, { connected: boolean }>>({});
+  const [showBotInstructions, setShowBotInstructions] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [apiId, setApiId] = useState("");
@@ -774,6 +778,18 @@ function ModelsTab() {
       // Net of the platform's 10% commission so the figure matches the
       // Dashboard / Wallet numbers the agency sees everywhere else.
       setModels(rows.map((r) => ({ ...r, earnings: agencyNet(earningsByModel.get(r.id) ?? 0) })));
+
+      // Kick off the bot-connection probe. Lazy: the API resolves each model's
+      // TG user id via gramJS getMe on first call and caches it on the row.
+      if (rows.length > 0) {
+        try {
+          const r = await fetch(`/api/creators/connection-status?modelIds=${rows.map((x) => x.id).join(",")}`);
+          if (r.ok) {
+            const j = (await r.json()) as { statuses?: Record<string, { connected: boolean }> };
+            if (j.statuses) setConnStatus(j.statuses);
+          }
+        } catch { /* best-effort */ }
+      }
     })();
   }, []);
 
@@ -876,6 +892,60 @@ function ModelsTab() {
   return (
     <div className="flex-1 bg-[#0d1117] overflow-y-auto p-4 md:p-6">
 
+      {showBotInstructions && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-[#161a22] border border-[#2a2d35] rounded-2xl w-full max-w-[480px] p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <div className="text-[18px] font-bold text-white">Connect @ppvstarbot 🤖</div>
+                <div className="text-[12px] text-[#9ca3af]">Required to send PPV with the native Telegram blur + ⭐ unlock overlay.</div>
+              </div>
+              <button onClick={() => setShowBotInstructions(false)} className="text-[#6b7280] hover:text-white text-[22px] leading-none mt-0.5 transition-colors">×</button>
+            </div>
+            <p className="text-[13px] text-[#d1d5db] mb-4">
+              To send PPVs the bot must be able to send messages on the model&apos;s behalf. Each model does this once on her own Telegram account:
+            </p>
+            <ol className="text-[13px] text-[#d1d5db] space-y-3 mb-5 list-decimal pl-5">
+              <li>
+                Open <span className="text-white font-semibold">Settings → My Profile → Edit → Chat Automation</span> (mobile) or <span className="text-white font-semibold">Settings → My Account → Chat Automation</span> (desktop).
+              </li>
+              <li>
+                Enter <span className="font-mono text-[#00AFF0]">@ppvstarbot</span> as the bot username.
+              </li>
+              <li>
+                Enable <span className="text-white font-semibold">Reply to Messages</span>.
+              </li>
+              <li>Tap Add / Save and head back here — the badge will turn green within a few seconds.</li>
+            </ol>
+            <div className="bg-[#1f2937]/60 border border-[#2a2d35] rounded-lg px-3 py-2 mb-4 text-[12px] text-[#9ca3af]">
+              That&apos;s it — no Premium needed, no other permissions required.
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={async () => {
+                  try {
+                    const ids = models.map((m) => m.id).join(",");
+                    const r = await fetch(`/api/creators/connection-status?modelIds=${ids}`);
+                    if (r.ok) {
+                      const j = (await r.json()) as { statuses?: Record<string, { connected: boolean }> };
+                      if (j.statuses) setConnStatus(j.statuses);
+                    }
+                  } catch { /* best-effort */ }
+                }}
+                className="px-4 py-2 bg-[#1f2937] hover:bg-[#2a2d35] text-white rounded-lg text-[13px] font-semibold"
+              >
+                I&apos;ve connected — refresh
+              </button>
+              <button
+                onClick={() => setShowBotInstructions(false)}
+                className="px-4 py-2 bg-[#00AFF0] hover:bg-[#0098D4] text-white rounded-lg text-[13px] font-semibold"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-[#161a22] border border-[#2a2d35] rounded-xl shadow-2xl w-full max-w-[440px] p-6">
@@ -1057,6 +1127,16 @@ function ModelsTab() {
                   ) : (
                     <span className="px-2.5 py-1 bg-[#10b981]/20 text-[#10b981] rounded-full text-[11px] font-semibold shrink-0">connected</span>
                   )}
+                  {connStatus[model.id]?.connected ? (
+                    <span title="Bot connected via Telegram Chat Automation" className="px-2.5 py-1 bg-[#10b981]/20 text-[#10b981] rounded-full text-[11px] font-semibold shrink-0">🤖 bot</span>
+                  ) : (
+                    <button
+                      onClick={() => setShowBotInstructions(true)}
+                      className="px-2.5 py-1 bg-[#f59e0b]/15 text-[#f59e0b] hover:bg-[#f59e0b]/25 rounded-full text-[11px] font-semibold shrink-0"
+                    >
+                      🤖 connect bot
+                    </button>
+                  )}
                   <button
                     onClick={() => handleRefresh(model.id)}
                     disabled={refreshingId === model.id}
@@ -1119,6 +1199,16 @@ function ModelsTab() {
                       </>
                     ) : (
                       <span className="px-2.5 py-1 bg-[#10b981]/20 text-[#10b981] rounded-full text-[11px] font-semibold">connected</span>
+                    )}
+                    {connStatus[model.id]?.connected ? (
+                      <span className="px-2.5 py-1 bg-[#10b981]/20 text-[#10b981] rounded-full text-[11px] font-semibold">🤖 bot</span>
+                    ) : (
+                      <button
+                        onClick={() => setShowBotInstructions(true)}
+                        className="px-2.5 py-1 bg-[#f59e0b]/15 text-[#f59e0b] rounded-full text-[11px] font-semibold"
+                      >
+                        🤖 connect bot
+                      </button>
                     )}
                   </div>
                   <div className="text-right">

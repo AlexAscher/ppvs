@@ -284,19 +284,29 @@ export async function POST(req: NextRequest) {
         if (!sendCtx.isFreeSend) {
           let modelTgUserId: string | null = null;
           try {
-            modelTgUserId = await withTelegramClient(
-              sendCtx.modelId,
-              sendCtx.session_string,
-              sendCtx.api_id,
-              sendCtx.api_hash,
-              async (tg) => {
-                const me = await tg.getMe();
-                return me && "id" in me && me.id != null ? me.id.toString() : null;
-              },
-              15_000,
-            );
-          } catch (e) {
-            console.warn("[ppv/send native] getMe failed:", e instanceof Error ? e.message : e);
+            const { data: m } = await admin
+              .from("models").select("tg_user_id").eq("id", sendCtx.modelId).maybeSingle();
+            modelTgUserId = ((m as { tg_user_id: string | null } | null)?.tg_user_id) ?? null;
+          } catch { /* fall through to getMe */ }
+          if (!modelTgUserId) {
+            try {
+              modelTgUserId = await withTelegramClient(
+                sendCtx.modelId,
+                sendCtx.session_string,
+                sendCtx.api_id,
+                sendCtx.api_hash,
+                async (tg) => {
+                  const me = await tg.getMe();
+                  return me && "id" in me && me.id != null ? me.id.toString() : null;
+                },
+                15_000,
+              );
+              if (modelTgUserId) {
+                await admin.from("models").update({ tg_user_id: modelTgUserId }).eq("id", sendCtx.modelId);
+              }
+            } catch (e) {
+              console.warn("[ppv/send native] getMe failed:", e instanceof Error ? e.message : e);
+            }
           }
           const conn = modelTgUserId
             ? await findActiveBusinessConnection(admin, modelTgUserId)

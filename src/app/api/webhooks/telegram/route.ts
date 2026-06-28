@@ -32,10 +32,15 @@ type BusinessConnection = {
   can_reply?: boolean;
   is_enabled?: boolean;
 };
+type PurchasedPaidMedia = {
+  from?: { id?: number };
+  paid_media_payload?: string;
+};
 type Update = {
   pre_checkout_query?: PreCheckoutQuery;
   message?: { successful_payment?: SuccessfulPayment };
   business_connection?: BusinessConnection;
+  purchased_paid_media?: PurchasedPaidMedia;
 };
 
 const CODE_RE = /^[a-z0-9]{6,16}$/i;
@@ -103,6 +108,35 @@ export async function POST(req: NextRequest) {
     } catch (e) {
       console.error("[webhooks/telegram] pre_checkout failed:", e instanceof Error ? e.message : e);
       try { await answerPreCheckout(pcq.id, false, "Temporary error, please try again."); } catch {}
+    }
+    return Response.json({ ok: true });
+  }
+
+  // ── purchased_paid_media: fan unlocked native Paid Media we sent ──────────
+  // Telegram has already revealed the media on the fan's end. We just record
+  // the sale (mark paid + bump fan total + sales alert). skipDelivery=true so
+  // we don't re-push the originals via gramJS.
+  if (update.purchased_paid_media) {
+    const code = (update.purchased_paid_media.paid_media_payload ?? "").trim();
+    if (!CODE_RE.test(code)) return Response.json({ ok: true });
+    try {
+      const { data: sendRaw } = await admin
+        .from("ppv_sends")
+        .select("id, code, model_id, peer_id, peer_access_hash, peer_username, caption, status, total_price, malum_txn")
+        .eq("code", code)
+        .maybeSingle();
+      if (sendRaw) {
+        await fulfillPpvPaid(
+          admin,
+          sendRaw as Parameters<typeof fulfillPpvPaid>[1],
+          null,
+          { skipDelivery: true },
+        );
+      } else {
+        console.warn("[webhooks/telegram] purchased_paid_media: no ppv_send for code=", code);
+      }
+    } catch (e) {
+      console.error("[webhooks/telegram] purchased_paid_media failed:", e instanceof Error ? e.message : e);
     }
     return Response.json({ ok: true });
   }

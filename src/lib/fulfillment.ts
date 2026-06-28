@@ -50,11 +50,18 @@ type ItemRowRaw = {
 
 type ModelRow = { session_string: string; api_id: number; api_hash: string };
 
-/** Mark a PPV send paid (idempotent) + deliver. Returns false if already paid. */
+/** Mark a PPV send paid (idempotent) + deliver.
+ *
+ *   skipDelivery=true → Telegram has already unlocked the media on the fan's
+ *   end (native Paid Media path); we only record the sale + alerts and DON'T
+ *   re-push originals from the model's gramJS session.
+ *
+ * Returns false if already paid. */
 export async function fulfillPpvPaid(
   admin: SupabaseClient,
   send: PpvSendRow,
   externalTxn: string | null,
+  options?: { skipDelivery?: boolean },
 ): Promise<boolean> {
   if (send.status === "paid" || send.status === "delivered") return false;
 
@@ -135,6 +142,15 @@ export async function fulfillPpvPaid(
       return { ppvId: ppv?.id ?? "", mediaUrl: ppv?.media_url ?? "", cachedFileId: ppv?.tg_file_id ?? null };
     })
     .filter((it) => !!it.mediaUrl && !!it.ppvId);
+
+  if (options?.skipDelivery) {
+    // Native Paid Media: Telegram unlocks on its own. Just close out the row.
+    await admin
+      .from("ppv_sends")
+      .update({ status: "delivered", delivered_at: new Date().toISOString(), error: null })
+      .eq("id", send.id);
+    return true;
+  }
 
   if (joined.length > 0) {
     const { data: modelRow, error: modelErr } = await admin

@@ -13,6 +13,7 @@ import {
 import { ppvMediaPathFromUrl } from "@/lib/ppv-storage";
 import { consume, getClientIp, tooManyRequests } from "@/lib/rate-limit";
 import { createStarsInvoiceLink, starsToUsd } from "@/lib/stars";
+import { findActiveBusinessConnection, sendPaidMediaAsBusiness, type PaidMediaItem } from "@/lib/business-bot";
 
 // PPV send delivery can take 30–120s on slow networks. Allow the route's
 // after() callback to run that long on serverful platforms (Vercel limits
@@ -177,10 +178,16 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: `DB items: ${linkErr.message}` }, { status: 500 });
     }
 
-    // Pay URL: native Telegram Stars invoice deep link (`t.me/$<hash>`) — tap
-    // opens the native pay sheet, no mini-app, no web. Created upfront (not on
-    // demand) and hidden behind the "Pay X ⭐ ↗" TextUrl entity on the album
-    // caption. For free sends (priceStars === 0) we don't need an invoice.
+    // Two delivery modes for paid sends:
+    //   (a) NATIVE Paid Media — if the model has connected @ppvstarbot via
+    //       Telegram Business (Chat Automation). The bot's sendPaidMedia draws
+    //       the content blurred with Telegram's own "Unlock for ⭐ N" overlay,
+    //       in the model's chat with the fan. Stars go to the bot balance.
+    //   (b) FALLBACK — blurred album preview + caption link to a Stars
+    //       invoice. Used when no business connection exists (yet).
+    //
+    // The native path is decided in the background task below — here we just
+    // build a fallback pay URL if needed.
     let payUrl = "";
     if (!isFreeSend) {
       try {
@@ -271,6 +278,61 @@ export async function POST(req: NextRequest) {
       try {
         const nextStatus = sendCtx.isFreeSend ? "delivered" : "sending";
         await admin.from("ppv_sends").update({ status: nextStatus }).eq("id", sendCtx.sendId);
+
+        // ── Try native Paid Media via Business connection first ────────────
+        // (paid sends only; free sends always use gramJS originals path).
+        if (!sendCtx.isFreeSend) {
+          let modelTgUserId: string | null = null;
+          try {
+            modelTgUserId = await withTelegramClient(
+              sendCtx.modelId,
+              sendCtx.session_string,
+              sendCtx.api_id,
+              sendCtx.api_hash,
+              async (tg) => {
+                const me = await tg.getMe();
+                return me && "id" in me && me.id != null ? me.id.toString() : null;
+              },
+              15_000,
+            );
+          } catch (e) {
+            console.warn("[ppv/send native] getMe failed:", e instanceof Error ? e.message : e);
+          }
+          const conn = modelTgUserId
+            ? await findActiveBusinessConnection(admin, modelTgUserId)
+            : null;
+          if (conn) {
+            try {
+              // Build sendPaidMedia inputs from media URLs. For now treat all
+              // ppv media as photo; video detection can come later from
+              // ppvs.mime_type.
+              const items: PaidMediaItem[] = sendCtx.previewItems.map((p) => ({
+                kind: "photo" as const,
+                url: p.mediaUrl,
+              }));
+              if (items.length > 0) {
+                const out = await sendPaidMediaAsBusiness({
+                  connectionId: conn.connectionId,
+                  chatId: sendCtx.peerId,
+                  stars: sendCtx.priceStars,
+                  payload: code,
+                  caption: sendCtx.caption,
+                  media: items,
+                });
+                console.log(`[ppv/send native] sent message=${out.messageId} via connection=${conn.connectionId}`);
+                await admin
+                  .from("ppv_sends")
+                  .update({ status: "sent", error: null })
+                  .eq("id", sendCtx.sendId);
+                return; // Done — Telegram handles blur + unlock.
+              }
+            } catch (e) {
+              const msg = e instanceof Error ? e.message : String(e);
+              console.warn("[ppv/send native] sendPaidMedia failed, falling back:", msg);
+              // Don't fail the whole send — fall through to blurred-link path.
+            }
+          }
+        }
 
         await withTelegramClient(
           sendCtx.modelId,

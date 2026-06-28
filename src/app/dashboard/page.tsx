@@ -917,8 +917,11 @@ function ModelsTab() {
               </li>
               <li>Tap Add / Save and head back here — the badge will turn green within a few seconds.</li>
             </ol>
-            <div className="bg-[#1f2937]/60 border border-[#2a2d35] rounded-lg px-3 py-2 mb-4 text-[12px] text-[#9ca3af]">
+            <div className="bg-[#1f2937]/60 border border-[#2a2d35] rounded-lg px-3 py-2 mb-3 text-[12px] text-[#9ca3af]">
               That&apos;s it — no Premium needed, no other permissions required.
+            </div>
+            <div className="bg-[#f59e0b]/10 border border-[#f59e0b]/30 rounded-lg px-3 py-2 mb-4 text-[12px] text-[#fbbf24]">
+              ⚠ Important: Telegram only lets the bot push native PPVs into chats where the fan has sent the model a message <span className="font-semibold">after</span> the bot was connected. New fans must reply at least once before the first PPV goes through natively. Older sends keep using the blur + Stars link fallback.
             </div>
             <div className="flex gap-2 justify-end">
               <button

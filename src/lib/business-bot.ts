@@ -81,9 +81,19 @@ export async function sendPaidMediaAsBusiness(params: {
   if (media.length > 10) throw new Error("sendPaidMedia: max 10 items");
 
   const inputMedia = media.map((m) => ({ type: m.kind, media: m.url }));
+  // Telegram Bot API accepts chat_id as either number or numeric string for
+  // private chats, but a few client paths have been observed to reject the
+  // string form with PEER_ID_INVALID. Send as number when it fits a 53-bit
+  // int; otherwise fall back to the string (rare for fan ids).
+  const chatIdNum = Number(chatId);
+  const chatIdField: number | string =
+    Number.isFinite(chatIdNum) && Number.isInteger(chatIdNum) && Math.abs(chatIdNum) <= Number.MAX_SAFE_INTEGER
+      ? chatIdNum
+      : chatId;
+
   const body: Record<string, unknown> = {
     business_connection_id: connectionId,
-    chat_id: chatId,
+    chat_id: chatIdField,
     star_count: stars,
     media: inputMedia,
     payload,
@@ -100,7 +110,14 @@ export async function sendPaidMediaAsBusiness(params: {
     | { ok?: boolean; result?: { message_id: number }; description?: string }
     | null;
   if (!j?.ok || !j.result) {
-    throw new Error(`sendPaidMedia: ${j?.description ?? `HTTP ${res.status}`}`);
+    const desc = j?.description ?? `HTTP ${res.status}`;
+    // PEER_ID_INVALID via business_connection_id almost always means the fan
+    // hasn't messaged the model since the bot was connected — Telegram only
+    // lets the bot push into chats it has already received an update from.
+    const hint = /PEER_ID_INVALID/i.test(desc)
+      ? " (the fan must send the model at least one message after the bot is connected — Telegram only lets the bot push into chats it has already received an update from)"
+      : "";
+    throw new Error(`sendPaidMedia: ${desc}${hint}`);
   }
   return { messageId: j.result.message_id };
 }

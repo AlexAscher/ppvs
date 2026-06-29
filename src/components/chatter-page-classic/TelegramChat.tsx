@@ -1034,6 +1034,7 @@ export function TelegramChat({
                         <ReadTicks
                           read={
                             readOutboxMaxId !== undefined &&
+                            Number(chunk.msgs[chunk.msgs.length - 1].id) > 0 &&
                             Number(chunk.msgs[chunk.msgs.length - 1].id) <= readOutboxMaxId
                           }
                         />
@@ -1120,7 +1121,11 @@ export function TelegramChat({
                   {message.time}
                   {message.isChatter && (
                     <ReadTicks
-                      read={readOutboxMaxId !== undefined && Number(message.id) <= readOutboxMaxId}
+                      read={
+                        readOutboxMaxId !== undefined &&
+                        Number(message.id) > 0 &&
+                        Number(message.id) <= readOutboxMaxId
+                      }
                     />
                   )}
                 </div>

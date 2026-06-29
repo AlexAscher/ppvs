@@ -2,6 +2,7 @@ import { NewMessage, NewMessageEvent } from "telegram/events";
 import { CustomFile } from "telegram/client/uploads";
 import type { TelegramClient } from "telegram";
 import { createAdminSupabaseClient } from "@/lib/supabase-server";
+import { ppvMediaPathFromUrl } from "@/lib/ppv-storage";
 
 /**
  * Auto-reply on first-fan-message.
@@ -80,19 +81,39 @@ async function markFanReplied(modelId: string, peerId: string): Promise<void> {
   );
 }
 
-/** Fetch the auto-reply media from Supabase Storage and wrap as gramJS CustomFile. */
+/** Fetch the auto-reply media and wrap as a gramJS CustomFile.
+ *
+ *  ppvs bucket is private — a plain GET on the public URL returns 400 — so
+ *  Supabase-storage URLs are downloaded via the service-role admin client.
+ *  Other URLs go through plain fetch.
+ */
 async function customFileFromUrl(url: string): Promise<CustomFile | null> {
   try {
+    const path = ppvMediaPathFromUrl(url);
+    if (path) {
+      const admin = createAdminSupabaseClient();
+      const { data, error } = await admin.storage.from("ppvs").download(path);
+      if (error || !data) {
+        console.error("[auto-reply] storage download failed:", path, error?.message ?? "no data");
+        return null;
+      }
+      const buf = Buffer.from(await data.arrayBuffer());
+      const name = path.split("/").pop() ?? `auto_reply_${Date.now()}`;
+      return new CustomFile(name, buf.length, "", buf);
+    }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 30_000);
     const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timer);
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.error("[auto-reply] fetch failed:", url, `HTTP ${res.status}`);
+      return null;
+    }
     const buf = Buffer.from(await res.arrayBuffer());
-    const name =
-      url.split("/").pop()?.split("?")[0] ?? `auto_reply_${Date.now()}`;
+    const name = url.split("/").pop()?.split("?")[0] ?? `auto_reply_${Date.now()}`;
     return new CustomFile(name, buf.length, "", buf);
-  } catch {
+  } catch (e) {
+    console.error("[auto-reply] customFile error:", e instanceof Error ? e.message : e);
     return null;
   }
 }

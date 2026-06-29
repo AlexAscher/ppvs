@@ -176,6 +176,33 @@ export default function ChatterPage() {
   // Per-dialog system events (tip / PPV paid) — fetched alongside messages
   // and merged into the chat view as centered "Customer doesn't see this"
   // banners. Cleared whenever the open chat changes.
+  // PPV-send "virtuals" used to render a permanent blurred album in the
+  // chatter view — independent of what Telegram's outgoing copy of the
+  // message contains. Populated from /api/chat-events.sends.
+  // Ref shadow so fetchMessages (in a stable useCallback) can read the
+  // latest virtuals without being recreated each time the state changes.
+  const ppvVirtualsRef = useRef<{
+    sendId: string;
+    code: string;
+    createdAtSec: number;
+    caption: string;
+    priceStars: number;
+    status: string;
+    paidAt: string | null;
+    previewUrls: string[];
+  }[]>([]);
+  const [ppvVirtuals, setPpvVirtuals] = useState<
+    {
+      sendId: string;
+      code: string;
+      createdAtSec: number;
+      caption: string;
+      priceStars: number;
+      status: string;
+      paidAt: string | null;
+      previewUrls: string[];
+    }[]
+  >([]);
   const [systemEvents, setSystemEvents] = useState<
     { id: string; kind: "tip_paid" | "ppv_paid"; body: string; createdAt: number }[]
   >([]);
@@ -731,6 +758,11 @@ export default function ChatterPage() {
       if (eventsRes.ok) {
         const ev = (await eventsRes.json()) as {
           events?: { id: string; kind: "tip_paid" | "ppv_paid"; body: string; created_at: string }[];
+          sends?: {
+            id: string; code: string; created_at: string; caption: string | null;
+            total_price: number; status: string; paid_at: string | null;
+            previewUrls: string[];
+          }[];
         };
         const mapped = (ev.events ?? []).map((e) => ({
           id: e.id,
@@ -738,6 +770,21 @@ export default function ChatterPage() {
           body: e.body,
           createdAt: Math.floor(new Date(e.created_at).getTime() / 1000),
         }));
+        // PPV sends → virtual blurred album messages so chatters always see
+        // a blur (never the unblurred original) regardless of how Telegram
+        // rendered the outgoing message. Will be merged into the chat below.
+        const nextVirtuals = (ev.sends ?? []).map((s) => ({
+          sendId: s.id,
+          code: s.code,
+          createdAtSec: Math.floor(new Date(s.created_at).getTime() / 1000),
+          caption: s.caption ?? "",
+          priceStars: s.total_price > 0 ? Math.round(s.total_price * 77) : 0,
+          status: s.status,
+          paidAt: s.paid_at,
+          previewUrls: s.previewUrls,
+        }));
+        ppvVirtualsRef.current = nextVirtuals;
+        setPpvVirtuals(nextVirtuals);
         setSystemEvents((prev) => {
           if (
             prev.length === mapped.length &&
@@ -762,25 +809,37 @@ export default function ChatterPage() {
           return mapped;
         });
       }
+      // Filter out real outgoing media messages within ±60s of any PPV
+      // virtual — chatters always see the blurred virtual instead of the
+      // unblurred original media that Telegram returned to gramJS.
+      const virtualWindowSec = 60;
+      const virtualsAtFilter = ppvVirtualsRef.current;
+      const filteredList = list.filter((m) => {
+        if (!m.isOutgoing || !m.media) return true;
+        return !virtualsAtFilter.some(
+          (v) => Math.abs(m.date - v.createdAtSec) < virtualWindowSec,
+        );
+      });
+      const listForState = filteredList;
       setApiMessages((prev) => {
         // Carry over optimistic messages (negative ids) that the server
         // poll hasn't reflected yet. Drop an optimistic once a real outgoing
         // message with the same text within ±60s shows up from the server.
         const optimistic = prev.filter((m) => m.id < 0);
         const stillOptimistic = optimistic.filter((o) => {
-          // PPV media placeholders dedupe against any outgoing message with
-          // media in the same ±60s window — captions diverge so text match
-          // is unreliable.
+          // PPV media placeholders are dropped once a virtual PPV from
+          // /api/chat-events appears in the same ±60s window — the virtual
+          // is the persistent blur that replaces the optimistic one.
           if (o.media) {
-            return !list.some(
-              (s) => s.isOutgoing && s.media && Math.abs(s.date - o.date) < 60,
+            return !virtualsAtFilter.some(
+              (v) => Math.abs(v.createdAtSec - o.date) < 60,
             );
           }
-          return !list.some(
+          return !listForState.some(
             (s) => s.isOutgoing && s.text === o.text && Math.abs(s.date - o.date) < 60,
           );
         });
-        const merged: ApiMessage[] = [...list, ...stillOptimistic];
+        const merged: ApiMessage[] = [...listForState, ...stillOptimistic];
         // Cheap stability check to avoid pointless re-renders.
         if (
           prev.length === merged.length &&
@@ -1006,6 +1065,7 @@ export default function ChatterPage() {
     setSelectedDialog(null);
     setApiMessages([]);
     setSystemEvents([]);
+    setPpvVirtuals([]);
     setSelectedModelId(id);
   }
 
@@ -1016,6 +1076,7 @@ export default function ChatterPage() {
     setSelectedDialog(d);
     setApiMessages([]);
     setSystemEvents([]);
+    setPpvVirtuals([]);
     // On mobile, opening a chat swaps the single visible panel to the
     // conversation view (desktop shows everything at once anyway).
     setMobileView("chat");
@@ -1778,7 +1839,6 @@ export default function ChatterPage() {
   // the conversation. The TelegramChat component renders entries with
   // `system` as a centered banner, ignoring media / reply / grouping.
   const chatMessagesWithEvents = useMemo((): ChatMessage[] => {
-    if (systemEvents.length === 0) return chatMessages;
     const sysAsMessages: (ChatMessage & { _sortKey: number })[] = systemEvents.map(
       (e): ChatMessage & { _sortKey: number } => ({
         id: `sys_${e.id}`,
@@ -1792,18 +1852,48 @@ export default function ChatterPage() {
         _sortKey: e.createdAt,
       }),
     );
+    // PPV virtuals → always-blurred album messages (one per send). Chatters
+    // see a persistent blur exactly like the fan does before unlocking — the
+    // raw outgoing photos that Telegram returned via gramJS are filtered out
+    // during the polling merge above.
+    const virtualMsgs: (ChatMessage & { _sortKey: number })[] = ppvVirtuals.flatMap((v) => {
+      const groupedId = v.previewUrls.length > 1 ? `ppv_${v.sendId}` : null;
+      const isPaid = v.status === "paid" || v.status === "delivered";
+      const captionLine = v.caption?.trim() || "";
+      const priceLine = v.priceStars > 0
+        ? (isPaid ? `✅ Paid · ${v.priceStars} ⭐` : `🔒 PPV · ${v.priceStars} ⭐`)
+        : "🎁 Free content";
+      const fullText = captionLine ? `${priceLine}\n${captionLine}` : priceLine;
+      return v.previewUrls.map((url, idx) => ({
+        id: `ppv_${v.sendId}_${idx}`,
+        text: idx === 0 ? fullText : "",
+        time: formatTime(v.createdAtSec),
+        isChatter: true,
+        media: {
+          type: "photo" as const,
+          thumbDataUrl: null,
+          fullUrl: url,
+          width: 400,
+          height: 600,
+        },
+        replyPreview: null,
+        groupedId,
+        _sortKey: v.createdAtSec,
+      }));
+    });
+    if (systemEvents.length === 0 && virtualMsgs.length === 0) return chatMessages;
     const realWithKeys = chatMessages.map((m, idx): ChatMessage & { _sortKey: number } => ({
       ...m,
       _sortKey: apiMessages[idx]?.date ?? 0,
     }));
-    const merged = [...realWithKeys, ...sysAsMessages].sort(
+    const merged = [...realWithKeys, ...sysAsMessages, ...virtualMsgs].sort(
       (a, b) => a._sortKey - b._sortKey,
     );
     return merged.map(({ _sortKey: _omit, ...rest }) => {
       void _omit;
       return rest;
     });
-  }, [chatMessages, systemEvents, apiMessages]);
+  }, [chatMessages, systemEvents, ppvVirtuals, apiMessages]);
 
   const selectedChatItem = useMemo((): ChatListItem | null => {
     if (!selectedDialog) return null;

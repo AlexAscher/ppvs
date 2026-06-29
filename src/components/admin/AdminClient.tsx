@@ -283,7 +283,7 @@ function DownloadButton({ href, label }: { href: string; label: string }) {
   );
 }
 
-function FanRowItem({ fan }: { fan: AdminAgencyFan }) {
+function FanRowItem({ fan, onReset }: { fan: AdminAgencyFan; onReset?: () => void }) {
   const primary = fan.username ? `@${fan.username}` : fan.name;
   const secondary = fan.username ? fan.name : `ID ${fan.peerId}`;
   return (
@@ -299,6 +299,15 @@ function FanRowItem({ fan }: { fan: AdminAgencyFan }) {
         <div className="text-[14px] font-bold text-[#00AFF0]">{money(fan.spent)}</div>
         <div className="text-[10px] text-[#6b7280]">{fmtDate(fan.lastSeen)}</div>
       </div>
+      {onReset && (
+        <button
+          onClick={onReset}
+          title="Wipe this fan's DB rows so the same Telegram account can be reused for testing"
+          className="px-2 py-1 rounded-lg text-[10px] font-semibold bg-red-500/10 text-red-400 hover:bg-red-500/20 shrink-0"
+        >
+          reset
+        </button>
+      )}
     </div>
   );
 }
@@ -610,6 +619,25 @@ function AgencyDetail({ agencyId, onBack }: { agencyId: string; onBack: () => vo
 
   const feePct = data ? Math.round(data.feePct * 100) : 10;
 
+  async function resetFan(modelName: string, peerId: string) {
+    if (!data) return;
+    const model = data.models.find((m) => m.name === modelName);
+    if (!model) { alert("Model not found"); return; }
+    if (!window.confirm(`Wipe DB rows for fan ${peerId} on ${modelName}? The Telegram chat itself stays — only our records are cleared so the same TG account can be reused for testing.`)) return;
+    try {
+      const r = await fetch("/api/admin/reset-fan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modelId: model.id, peerId }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+      setReloadKey((k) => k + 1);
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "Failed");
+    }
+  }
+
   async function seedTestSale() {
     const raw = window.prompt("Test sale amount in USD (90 = cleared past 30-day hold; small = pending):", "90");
     if (raw == null) return;
@@ -899,7 +927,13 @@ function AgencyDetail({ agencyId, onBack }: { agencyId: string; onBack: () => vo
                 {data ? "No fans match." : "Loading…"}
               </div>
             ) : (
-              fans.map((f) => <FanRowItem key={f.peerId} fan={f} />)
+              fans.map((f) => (
+                <FanRowItem
+                  key={f.peerId}
+                  fan={f}
+                  onReset={() => resetFan(f.modelName, f.peerId)}
+                />
+              ))
             )}
           </div>
         </Panel>

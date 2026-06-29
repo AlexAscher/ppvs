@@ -741,6 +741,20 @@ export default function ChatterPage() {
           ) {
             return prev;
           }
+          // Detect newly arrived ppv_paid events and surface a 5s toast in
+          // the chatter's status line so they get instant feedback the
+          // moment the fan unlocks. Compares against the previous id set so
+          // a fresh open of the chat doesn't re-toast historical events.
+          const prevIds = new Set(prev.map((e) => e.id));
+          const fresh = mapped.filter((e) => !prevIds.has(e.id) && e.kind === "ppv_paid");
+          if (fresh.length > 0 && prev.length > 0) {
+            const last = fresh[fresh.length - 1];
+            setNotice(`💰 ${last.body}`);
+            setTimeout(
+              () => setNotice((n) => (n.startsWith("💰 ") ? "" : n)),
+              5000,
+            );
+          }
           return mapped;
         });
       }

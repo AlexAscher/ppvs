@@ -119,7 +119,7 @@ export function SalesAlertsSection() {
         <div>
           <h2 className="text-[15px] font-semibold text-white">Sales Alerts</h2>
           <p className="text-[12px] text-[#9ca3af] mt-0.5">
-            Get a Telegram message the instant a PPV or tip is paid — straight to
+            Get a Telegram message the instant a PPV is paid — straight to
             your personal account, private from your chatters.
           </p>
         </div>
@@ -157,10 +157,11 @@ export function SalesAlertsSection() {
           )}
         </div>
 
-        {/* Event toggles */}
+        {/* Event toggles. Tips checkbox hidden while Tips functionality is
+            paused; backend still honours `alerts_tips` so it can be brought
+            back. */}
         <div className="grid grid-cols-2 gap-3">
           <Checkbox label="PPV payments" checked={settings.alerts_ppv} onChange={(v) => patch({ alerts_ppv: v })} />
-          <Checkbox label="Tips" checked={settings.alerts_tips} onChange={(v) => patch({ alerts_tips: v })} />
         </div>
 
         <div className="flex items-center gap-3 pt-1">

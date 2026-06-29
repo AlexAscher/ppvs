@@ -903,7 +903,7 @@ function ModelsTab() {
               <button onClick={() => setShowBotInstructions(false)} className="text-[#6b7280] hover:text-white text-[22px] leading-none mt-0.5 transition-colors">×</button>
             </div>
             <p className="text-[13px] text-[#d1d5db] mb-4">
-              To send PPVs the bot must be able to send messages on the model&apos;s behalf. Each model does this once on her own Telegram account:
+              To send PPVs the bot must be able to send messages on the creator&apos;s behalf. Each creator does this once on her own Telegram account:
             </p>
             <ol className="text-[13px] text-[#d1d5db] space-y-3 mb-5 list-decimal pl-5">
               <li>

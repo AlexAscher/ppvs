@@ -57,7 +57,11 @@ type Dialog = {
 };
 
 type ApiMessageMedia =
-  | { type: "photo"; thumbDataUrl: string | null; width: number | null; height: number | null }
+  // `optimisticUrl` is set only on placeholder messages we render before
+  // Telegram's getHistory catches up (negative ids). When present, the
+  // chatter UI uses it as the photo's fullUrl so we don't hit
+  // /api/telegram/media for a non-existent message id.
+  | { type: "photo"; thumbDataUrl: string | null; width: number | null; height: number | null; optimisticUrl?: string }
   | {
       type: "video";
       thumbDataUrl: string | null;
@@ -763,13 +767,19 @@ export default function ChatterPage() {
         // poll hasn't reflected yet. Drop an optimistic once a real outgoing
         // message with the same text within ±60s shows up from the server.
         const optimistic = prev.filter((m) => m.id < 0);
-        const stillOptimistic = optimistic.filter(
-          (o) =>
-            !list.some(
-              (s) =>
-                s.isOutgoing && s.text === o.text && Math.abs(s.date - o.date) < 60,
-            ),
-        );
+        const stillOptimistic = optimistic.filter((o) => {
+          // PPV media placeholders dedupe against any outgoing message with
+          // media in the same ±60s window — captions diverge so text match
+          // is unreliable.
+          if (o.media) {
+            return !list.some(
+              (s) => s.isOutgoing && s.media && Math.abs(s.date - o.date) < 60,
+            );
+          }
+          return !list.some(
+            (s) => s.isOutgoing && s.text === o.text && Math.abs(s.date - o.date) < 60,
+          );
+        });
         const merged: ApiMessage[] = [...list, ...stillOptimistic];
         // Cheap stability check to avoid pointless re-renders.
         if (
@@ -1324,15 +1334,50 @@ export default function ChatterPage() {
       // posts to the chat now). Replaced by the real message once
       // pollPpvSendStatus sees delivery.
       if (!wasScheduled) {
-        const placeholder = capturedCaption.trim()
+        const placeholderText = capturedCaption.trim()
           ? capturedCaption
           : priceForSend > 0
             ? `🔒 PPV · ${itemCount} item${itemCount > 1 ? "s" : ""} · ${priceForSend} ⭐`
             : `🎁 Free content · ${itemCount} item${itemCount > 1 ? "s" : ""}`;
-        setApiMessages((prev) => [
-          ...prev,
-          { id: optimisticPpvId, text: placeholder, date: Math.floor(Date.now() / 1000), isOutgoing: true },
-        ]);
+        // Visual placeholders: one ApiMessage per selected PPV item, joined
+        // by a synthetic groupedId so the UI renders them as a single album
+        // (same look as the real Telegram message that lands later). Each
+        // item carries the pre-blurred preview_url via `optimisticUrl` so
+        // the chatter sees the actual blurred jpeg, not just emoji text.
+        const orderedItems = ordered
+          .map((id) => ppvItems.find((p) => p.id === id))
+          .filter((p): p is NonNullable<typeof p> => !!p);
+        const groupedId = `optimistic_${optimisticPpvId}`;
+        const nowSec = Math.floor(Date.now() / 1000);
+        const optimisticMessages: ApiMessage[] = orderedItems.length > 0
+          ? orderedItems.map((item, idx) => {
+              const previewUrl = item.preview_url || item.media_url || "";
+              return {
+                id: optimisticPpvId - idx,
+                text: idx === 0 ? placeholderText : "",
+                date: nowSec,
+                isOutgoing: true,
+                groupedId: orderedItems.length > 1 ? groupedId : null,
+                media: previewUrl
+                  ? {
+                      type: "photo" as const,
+                      thumbDataUrl: null,
+                      width: 400,
+                      height: 600,
+                      optimisticUrl: previewUrl,
+                    }
+                  : null,
+              };
+            })
+          : [
+              {
+                id: optimisticPpvId,
+                text: placeholderText,
+                date: nowSec,
+                isOutgoing: true,
+              },
+            ];
+        setApiMessages((prev) => [...prev, ...optimisticMessages]);
       }
       // POST returns immediately — Telegram upload runs in background via
       // next/server `after()`. Clear the compose UI and follow the outcome.
@@ -1641,9 +1686,19 @@ export default function ChatterPage() {
     (): ChatMessage[] =>
       apiMessages.map((m): ChatMessage => {
         let media: MessageMediaInfo | null = null;
-        if (m.media && selectedModelId && selectedDialog && m.id > 0) {
-          // Optimistic messages have id < 0 — we have no real Telegram messageId
-          // to fetch the full file with, so skip media for them.
+        // Optimistic PPV preview: id<0 but media carries an optimisticUrl
+        // (signed preview_url for the selected ppv). Render the blurred jpeg
+        // directly — no /api/telegram/media round-trip.
+        if (m.media && m.id < 0 && m.media.type === "photo" && m.media.optimisticUrl) {
+          media = {
+            type: "photo",
+            thumbDataUrl: m.media.thumbDataUrl,
+            fullUrl: m.media.optimisticUrl,
+            width: m.media.width ?? 400,
+            height: m.media.height ?? 600,
+          };
+        } else if (m.media && selectedModelId && selectedDialog && m.id > 0) {
+          // Real Telegram messages — fetch the full file via our media route.
           const params = new URLSearchParams({
             peerId: selectedDialog.id,
             messageId: String(m.id),

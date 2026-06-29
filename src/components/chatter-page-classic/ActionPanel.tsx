@@ -230,7 +230,10 @@ export function ActionPanel({
           per the user's spec): Sales Workspace / Request Tips / Fan
           Information / Dashboard. */}
       <div className="h-[44px] border-b border-[#2a2d35] flex">
-        {(["ppv", "tips", "notes", "stats"] as Tab[]).map((tab) => (
+        {/* "tips" tab hidden — Tips functionality is temporarily disabled
+            platform-wide. Backend left intact so it can be re-enabled later
+            by re-adding the tab id here. */}
+        {(["ppv", "notes", "stats"] as Tab[]).map((tab) => (
           <button
             key={tab}
             onClick={() => onTabChange(tab)}

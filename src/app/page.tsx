@@ -84,14 +84,7 @@ const chatterFeatures = [
     emoji: "💬",
     label: "Sales Workspace",
     tagline: "Everything your chatter needs to get sales.",
-    desc: "Chat with fans in real time, access vault, request tips, manage fan information, and switch between models.",
-  },
-  {
-    id: "chatter-tips",
-    emoji: "🎁",
-    label: "Request Tips",
-    tagline: "Ask for tips with one click.",
-    desc: "Send custom tip requests and personal messages directly into Telegram chats.",
+    desc: "Chat with fans in real time, access vault, manage fan information, and switch between models.",
   },
   {
     id: "chatter-notes",
@@ -267,7 +260,7 @@ function PayoutFlowIllustration() {
         <div className="flex flex-col gap-3">
           {[
             { label: "PPV Sale", amount: "+$24.99" },
-            { label: "Tip Received", amount: "+$75.00" },
+            { label: "PPV Sale", amount: "+$75.00" },
           ].map((c, i) => (
             <div key={i} style={{ background: "#11151c", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "14px", padding: "14px 14px" }}>
               <div className="flex items-center gap-2 mb-1.5">
@@ -414,7 +407,7 @@ export default function LandingPage() {
                 full-width row per the user's arrow on the screenshot. */}
             <div className="grid grid-cols-4 gap-2" style={{ maxWidth: "440px" }}>
               {[
-                { label: "Send PPVs\n& Tips", Icon: Lock },
+                { label: "Send\nPPVs", Icon: Lock },
                 { label: "Manage\nChatters", Icon: Users },
                 { label: "Track\nRevenue", Icon: TrendingUp },
                 { label: "Payout\nin TON", Icon: WalletIcon },

@@ -76,16 +76,13 @@ export function Topbar({
             classes fail to load on this nested route. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/brand-mark.png"
+          src="/landing/logo.png"
           alt="ppvs.io"
           width={28}
           height={28}
-          className="w-7 h-7 shrink-0 rounded-md"
-          style={{ width: 28, height: 28, flex: "0 0 28px", objectFit: "contain" }}
+          className="w-7 h-7 shrink-0"
+          style={{ width: 28, height: 28, flex: "0 0 28px", objectFit: "contain", borderRadius: "6px" }}
         />
-        <div className="text-[13px] font-semibold truncate shrink-0">
-          chatter<span className="text-[#00AFF0]">.ppvs.io</span>
-        </div>
         {hasModels && (
           <div className="flex items-center gap-1.5 flex-wrap">
             {models!.map((m) => {

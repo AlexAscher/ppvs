@@ -480,12 +480,14 @@ async function computeViaRpc(
   }));
 
   const payouts = (payoutsRes.data ?? []) as { amount: number; status: string }[];
-  const paidOrPending = payouts
-    .filter((p) => p.status !== "rejected")
-    .reduce((sum, p) => sum + Number(p.amount ?? 0), 0);
   const pendingPayouts = payouts
     .filter((p) => p.status === "pending")
     .reduce((sum, p) => sum + Number(p.amount ?? 0), 0);
+  // availableBalance must match the wallet card / /api/payouts exactly —
+  // only sales that have CLEARED the 25-day hold count, net of committed
+  // payouts. The previous shortcut `net_all - paidOrPending` ignored the
+  // hold entirely so funds appeared withdrawable on day 1.
+  const { available: availableBalance } = await computeAgencyBalances(admin, agencyUserId);
 
   const models: ModelStat[] = core.models.map((m) => ({
     id: m.id,
@@ -508,7 +510,7 @@ async function computeViaRpc(
     payingFans: core.paying_fans,
     totalFans: (fansCountRes as { count: number | null }).count ?? 0,
     activeChatters: ((linksRes.data ?? []) as { chatter_id: string }[]).length,
-    availableBalance: Math.max(0, core.net_all - paidOrPending),
+    availableBalance,
     pendingPayouts,
     chart: buckets.map((b) => ({ date: b.date, value: Math.round(b.value) })),
     models,

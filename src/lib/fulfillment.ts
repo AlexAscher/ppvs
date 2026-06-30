@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { withTelegramClient } from "@/lib/telegram-pool";
 import { sendOriginalsAlbum } from "@/lib/ppv-delivery";
 import { sendSalesAlert } from "@/lib/sales-alerts";
+import { agencyNet } from "@/lib/platform";
 
 /**
  * Shared "payment landed" fulfillment for a paid PPV send or tip:
@@ -123,7 +124,9 @@ export async function fulfillPpvPaid(
         modelId: send.model_id,
         modelName: (modelRow as { name?: string } | null)?.name ?? undefined,
         fanDisplay: send.peer_username ? `@${send.peer_username}` : "Fan",
-        amount: Number(send.total_price ?? 0),
+        // Report what the agency actually receives (gross minus 15% platform
+        // fee) so the Telegram notification matches the dashboard Net cards.
+        amount: agencyNet(Number(send.total_price ?? 0)),
         itemName,
       });
     } catch (e) {
@@ -256,7 +259,7 @@ export async function fulfillTipPaid(admin: SupabaseClient, tip: TipRow): Promis
         type: "tip", agencyUserId, modelId: tip.model_id,
         modelName: (m as { name?: string } | null)?.name ?? undefined,
         fanDisplay: tip.peer_username ? `@${tip.peer_username}` : "Fan",
-        amount: Number(tip.amount ?? 0), message: tip.message, chatterId: tip.chatter_id ?? null,
+        amount: agencyNet(Number(tip.amount ?? 0)), message: tip.message, chatterId: tip.chatter_id ?? null,
       });
     } catch (e) { console.error("[fulfillment] tip sales-alert failed:", e instanceof Error ? e.message : e); }
   });

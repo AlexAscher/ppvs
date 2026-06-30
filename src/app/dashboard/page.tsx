@@ -133,16 +133,13 @@ function AgencySidebar({
             fails to load on the dashboard route. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/brand-mark.png"
+          src="/landing/logo.png"
           alt="ppvs.io"
           width={32}
           height={32}
-          className="w-8 h-8 shrink-0 rounded-lg"
-          style={{ width: 32, height: 32, flex: "0 0 32px", objectFit: "contain" }}
+          className="w-8 h-8 shrink-0"
+          style={{ width: 32, height: 32, flex: "0 0 32px", objectFit: "contain", borderRadius: "6px" }}
         />
-        <div className="text-[15px] font-semibold">
-          ppvs<span className="text-[#00AFF0]">.io</span>
-        </div>
         <span className="text-[12px] px-2 py-0.5 bg-[#00AFF0]/10 text-[#00AFF0] rounded-full font-medium">Agency</span>
       </div>
 
@@ -459,26 +456,35 @@ function DashboardTab() {
     : "All creators";
 
   // 1000 ⭐ ≈ $11.05 net (Telegram peg $0.013 × our 85%), so 1 USD net ≈ 90.5 ⭐.
-  // Surfaced under each $ card as a small "≈ N ⭐" hint per the v2 brief.
+  // Surfaced beside each $ amount as "$X / N ⭐" in the same font/weight.
   const usdToStars = (usd: number) =>
-    usd > 0 ? `${Math.round(usd / 0.01105).toLocaleString("en-US")} ⭐` : null;
-  const cards = stats
+    `${Math.round(Math.max(0, usd) / 0.01105).toLocaleString("en-US")} ⭐`;
+  type Card =
+    | { label: string; emoji: string; kind: "money"; usd: number }
+    | { label: string; emoji: string; kind: "raw"; value: string; sub?: string };
+  const cards: Card[] = stats
     ? [
-        { label: "Net Today", value: fmtMoney(stats.netToday), emoji: "💵", sub: usdToStars(stats.netToday) ?? undefined },
-        { label: "Net This Week", value: fmtMoney(stats.netWeek), emoji: "💰", sub: usdToStars(stats.netWeek) ?? undefined },
-        { label: "Net This Month", value: fmtMoney(stats.netMonth), emoji: "🏆", sub: usdToStars(stats.netMonth) ?? undefined },
-        { label: "Net All Time", value: fmtMoney(stats.netAllTime), emoji: "🤑", sub: usdToStars(stats.netAllTime) ?? undefined },
-        { label: "Available Balance", value: fmtMoney(stats.availableBalance), emoji: "💳", sub: usdToStars(stats.availableBalance) ?? undefined },
-        { label: "Sales / Unlocks", value: String(stats.sales), emoji: "🔓" },
-        { label: "Avg Order Value", value: fmtMoney(stats.avgOrder), emoji: "🛒", sub: usdToStars(stats.avgOrder) ?? undefined },
+        { label: "Net Today", emoji: "💵", kind: "money", usd: stats.netToday },
+        { label: "Net This Week", emoji: "💰", kind: "money", usd: stats.netWeek },
+        { label: "Net This Month", emoji: "🏆", kind: "money", usd: stats.netMonth },
+        { label: "Net All Time", emoji: "🤑", kind: "money", usd: stats.netAllTime },
+        { label: "Available Balance", emoji: "💳", kind: "money", usd: stats.availableBalance },
+        { label: "Sales / Unlocks", emoji: "🔓", kind: "raw", value: String(stats.sales) },
+        { label: "Avg Order Value", emoji: "🛒", kind: "money", usd: stats.avgOrder },
         {
           label: "Conversion Rate",
-          value: stats.totalFans > 0 ? `${Math.round((stats.payingFans / stats.totalFans) * 100)}%` : "—",
           emoji: "🎯",
+          kind: "raw",
+          value: stats.totalFans > 0 ? `${Math.round((stats.payingFans / stats.totalFans) * 100)}%` : "—",
           sub: `${stats.payingFans} / ${stats.totalFans} paying`,
         },
       ]
-    : Array.from({ length: 8 }, (_, i) => ({ label: ["Net Today","Net This Week","Net This Month","Net All Time","Available Balance","Sales / Unlocks","Avg Order Value","Conversion Rate"][i], value: "…", emoji: "•" }));
+    : (Array.from({ length: 8 }, (_, i) => ({
+        label: ["Net Today","Net This Week","Net This Month","Net All Time","Available Balance","Sales / Unlocks","Avg Order Value","Conversion Rate"][i],
+        emoji: "•",
+        kind: "raw" as const,
+        value: "…",
+      })));
 
   const chartData = (stats?.chart ?? []).map((c) => ({ ...c, label: fmtMoney(c.value) }));
   const maxValue = Math.max(1, ...chartData.map((d) => d.value));
@@ -558,16 +564,38 @@ function DashboardTab() {
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {cards.map((stat, i) => (
-            <div key={i} className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-4 hover:border-[#374151] transition-colors">
+            <div
+              key={i}
+              className="rounded-xl p-4 transition-colors"
+              style={
+                stat.kind === "money"
+                  ? {
+                      background:
+                        "linear-gradient(135deg, rgba(0,175,240,0.18) 0%, rgba(0,175,240,0.04) 55%, rgba(255,255,255,0) 100%), rgb(22,26,34)",
+                      border: "1px solid rgba(0,175,240,0.25)",
+                      boxShadow: "rgba(0,175,240,0.35) 0px 18px 50px -20px",
+                    }
+                  : { background: "#161a22", border: "1px solid #2a2d35" }
+              }
+            >
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[20px]">{stat.emoji}</span>
-                <DollarSign className="w-4 h-4 text-[#6b7280]" />
               </div>
               <div className="text-[11px] text-[#9ca3af] uppercase tracking-wider mb-1">{stat.label}</div>
-              <div className="text-[24px] font-bold text-white">{stat.value}</div>
-              {(stat as { sub?: string }).sub ? (
-                <div className="text-[11px] text-[#6b7280] mt-0.5">{(stat as { sub?: string }).sub}</div>
-              ) : null}
+              {stat.kind === "money" ? (
+                <div className="text-[22px] font-bold text-white whitespace-nowrap leading-tight">
+                  {fmtMoney(stat.usd)}
+                  <span className="text-[#9ca3af] font-bold"> / </span>
+                  {usdToStars(stat.usd)}
+                </div>
+              ) : (
+                <>
+                  <div className="text-[24px] font-bold text-white">{stat.value}</div>
+                  {stat.sub ? (
+                    <div className="text-[11px] text-[#6b7280] mt-0.5">{stat.sub}</div>
+                  ) : null}
+                </>
+              )}
             </div>
           ))}
         </div>
@@ -1647,9 +1675,13 @@ function AgencyDashboard() {
           >
             <Menu className="w-5 h-5" />
           </button>
-          <span className="text-[15px] font-semibold">
-            ppvs<span className="text-[#00AFF0]">.io</span>
-          </span>
+          <img
+            src="/landing/logo.png"
+            alt="ppvs.io"
+            width={28}
+            height={28}
+            style={{ width: 28, height: 28, objectFit: "contain", borderRadius: "6px" }}
+          />
         </div>
         <div className="flex-1 flex min-h-0 overflow-hidden">
           {activeTab === "dashboard" && <DashboardTab />}

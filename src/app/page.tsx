@@ -354,7 +354,14 @@ export default function LandingPage() {
             <img
               src={HERO_IMG}
               alt="ppvs.io hero"
-              style={{ maxWidth: "100%", width: "560px", borderRadius: "18px", display: "block" }}
+              style={{
+                maxWidth: "100%",
+                width: "420px",
+                maxHeight: "440px",
+                objectFit: "contain",
+                borderRadius: "18px",
+                display: "block",
+              }}
             />
           </div>
         </div>
@@ -380,22 +387,22 @@ export default function LandingPage() {
       </section>
 
       {/* ── BUILT FOR AGENCIES. LOVED BY CHATTERS. ── */}
-      <section className="py-20 px-8" style={{ background: "#0d1117" }}>
-        <div className="max-w-[1200px] mx-auto">
-          <div className="text-center mb-12">
+      <section className="py-32 px-8" style={{ background: "#0d1117" }}>
+        <div className="max-w-[1200px] mx-auto flex flex-col items-center text-center">
+          <div className="mb-14 max-w-[760px]">
             <h2 className="text-white mb-3" style={{ fontSize: "38px", fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.15 }}>
               Built for agencies. Loved by chatters.
             </h2>
-            <p className="text-[14px] text-[#9ca3af]" style={{ maxWidth: 600, margin: "0 auto" }}>
+            <p className="text-[14px] text-[#9ca3af]" style={{ margin: "0 auto" }}>
               Everything runs natively inside Telegram — no separate app, no extra login.
             </p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-5">
+          <div className="w-full grid md:grid-cols-3 gap-5">
             {BUILT_CARDS.map((c, i) => (
               <div
                 key={i}
-                className="rounded-2xl p-6"
+                className="rounded-2xl p-6 text-left"
                 style={{ background: "#141924", border: "1px solid rgba(255,255,255,0.06)" }}
               >
                 <div className="text-[28px] mb-3">{c.emoji}</div>
@@ -405,14 +412,14 @@ export default function LandingPage() {
             ))}
           </div>
 
-          <div className="mt-10 flex flex-col items-center">
+          <div className="mt-14 flex flex-col items-center w-full">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={BUILT_IMG}
               alt="Two Telegram chats — one with a locked PPV, one unlocked after payment"
               style={{
-                maxWidth: "100%",
-                width: "900px",
+                width: "100%",
+                maxWidth: "780px",
                 borderRadius: "18px",
                 display: "block",
                 border: "1px solid rgba(255,255,255,0.06)",
@@ -445,12 +452,15 @@ export default function LandingPage() {
               />
             </div>
           </div>
-          <div className="rounded-2xl overflow-hidden" style={{ background: "#141924", border: "1px solid rgba(255,255,255,0.06)" }}>
+          <div
+            className="rounded-2xl overflow-hidden mx-auto"
+            style={{ background: "#141924", border: "1px solid rgba(255,255,255,0.06)", maxWidth: 460 }}
+          >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/landing/hero.png"
               alt="Agency dashboard"
-              style={{ width: "100%", display: "block" }}
+              style={{ width: "100%", display: "block", maxHeight: 360, objectFit: "cover" }}
             />
           </div>
         </div>
@@ -459,12 +469,15 @@ export default function LandingPage() {
 
         {/* FOR CHATTERS */}
         <div className="max-w-[1200px] mx-auto px-8 py-20 grid lg:grid-cols-2 gap-12 items-center">
-          <div className="rounded-2xl overflow-hidden order-2 lg:order-1" style={{ background: "#141924", border: "1px solid rgba(255,255,255,0.06)" }}>
+          <div
+            className="rounded-2xl overflow-hidden order-2 lg:order-1 mx-auto"
+            style={{ background: "#141924", border: "1px solid rgba(255,255,255,0.06)", maxWidth: 460 }}
+          >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={BUILT_IMG}
               alt="Chatter workspace"
-              style={{ width: "100%", display: "block" }}
+              style={{ width: "100%", display: "block", maxHeight: 360, objectFit: "cover" }}
             />
           </div>
           <div className="order-1 lg:order-2">

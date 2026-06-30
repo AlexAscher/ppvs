@@ -81,8 +81,11 @@ export async function GET(
         .slice()
         .sort((a, b) => (a.ordinal ?? 0) - (b.ordinal ?? 0))
         .map((it) => {
+          // v3 brief: chatters see the ORIGINALS (unblurred) in their own
+          // workspace, with "Pay N ⭐ (Paid|Unpaid)" caption underneath.
+          // Fall back to preview_url only when the original is missing.
           const ppv = Array.isArray(it.ppvs) ? it.ppvs[0] ?? null : it.ppvs;
-          return ppv?.preview_url || ppv?.media_url || null;
+          return ppv?.media_url || ppv?.preview_url || null;
         })
         .filter((u): u is string => !!u);
       return {

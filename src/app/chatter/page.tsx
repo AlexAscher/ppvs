@@ -809,13 +809,24 @@ export default function ChatterPage() {
           return mapped;
         });
       }
-      // Per v2 brief: do NOT filter outgoing media. Chatters now see both the
-      // permanent virtual blur (from ppv_sends, with caption + price) AND
-      // Telegram's outgoing copy of the PPV — so the conversation matches the
-      // Telegram chat exactly while the blur preview makes the PPV obvious
-      // even before the polling lands.
+      // v3 brief: hide both the unblurred outgoing copy that Telegram
+      // returned for the PPV (we render our own virtual with "(Paid|Unpaid)"
+      // caption) AND the empty paid-media "ghost" (outgoing, no text, no
+      // media) gramJS emits for sendPaidMedia messages.
+      const virtualWindowSec = 60;
       const virtualsAtFilter = ppvVirtualsRef.current;
-      const listForState = list;
+      const listForState = list.filter((m) => {
+        if (!m.isOutgoing) return true;
+        // Empty paid-media ghost: outgoing, blank text, no media.
+        if (!m.text && !m.media) return false;
+        // Outgoing media within ±60s of a virtual = the real PPV copy.
+        if (m.media) {
+          return !virtualsAtFilter.some(
+            (v) => Math.abs(m.date - v.createdAtSec) < virtualWindowSec,
+          );
+        }
+        return true;
+      });
       setApiMessages((prev) => {
         // Carry over optimistic messages (negative ids) that the server
         // poll hasn't reflected yet. Drop an optimistic once a real outgoing
@@ -1856,9 +1867,9 @@ export default function ChatterPage() {
       const isPaid = v.status === "paid" || v.status === "delivered";
       const captionLine = v.caption?.trim() || "";
       const priceLine = v.priceStars > 0
-        ? (isPaid ? `✅ Paid · ${v.priceStars} ⭐` : `🔒 PPV · ${v.priceStars} ⭐`)
+        ? `Pay ${v.priceStars} ⭐ (${isPaid ? "Paid" : "Unpaid"})`
         : "🎁 Free content";
-      const fullText = captionLine ? `${priceLine}\n${captionLine}` : priceLine;
+      const fullText = captionLine ? `${captionLine}\n${priceLine}` : priceLine;
       return v.previewUrls.map((url, idx) => ({
         id: `ppv_${v.sendId}_${idx}`,
         text: idx === 0 ? fullText : "",

@@ -25,6 +25,12 @@ import { ppvMediaPathFromUrl } from "@/lib/ppv-storage";
 declare global {
   var __ppvs_auto_reply_subscribed__: Set<string> | undefined;
   var __ppvs_auto_reply_inflight__: Set<string> | undefined;
+  /** UNIX-seconds of the last OUTGOING message per (modelId, peerId). The
+   *  auto-reply scheduler reads this right before firing — if anything
+   *  outgoing landed between the fan's first message and the end of the
+   *  configured delay, we treat the conversation as "handled by a human"
+   *  and skip the auto-reply. */
+  var __ppvs_auto_reply_lastout__: Map<string, number> | undefined;
 }
 
 const subscribed: Set<string> =
@@ -34,6 +40,10 @@ globalThis.__ppvs_auto_reply_subscribed__ = subscribed;
 const inflight: Set<string> =
   globalThis.__ppvs_auto_reply_inflight__ ?? new Set();
 globalThis.__ppvs_auto_reply_inflight__ = inflight;
+
+const lastOutgoing: Map<string, number> =
+  globalThis.__ppvs_auto_reply_lastout__ ?? new Map();
+globalThis.__ppvs_auto_reply_lastout__ = lastOutgoing;
 
 type ModelConfig = {
   auto_reply_enabled: boolean | null;
@@ -155,6 +165,23 @@ export function subscribeAutoReplyEvents(modelId: string, client: TelegramClient
   if (subscribed.has(key)) return;
   subscribed.add(key);
 
+  // Outgoing-message listener: marks (model, peer) as "human handled" so the
+  // delayed auto-reply scheduler below knows to bail.
+  client.addEventHandler(async (evt: NewMessageEvent) => {
+    try {
+      if (!evt.message.out) return;
+      // peerId for outgoing in a 1-1 chat == the user we sent to.
+      const peer = evt.message.peerId;
+      if (!peer) return;
+      // Only DMs to a user are relevant — group/channel updates have a
+      // different peer shape and never trigger an auto-reply anyway.
+      const peerUser = (peer as unknown as { userId?: { toString(): string } }).userId;
+      const peerId = peerUser ? peerUser.toString() : null;
+      if (!peerId) return;
+      lastOutgoing.set(`${modelId}:${peerId}`, Math.floor(Date.now() / 1000));
+    } catch { /* swallow */ }
+  }, new NewMessage({ outgoing: true }));
+
   client.addEventHandler(async (evt: NewMessageEvent) => {
     try {
       if (evt.message.out) return; // outgoing — that's the model
@@ -188,16 +215,28 @@ export function subscribeAutoReplyEvents(modelId: string, client: TelegramClient
         // Mark FIRST so a second incoming from the same fan during our
         // gramJS send doesn't trigger a duplicate auto-reply.
         await markFanReplied(modelId, senderId);
-        // Optional delay (Instant / 1 min / 5 min, agency-configurable).
-        // Lives in-process via setTimeout — won't survive a process restart,
-        // which is acceptable for a "human typing" delay (the cap in the
-        // API is 1h precisely so a reply lost to a deploy is no worse than
-        // a normally-snappy auto-reply that never fired).
+        // Optional delay (1/2/5/10/30 min, agency-configurable). Lives
+        // in-process via setTimeout — won't survive a process restart, which
+        // is acceptable for a "human typing" delay.
         const delaySec = Number(config.auto_reply_delay_sec ?? 0);
+        // Baseline: trigger time. If anything outgoing for this conversation
+        // lands AFTER this point, a human has stepped in and we skip the
+        // auto-reply entirely.
+        const triggeredAtSec = Math.floor(Date.now() / 1000);
         if (delaySec > 0) {
           await new Promise((res) => setTimeout(res, delaySec * 1000));
         }
+        const lastOut = lastOutgoing.get(`${modelId}:${senderId}`) ?? 0;
+        if (lastOut > triggeredAtSec) {
+          console.log(
+            `[auto-reply] skipped for model=${modelId} peer=${senderId} — chatter replied during the ${delaySec}s window`,
+          );
+          return;
+        }
         await sendAutoReply(client, senderId, config);
+        // Reflect our own send in the outgoing-trace so a second fan message
+        // arriving immediately after doesn't think the model is still idle.
+        lastOutgoing.set(`${modelId}:${senderId}`, Math.floor(Date.now() / 1000));
       } catch (e: unknown) {
         console.error(
           `[auto-reply] failed for model=${modelId} peer=${senderId}:`,

@@ -396,6 +396,18 @@ function ChartCanvas({
 }
 
 function DashboardTab() {
+  // Agency name for the "Hello X 👋" header — same source as the sidebar.
+  const [agencyDisplayName, setAgencyDisplayName] = useState<string>("there");
+  useEffect(() => {
+    const sb = createClient();
+    sb.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      const agencyName = (user.user_metadata?.agency_name as string | undefined)?.trim();
+      const fullName = (user.user_metadata?.full_name as string | undefined)?.trim();
+      const name = agencyName || fullName || (user.email ?? "").split("@")[0];
+      if (name) setAgencyDisplayName(name);
+    });
+  }, []);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loadErr, setLoadErr] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
@@ -446,15 +458,19 @@ function DashboardTab() {
     ? models.find((m) => m.id === scopeModelId)?.name ?? "Creator"
     : "All creators";
 
+  // 1000 ⭐ ≈ $11.05 net (Telegram peg $0.013 × our 85%), so 1 USD net ≈ 90.5 ⭐.
+  // Surfaced under each $ card as a small "≈ N ⭐" hint per the v2 brief.
+  const usdToStars = (usd: number) =>
+    usd > 0 ? `${Math.round(usd / 0.01105).toLocaleString("en-US")} ⭐` : null;
   const cards = stats
     ? [
-        { label: "Net Today", value: fmtMoney(stats.netToday), emoji: "💵" },
-        { label: "Net This Week", value: fmtMoney(stats.netWeek), emoji: "📈" },
-        { label: "Net This Month", value: fmtMoney(stats.netMonth), emoji: "💰" },
-        { label: "Net All Time", value: fmtMoney(stats.netAllTime), emoji: "🏆" },
-        { label: "Available Balance", value: fmtMoney(stats.availableBalance), emoji: "💳" },
-        { label: "Sales / Unlocks", value: String(stats.sales), emoji: "👁️" },
-        { label: "Avg Order Value", value: fmtMoney(stats.avgOrder), emoji: "🛒" },
+        { label: "Net Today", value: fmtMoney(stats.netToday), emoji: "💵", sub: usdToStars(stats.netToday) ?? undefined },
+        { label: "Net This Week", value: fmtMoney(stats.netWeek), emoji: "💰", sub: usdToStars(stats.netWeek) ?? undefined },
+        { label: "Net This Month", value: fmtMoney(stats.netMonth), emoji: "🏆", sub: usdToStars(stats.netMonth) ?? undefined },
+        { label: "Net All Time", value: fmtMoney(stats.netAllTime), emoji: "🤑", sub: usdToStars(stats.netAllTime) ?? undefined },
+        { label: "Available Balance", value: fmtMoney(stats.availableBalance), emoji: "💳", sub: usdToStars(stats.availableBalance) ?? undefined },
+        { label: "Sales / Unlocks", value: String(stats.sales), emoji: "🔓" },
+        { label: "Avg Order Value", value: fmtMoney(stats.avgOrder), emoji: "🛒", sub: usdToStars(stats.avgOrder) ?? undefined },
         {
           label: "Conversion Rate",
           value: stats.totalFans > 0 ? `${Math.round((stats.payingFans / stats.totalFans) * 100)}%` : "—",
@@ -473,8 +489,14 @@ function DashboardTab() {
       <div className="max-w-[1400px] mx-auto space-y-6">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-[24px] font-bold text-white mb-1">Dashboard 📊</h1>
-            <p className="text-[14px] text-[#9ca3af]">Overview of your agency performance</p>
+            <h1 className="text-[24px] font-bold text-white mb-1">
+              Hello {agencyDisplayName}! 👋
+            </h1>
+            <p className="text-[14px] text-[#9ca3af]">
+              {stats
+                ? `${fmtMoney(stats.availableBalance)} ready to withdraw · ${fmtMoney(stats.netWeek)} net in the last 7 days`
+                : "Overview of your agency performance"}
+            </p>
           </div>
           {/* Model scope selector */}
           <div className="relative">
@@ -582,7 +604,7 @@ function DashboardTab() {
           </div>
 
           <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-5">
-            <h2 className="text-[16px] font-semibold text-white mb-4">Top Chatter 👑</h2>
+            <h2 className="text-[16px] font-semibold text-white mb-4">Top Chatter ✍️</h2>
             {topChatter ? (
               <div className="text-center space-y-3">
                 <div className="w-20 h-20 mx-auto bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-full flex items-center justify-center text-white font-bold text-[24px]">
@@ -674,7 +696,7 @@ function DashboardTab() {
 
           {/* Top fans */}
           <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-5 flex flex-col">
-            <h2 className="text-[16px] font-semibold text-white mb-4">Top Fans 🏆</h2>
+            <h2 className="text-[16px] font-semibold text-white mb-4">Top Fans 💸</h2>
             <div className="flex-1 overflow-y-auto max-h-[300px] space-y-3 pr-2 custom-scrollbar">
               {(stats?.topFans ?? []).length === 0 ? (
                 <div className="py-6 text-center text-[13px] text-[#6b7280]">
@@ -1242,7 +1264,7 @@ type Payout = {
   paid_at: string | null;
 };
 
-const MIN_WITHDRAWAL_USD = 20;
+const MIN_WITHDRAWAL_USD = 30;
 
 function WalletTab() {
   const supabase = createClient();
@@ -1320,7 +1342,7 @@ function WalletTab() {
         body: JSON.stringify({
           amount: amt,
           address: address.trim(),
-          currency: "USDT",
+          currency: "GRAM",
           network: "TON",
         }),
       });
@@ -1330,7 +1352,7 @@ function WalletTab() {
       if (typeof data.availableBalance === "number") setAvailable(data.availableBalance);
       setAmount("");
       setConfirmCorrect(false);
-      setMsg("✓ Payout requested — reviewed and paid within 7 days.");
+      setMsg("✓ Payout requested — reviewed and paid in GRAM on TON.");
     } catch (e: unknown) {
       setMsg(e instanceof Error ? e.message : "Request failed");
     } finally {
@@ -1382,10 +1404,19 @@ function WalletTab() {
           <p className="text-[14px] text-[#9ca3af]">Manage your earnings and withdraw your funds.</p>
         </div>
 
-        {/* Persistent payout wallet — the server will auto-send your 85%
-            share here in USDT-TON after each Stars payment lands. */}
-        <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-4 md:p-5 mb-6">
-          <h2 className="text-[15px] font-semibold text-white mb-1">Payout wallet · USDT on TON</h2>
+        {/* Persistent payout wallet — payouts are sent in GRAM on TON. */}
+        <div
+          className="rounded-2xl p-5 md:p-6 mb-6"
+          style={{
+            background:
+              "linear-gradient(135deg, rgba(0,175,240,0.10) 0%, rgba(0,175,240,0.02) 60%, rgba(255,255,255,0) 100%), #161a22",
+            border: "1px solid rgba(0,175,240,0.20)",
+          }}
+        >
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-[16px]">💎</span>
+            <h2 className="text-[15px] font-semibold text-white">Payout wallet · GRAM on TON</h2>
+          </div>
           <p className="text-[12px] text-[#9ca3af] mb-3">
             Where your earnings are sent. Paste your TON wallet address — the @wallet bot inside Telegram works (Settings → Address). Starts with EQ or UQ.
           </p>
@@ -1411,33 +1442,54 @@ function WalletTab() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
           {/* ── Left column ── */}
           <div className="space-y-5">
-            {/* Available Balance */}
-            <div className="bg-[#161a22] border border-[#2a2d35] rounded-xl p-6">
-              <div className="text-[12px] uppercase tracking-wider text-[#9ca3af]">Available Balance</div>
-              <div className="text-[44px] font-bold text-white mt-1 leading-none">{available != null ? available.toFixed(2) : "…"}</div>
-              <div className="text-[11px] text-[#6b7280] mt-2">Cleared the 30-day hold — ready to withdraw.</div>
+            {/* Available Balance — feature card with brand-colour glow. */}
+            <div
+              className="rounded-2xl p-6 relative overflow-hidden"
+              style={{
+                background:
+                  "linear-gradient(135deg, rgba(0,175,240,0.18) 0%, rgba(0,175,240,0.04) 55%, rgba(255,255,255,0) 100%), #161a22",
+                border: "1px solid rgba(0,175,240,0.25)",
+                boxShadow: "0 18px 50px -20px rgba(0,175,240,0.35)",
+              }}
+            >
+              <div className="text-[11px] uppercase tracking-[0.18em] text-[#9ca3af]">Available Balance</div>
+              <div className="flex items-baseline gap-2 mt-2">
+                <span className="text-[44px] font-bold text-white leading-none">
+                  {available != null ? `$${available.toFixed(2)}` : "…"}
+                </span>
+                <span className="text-[12px] text-[#9ca3af]">in GRAM on TON</span>
+              </div>
+              <div className="text-[11px] text-[#6b7280] mt-2">
+                Cleared the 25-day hold — ready to withdraw.
+              </div>
             </div>
 
-            {/* Pending (in the 30-day clearing hold) */}
-            <div className="bg-[#161a22] border border-[#2a2d35] rounded-xl p-5">
-              <div className="text-[12px] uppercase tracking-wider text-[#9ca3af]">Pending · clearing</div>
+            {/* Pending (in the 25-day clearing hold) */}
+            <div className="bg-[#161a22] border border-[#2a2d35] rounded-2xl p-5">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-[#9ca3af]">Pending · clearing</div>
               <div className="text-[26px] font-bold text-[#f59e0b] mt-1 leading-none">{pending != null ? money(pending) : "…"}</div>
               <div className="text-[11px] text-[#6b7280] mt-2">
                 {nextRelease
                   ? `Next ${money(nextRelease.amount)} releases ${fmtDate(nextRelease.at)}.`
-                  : "Telegram holds Stars ~21 days; we release each sale 30 days after purchase."}
+                  : "Telegram holds Stars 21 days; we release each sale 25 days after purchase (a small fraud-review buffer)."}
               </div>
             </div>
 
-            {/* Net Sales Total + Platform Fee Total */}
+            {/* Net Sales Total + Gross Sales Total */}
             <div className="grid grid-cols-2 gap-5">
-              <div className="bg-[#161a22] border border-[#2a2d35] rounded-xl p-5">
-                <div className="text-[12px] uppercase tracking-wider text-[#9ca3af]">Net Sales Total</div>
+              <div className="bg-[#161a22] border border-[#2a2d35] rounded-2xl p-5">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-[#9ca3af]">Net Sales Total</div>
                 <div className="text-[26px] font-bold text-white mt-1">{money(netAllTime)}</div>
+                <div className="text-[10px] text-[#6b7280] mt-1">After 15% platform fee</div>
               </div>
-              <div className="bg-[#161a22] border border-[#2a2d35] rounded-xl p-5">
-                <div className="text-[12px] uppercase tracking-wider text-[#9ca3af]">Platform Fee Total</div>
-                <div className="text-[26px] font-bold text-white mt-1">{money(platformFeeTotal)}</div>
+              <div className="bg-[#161a22] border border-[#2a2d35] rounded-2xl p-5">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-[#9ca3af]">Gross Sales Total</div>
+                <div className="text-[26px] font-bold text-white mt-1">
+                  {netAllTime != null && platformFeeTotal != null
+                    ? money(netAllTime + platformFeeTotal)
+                    : "…"}
+                </div>
+                <div className="text-[10px] text-[#6b7280] mt-1">Before 15% platform fee</div>
               </div>
             </div>
 
@@ -1502,16 +1554,16 @@ function WalletTab() {
                   <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[#6b7280] text-[13px] font-medium">USD</span>
                 </div>
                 <div className="text-[11px] text-[#6b7280] mt-1">
-                  ${MIN_WITHDRAWAL_USD} minimum to withdraw. Only whole numbers accepted.
+                  ${MIN_WITHDRAWAL_USD} minimum to withdraw. Only whole numbers accepted. Paid in GRAM on TON.
                 </div>
               </div>
 
-              {/* Payout is always USDT on TON — no chooser. */}
+              {/* Payout is always GRAM on TON — no chooser. */}
               <div>
                 <label className="text-[12px] text-[#9ca3af] font-medium mb-1.5 block">You receive</label>
                 <div className="flex items-center gap-2 px-4 py-3 rounded-lg border border-[#374151] bg-[#1f2937]">
-                  <span className="text-[20px]">₮</span>
-                  <span className="text-[14px] font-medium text-white">USDT on TON</span>
+                  <span className="text-[20px]">💎</span>
+                  <span className="text-[14px] font-medium text-white">GRAM on TON</span>
                 </div>
               </div>
 
@@ -1557,7 +1609,7 @@ function WalletTab() {
               </button>
 
               <p className="text-[11px] text-[#6b7280] text-center">
-                Requests are reviewed and paid within 7 days, in USDT on TON.
+                Requests are reviewed and paid within 7 days, in GRAM on TON.
               </p>
             </div>
           </div>

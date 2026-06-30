@@ -31,9 +31,11 @@ type Config = {
 };
 
 const DELAY_PRESETS = [
-  { value: 0, label: "Instant" },
   { value: 60, label: "1 min" },
+  { value: 120, label: "2 min" },
   { value: 300, label: "5 min" },
+  { value: 600, label: "10 min" },
+  { value: 1800, label: "30 min" },
 ] as const;
 
 function inferMediaType(file: File): "photo" | "video" | null {

@@ -16,8 +16,8 @@ import type { createAdminSupabaseClient } from "@/lib/supabase-server";
 
 type Admin = ReturnType<typeof createAdminSupabaseClient>;
 
-export const HOLD_DAYS = 30;
-export const MIN_WITHDRAWAL_USD = 20;
+export const HOLD_DAYS = 25;
+export const MIN_WITHDRAWAL_USD = 30;
 
 const PAID_SEND = new Set(["paid", "delivered"]);
 const DAY_MS = 86_400_000;

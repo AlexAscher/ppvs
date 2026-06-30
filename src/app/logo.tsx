@@ -11,7 +11,7 @@ export function Logo({ size = 30 }: { size?: number }) {
     <img
       src="/landing/logo.png"
       alt="ppvs.io"
-      style={{ height: size, width: "auto", objectFit: "contain", display: "block" }}
+      style={{ height: size, width: "auto", objectFit: "contain", display: "block", borderRadius: "6px" }}
     />
   );
 }

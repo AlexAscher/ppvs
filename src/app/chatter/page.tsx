@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
-import { useEcoMode, ECO_INTERVAL_MULTIPLIER } from "@/lib/use-eco";
+import { useEcoMode, setEcoMode, ECO_INTERVAL_MULTIPLIER } from "@/lib/use-eco";
 // Both roles (agency + chatter) render the single indigo design from
 // Create_prompt_design — the chatter-page-classic/* components are the
 // pixel-match of that design. The older medium-sized chatter-page/* design
@@ -809,18 +809,13 @@ export default function ChatterPage() {
           return mapped;
         });
       }
-      // Filter out real outgoing media messages within ±60s of any PPV
-      // virtual — chatters always see the blurred virtual instead of the
-      // unblurred original media that Telegram returned to gramJS.
-      const virtualWindowSec = 60;
+      // Per v2 brief: do NOT filter outgoing media. Chatters now see both the
+      // permanent virtual blur (from ppv_sends, with caption + price) AND
+      // Telegram's outgoing copy of the PPV — so the conversation matches the
+      // Telegram chat exactly while the blur preview makes the PPV obvious
+      // even before the polling lands.
       const virtualsAtFilter = ppvVirtualsRef.current;
-      const filteredList = list.filter((m) => {
-        if (!m.isOutgoing || !m.media) return true;
-        return !virtualsAtFilter.some(
-          (v) => Math.abs(m.date - v.createdAtSec) < virtualWindowSec,
-        );
-      });
-      const listForState = filteredList;
+      const listForState = list;
       setApiMessages((prev) => {
         // Carry over optimistic messages (negative ids) that the server
         // poll hasn't reflected yet. Drop an optimistic once a real outgoing
@@ -1970,6 +1965,8 @@ export default function ChatterPage() {
         displayName={displayName}
         sales="$0"
         onLogout={handleLogout}
+        ecoOn={eco}
+        onToggleEco={() => { void setEcoMode(!eco); }}
         onBack={() => {
           // Agency goes back to ppvs.io/dashboard; chatter stays on chatter.ppvs.io/dashboard.
           // Use a full-page nav (window.location) because it may cross subdomains.

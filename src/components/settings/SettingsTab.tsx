@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase";
 import { AutoRepliesSection } from "./AutoRepliesSection";
 import { SalesAlertsSection } from "./SalesAlertsSection";
-import { EcoModeSection } from "./EcoModeSection";
 
 /**
  * Settings — shared by agency dashboard and chatter dashboard. All writes
@@ -213,9 +212,9 @@ export function SettingsTab({ role }: { role: "agency" | "chatter" }) {
         {/* Sales Alerts — agency only */}
         {role === "agency" && <SalesAlertsSection />}
 
-        {/* Eco Mode — available to BOTH agency and chatter so a chatter can
-            dial down polling on a flaky uplink without waiting on the agency. */}
-        <EcoModeSection />
+        {/* Eco Mode has been moved into the chatter Topbar (v2 brief). The
+            EcoModeSection import is kept for that one-line history; the
+            section itself is no longer rendered here. */}
 
         {/* Auto Replies — agency only */}
         {role === "agency" && <AutoRepliesSection />}

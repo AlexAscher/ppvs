@@ -689,9 +689,9 @@ function DashboardTab() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-[13px] font-medium text-white truncate">{fan.name}</div>
-                      <div className="text-[11px] text-[#6b7280]">Total spent</div>
+                      <div className="text-[11px] text-[#6b7280]">Net to agency</div>
                     </div>
-                    <div className="text-[15px] font-bold text-[#00AFF0]">{fmtMoney(fan.spent)}</div>
+                    <div className="text-[15px] font-bold text-[#00AFF0]">{fmtMoney(fan.spent * 0.85)}</div>
                   </div>
                 ))
               )}

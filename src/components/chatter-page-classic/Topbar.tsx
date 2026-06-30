@@ -1,6 +1,6 @@
 "use client";
 
-import { RefreshCw, ArrowLeft } from "lucide-react";
+import { RefreshCw, ArrowLeft, Leaf } from "lucide-react";
 
 interface ModelChip {
   id: string;
@@ -29,6 +29,9 @@ interface TopbarProps {
   models?: ModelChip[];
   selectedModelId?: string;
   onSelectModel?: (id: string) => void;
+  /** Eco-mode toggle moved here from agency Settings (per v2 brief). */
+  ecoOn?: boolean;
+  onToggleEco?: () => void;
 }
 
 /**
@@ -51,6 +54,8 @@ export function Topbar({
   models,
   selectedModelId,
   onSelectModel,
+  ecoOn,
+  onToggleEco,
 }: TopbarProps) {
   const hasModels = !!models && models.length > 0;
   return (
@@ -116,6 +121,21 @@ export function Topbar({
       </div>
 
       <div className="flex items-center gap-2 md:gap-3 shrink-0">
+        {onToggleEco && (
+          <button
+            onClick={onToggleEco}
+            title={ecoOn ? "Eco Mode is ON — click to disable" : "Eco Mode is OFF — click to enable"}
+            aria-label="Toggle Eco Mode"
+            className={`flex items-center gap-1.5 px-2.5 h-8 rounded-full border text-[11px] font-semibold transition-colors shrink-0 ${
+              ecoOn
+                ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300"
+                : "bg-[#1f2937]/40 border-[#374151]/50 text-[#9ca3af] hover:text-white"
+            }`}
+          >
+            <Leaf className="w-3.5 h-3.5" style={{ width: 14, height: 14 }} />
+            Eco {ecoOn ? "ON" : "OFF"}
+          </button>
+        )}
         {onReload && (
           <button
             onClick={onReload}

@@ -472,7 +472,7 @@ export function ActionPanel({
                       />
                     </div>
                     <span className="text-[11px] text-[#6b7280] tabular-nums">
-                      {parsedPrice > 0 ? `(≈ $${(parsedPrice / 77).toFixed(2)})` : `${selectedItems.length} items`}
+                      {parsedPrice > 0 ? `(≈ $${(parsedPrice * 0.01105).toFixed(2)})` : `${selectedItems.length} items`}
                     </span>
                   </div>
                 </div>
@@ -590,7 +590,7 @@ export function ActionPanel({
               </div>
               <div className="text-[10px] text-[#6b7280] mt-1">
                 {tipAmount && Number(tipAmount) > 0
-                  ? `≈ $${(Number(tipAmount) / 77).toFixed(2)} · from ${recipientLabel}`
+                  ? `≈ $${(Number(tipAmount) * 0.01105).toFixed(2)} · from ${recipientLabel}`
                   : `from ${recipientLabel}`}
               </div>
             </div>

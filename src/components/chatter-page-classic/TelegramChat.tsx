@@ -124,6 +124,11 @@ interface TelegramChatProps {
   inputText: string;
   onInputChange: (v: string) => void;
   onSend: () => void;
+  /** True once fetchMessages returned for this dialog at least once. Drives
+   *  the empty-state: spinner while false, "No messages yet" placeholder
+   *  after — otherwise a session that legitimately returns [] leaves the
+   *  reader staring at a spinner forever. */
+  messagesLoaded?: boolean;
   search: string;
   onSearch: (v: string) => void;
   sending: boolean;
@@ -500,6 +505,7 @@ export function TelegramChat({
   totalSpent,
   inputText,
   onInputChange,
+  messagesLoaded = false,
   onSend,
   search,
   onSearch,
@@ -888,12 +894,18 @@ export function TelegramChat({
         {/* Messages Area — p-5 space-y-3 from design */}
         <div ref={messagesRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-3 md:p-5 space-y-3">
           {selected && chunks.length === 0 && (
-            <div className="h-full w-full flex items-center justify-center text-[12px] text-[#6b7280]">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full border-2 border-[#374151] border-t-[#9ca3af] animate-spin" />
-                Loading messages…
+            messagesLoaded ? (
+              <div className="h-full w-full flex items-center justify-center text-[12px] text-[#6b7280]">
+                No messages yet.
               </div>
-            </div>
+            ) : (
+              <div className="h-full w-full flex items-center justify-center text-[12px] text-[#6b7280]">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full border-2 border-[#374151] border-t-[#9ca3af] animate-spin" />
+                  Loading messages…
+                </div>
+              </div>
+            )
           )}
           {chunks.map((chunk) => {
             // System banner — centered, dim, with "Customer doesn't see this"

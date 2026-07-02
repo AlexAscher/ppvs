@@ -112,6 +112,13 @@ export async function POST(request: NextRequest) {
       user.email ||
       "Agency";
 
+    // v3: since the target chatter is already registered (findAuthUserByEmail
+    // matched), skip the pending-invitation step and link them straight into
+    // the agency. Keep the invitations row for audit but with status='accepted'
+    // + accepted_at set so the chatter's history is preserved. The old
+    // pending-flow only kicks in when the email isn't a ppvs.io user yet,
+    // which is caught above with a 404.
+    const nowIso = new Date().toISOString();
     const { data: inv, error: invErr } = await admin
       .from("invitations")
       .insert({
@@ -120,14 +127,24 @@ export async function POST(request: NextRequest) {
         chatter_email: lower,
         chatter_id: target.id,
         model_id: modelId,
-        status: "pending",
+        status: "accepted",
       })
       .select("id, agency_id, agency_name, chatter_email, chatter_id, model_id, status, created_at")
       .single();
-
     if (invErr) return Response.json({ error: invErr.message }, { status: 500 });
+    // Bind chatter to model immediately.
+    const { error: acErr } = await admin
+      .from("agency_chatters")
+      .insert({
+        agency_id: user.id,
+        chatter_id: target.id,
+        model_id: modelId,
+        invitation_id: (inv as { id: string }).id,
+        joined_at: nowIso,
+      });
+    if (acErr) return Response.json({ error: acErr.message }, { status: 500 });
 
-    return Response.json({ invitation: inv });
+    return Response.json({ invitation: inv, linked: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed";
     console.error("[chatters/invite POST] error:", message);

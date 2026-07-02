@@ -316,6 +316,9 @@ export default function ChatterPage() {
   // against the per-model gramJS serializer in the server-side pool.
   const dialogsInFlight = useRef<Set<string>>(new Set());
   const messagesInFlight = useRef(false);
+  // Flips to true once fetchMessages returns for the current dialog. Reset on
+  // dialog switch so the spinner reappears briefly for the new peer.
+  const [messagesLoaded, setMessagesLoaded] = useState(false);
   // While a POST (send / PPV / tip) is in-flight, pause all polling so the
   // POST doesn't get queued behind a freshly-fired GET in the server pool.
   const sendInFlightRef = useRef(false);
@@ -860,6 +863,7 @@ export default function ChatterPage() {
       setError(e instanceof Error ? e.message : "Failed to load messages");
     } finally {
       messagesInFlight.current = false;
+      setMessagesLoaded(true);
     }
   }, []);
 
@@ -1072,6 +1076,7 @@ export default function ChatterPage() {
     setApiMessages([]);
     setSystemEvents([]);
     setPpvVirtuals([]);
+    setMessagesLoaded(false);
     setSelectedModelId(id);
   }
 
@@ -1083,6 +1088,7 @@ export default function ChatterPage() {
     setApiMessages([]);
     setSystemEvents([]);
     setPpvVirtuals([]);
+    setMessagesLoaded(false);
     // On mobile, opening a chat swaps the single visible panel to the
     // conversation view (desktop shows everything at once anyway).
     setMobileView("chat");
@@ -1965,10 +1971,11 @@ export default function ChatterPage() {
   const modelOptions = useMemo(
     () =>
       models
-        // Agencies see every model (they need "Connect bot" affordance);
-        // chatters only see models with an active business connection so
-        // they can't send into a fallback path.
-        .filter((m) => role === "agency" || !connectedModelIds || connectedModelIds.has(m.id))
+        // v3: BOTH agencies and chatters only see models with an active
+        // business connection here. Agencies still see every model in the
+        // Creators tab (with the "Connect bot" affordance) — the chip row is
+        // purely for chatting.
+        .filter((m) => !connectedModelIds || connectedModelIds.has(m.id))
         .map((m) => ({ id: m.id, name: m.name, unread: unreadByModel[m.id] ?? 0 })),
     [models, unreadByModel, connectedModelIds, role],
   );
@@ -2098,6 +2105,7 @@ export default function ChatterPage() {
       )}
       <div className="flex-1 flex overflow-hidden">
         <TelegramChat
+          messagesLoaded={messagesLoaded}
           chatList={filteredDialogs}
           selectedChat={selectedDialog?.id ?? ""}
           onSelectChat={handleDialogSelect}

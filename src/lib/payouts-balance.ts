@@ -69,6 +69,7 @@ export async function computeAgencyBalances(
 
   const consider = (amount: number, paidAt: string | null) => {
     const a = Number(amount ?? 0);
+    // v3: free content (total_price = 0) never counts toward the balance.
     if (!(a > 0)) return;
     const t = paidAt ? Date.parse(paidAt) : NaN;
     // Unknown/old paid_at (legacy rows) → treat as already cleared.

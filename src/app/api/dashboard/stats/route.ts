@@ -62,12 +62,48 @@ export type DashboardStats = {
   availableBalance: number;
   pendingPayouts: number;
   chart: { date: string; value: number }[];
+  /** Daily count of NEW fan rows (fans.created_at) for the last 7 days,
+   *  feeding the "Conversations started" bar chart. Independent of the
+   *  Net Sales series so the two charts reflect different metrics. */
+  conversations7d: { date: string; value: number }[];
   models: ModelStat[];
   chatters: ChatterStat[];
   topFans: FanStat[];
   recentSales: RecentSale[];
   partial?: boolean;
 };
+
+/** New-fan rows per day, last 7 UTC days, in ascending order. Used by the
+ *  Conversations started card. Uses fans.created_at as the "conversation
+ *  started" signal — a fan row is created the first time we see a peer. */
+async function buildConversations7d(
+  admin: AdminClient,
+  modelIds: string[],
+): Promise<{ date: string; value: number }[]> {
+  if (modelIds.length === 0) return [];
+  const now = new Date();
+  const days: string[] = [];
+  const buckets = new Map<string, number>();
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - i));
+    const iso = d.toISOString().slice(0, 10);
+    days.push(iso);
+    buckets.set(iso, 0);
+  }
+  const cutoff = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 6)).toISOString();
+  try {
+    const { data } = await admin
+      .from("fans")
+      .select("created_at")
+      .in("model_id", modelIds)
+      .gte("created_at", cutoff);
+    for (const r of (data ?? []) as { created_at: string }[]) {
+      const key = new Date(r.created_at).toISOString().slice(0, 10);
+      if (buckets.has(key)) buckets.set(key, (buckets.get(key) ?? 0) + 1);
+    }
+  } catch { /* best-effort */ }
+  return days.map((d) => ({ date: d, value: buckets.get(d) ?? 0 }));
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -113,7 +149,7 @@ export async function GET(req: NextRequest) {
     const empty: DashboardStats = {
       netToday: 0, netWeek: 0, netMonth: 0, netAllTime: 0,
       sales: 0, avgOrder: 0, payingFans: 0, totalFans: 0, activeChatters: 0,
-      availableBalance: 0, pendingPayouts: 0, chart: [], models: [], chatters: [], topFans: [],
+      availableBalance: 0, pendingPayouts: 0, chart: [], conversations7d: [], models: [], chatters: [], topFans: [],
       recentSales: [],
       partial,
     };
@@ -176,6 +212,8 @@ export async function GET(req: NextRequest) {
     if (period === "all") {
       for (const s of sends) {
         if (!PAID.has(s.status)) continue;
+        // v3: free content (total_price = 0) never counts toward statistics.
+        if (Number(s.total_price ?? 0) <= 0) continue;
         const ts = new Date(s.created_at).getTime();
         if (earliestPaidTs === undefined || ts < earliestPaidTs) earliestPaidTs = ts;
       }
@@ -306,11 +344,16 @@ export async function GET(req: NextRequest) {
 
     const totalFans = fans.length;
 
+    // v3: Conversations started chart — daily count of new fan rows across
+    // the agency's models for the last 7 days. Independent of Net Sales.
+    const conversations7d = await buildConversations7d(admin, modelIds);
+
     const payload: DashboardStats = {
       netToday, netWeek, netMonth, netAllTime,
       sales, avgOrder, payingFans, totalFans, activeChatters,
       availableBalance, pendingPayouts,
       chart: chartBuckets.map((b) => ({ date: b.date, value: Math.round(b.value) })),
+      conversations7d,
       models: modelStats,
       chatters,
       topFans,
@@ -437,6 +480,9 @@ async function computeViaRpc(
           .select("model_id, peer_username, total_price, created_at")
           .in("model_id", modelIds)
           .in("status", ["paid", "delivered"])
+          // v3: exclude free content — recent sales must reflect real
+          // revenue only.
+          .gt("total_price", 0)
           .order("created_at", { ascending: false })
           .limit(10),
       ),
@@ -488,6 +534,7 @@ async function computeViaRpc(
   // payouts. The previous shortcut `net_all - paidOrPending` ignored the
   // hold entirely so funds appeared withdrawable on day 1.
   const { available: availableBalance } = await computeAgencyBalances(admin, agencyUserId);
+  const conversations7d = await buildConversations7d(admin, modelIds);
 
   const models: ModelStat[] = core.models.map((m) => ({
     id: m.id,
@@ -513,6 +560,7 @@ async function computeViaRpc(
     availableBalance,
     pendingPayouts,
     chart: buckets.map((b) => ({ date: b.date, value: Math.round(b.value) })),
+    conversations7d,
     models,
     chatters,
     topFans,

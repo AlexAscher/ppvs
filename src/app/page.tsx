@@ -248,7 +248,7 @@ export default function LandingPage() {
                   ))}
                 </div>
               </div>
-              <div className="hero-visual" style={{ display: "flex", alignItems: "center", justifyContent: "center", position: "relative", paddingLeft: 20 }}>
+              <div className="hero-visual" style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", position: "relative", paddingLeft: 60 }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src="/hero_ppvs.png"

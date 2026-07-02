@@ -307,18 +307,39 @@ function ChartCanvas({
   // stride through buckets so labels stay readable. Density adapts to
   // viewport: small phones get 4, tablets get 5, desktops keep the
   // original 7/8 (period-aware).
-  const targetLabels = vw < 480 ? 4 : vw < 900 ? 5 : period === "7d" ? 7 : 8;
+  // Tighter caps so "all time" doesn't crash a dozen weekly labels into
+  // each other. Roughly 55px per label on desktop, 70px on mobile.
+  const chartPxWidth = Math.max(280, vw - 480);
+  const maxLabels = Math.max(3, Math.floor(chartPxWidth / (vw < 480 ? 70 : 60)));
+  const targetLabels = Math.min(maxLabels, vw < 480 ? 4 : vw < 900 ? 5 : period === "7d" ? 7 : 8);
   const stride = Math.max(1, Math.ceil(n / targetLabels));
+
+  // Y-axis $ ticks — 5 rungs (top→bottom) picked adaptively off maxValue.
+  const yTicks = (() => {
+    if (maxValue <= 0) return [0, 0, 0, 0, 0];
+    // Round the max up to a "nice" value so the ticks read cleanly ($10 / $50 / $500 / etc).
+    const magnitude = Math.pow(10, Math.floor(Math.log10(maxValue)));
+    const niceMax = Math.ceil(maxValue / magnitude) * magnitude;
+    return [niceMax, niceMax * 0.75, niceMax * 0.5, niceMax * 0.25, 0];
+  })();
+  const fmtTick = (v: number) =>
+    v >= 1000 ? `$${(v / 1000).toFixed(v >= 10_000 ? 0 : 1)}k` : `$${Math.round(v)}`;
 
   return (
     <div className="relative">
-      <div className="ml-2 mr-2">
+      <div className="ml-12 mr-2">
+        {/* Y-axis $ labels — absolute-positioned so they don't push the chart. */}
+        <div className="absolute left-0 top-0 h-[180px] w-11 flex flex-col justify-between py-0 text-right text-[10px] text-[#6b7280] pointer-events-none">
+          {yTicks.map((v, i) => (
+            <div key={i} className="leading-none pr-2 -translate-y-1">{fmtTick(v)}</div>
+          ))}
+        </div>
         <div className="relative h-[180px]">
-          {[0, 1, 2, 3, 4, 5].map((i) => (
+          {[0, 1, 2, 3, 4].map((i) => (
             <div
               key={i}
               className="absolute w-full border-t border-[#2a2d35]"
-              style={{ top: `${i * 20}%` }}
+              style={{ top: `${i * 25}%` }}
             />
           ))}
           <svg
@@ -400,31 +421,16 @@ function ConversationsStartedCard({
   chartData: { date: string; value: number }[];
   loading: boolean;
 }) {
-  // v3: independent 7d/30d toggle. Pulls the last N daily points from the
-  // main chart series (already computed server-side for the Net Sales chart
-  // in dashboard/stats). Uses net sales as a proxy for daily conversation
-  // volume until we wire a dedicated conversations count.
-  const [range, setRange] = useState<7 | 30>(7);
-  const bars = chartData.slice(-range);
+  // v3: fixed 7-day window; source is server-side
+  // /api/dashboard/stats.conversations7d (new fan rows per day). No toggle
+  // — brief now shows a static "Last 7 days" label instead.
+  const bars = chartData.slice(-7);
   const maxV = Math.max(1, ...bars.map((b) => b.value));
   return (
     <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-5 flex flex-col">
       <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <h2 className="text-[16px] font-semibold text-white">Conversations started 📊</h2>
-        <div className="flex bg-[#0d1117] border border-[#2a2d35] rounded-lg p-0.5 text-[11px]">
-          {([7, 30] as const).map((v) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => setRange(v)}
-              className={`px-2.5 py-1 rounded-md transition-colors ${
-                range === v ? "bg-[#00AFF0] text-white" : "text-[#9ca3af] hover:text-white"
-              }`}
-            >
-              {v}d
-            </button>
-          ))}
-        </div>
+        <span className="text-[11px] text-[#9ca3af]">Last 7 days</span>
       </div>
       {bars.length === 0 ? (
         <div className="text-center py-10 text-[13px] text-[#6b7280] flex-1 flex items-center justify-center">
@@ -435,12 +441,7 @@ function ConversationsStartedCard({
           {bars.map((b, i) => {
             const pct = Math.round((b.value / maxV) * 100);
             const d = new Date(b.date);
-            const label =
-              range === 7
-                ? d.toLocaleDateString("en-US", { weekday: "short" })
-                : d.getDate() % 5 === 0
-                  ? d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
-                  : "";
+            const label = d.toLocaleDateString("en-US", { weekday: "short" });
             return (
               <div key={i} className="flex-1 flex flex-col items-center gap-1 min-w-0">
                 <div
@@ -696,7 +697,7 @@ function DashboardTab() {
             />
           </div>
 
-          <ConversationsStartedCard chartData={stats?.chart ?? []} loading={!stats} />
+          <ConversationsStartedCard chartData={stats?.conversations7d ?? []} loading={!stats} />
         </div>
 
         {/* v3: split the old single Creators breakdown row into two boxes:

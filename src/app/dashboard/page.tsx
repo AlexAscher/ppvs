@@ -1791,5 +1791,15 @@ export default function DashboardPage() {
 
   if (role === "agency") return <AgencyDashboard />;
 
-  return <ChatterDashboardLayout />;
+  // v3: chatters no longer have a personal dashboard. Redirect to the
+  // chatting page directly — if they aren't linked to any agency the
+  // /chatter route itself renders the "ask your agency to invite you"
+  // placeholder.
+  return <ChatterRedirect />;
+}
+
+function ChatterRedirect() {
+  const router = useRouter();
+  useEffect(() => { router.replace("/chatter"); }, [router]);
+  return null;
 }

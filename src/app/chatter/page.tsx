@@ -1961,14 +1961,48 @@ export default function ChatterPage() {
     );
   }
 
+  // v3: chatter without any linked model = not connected to an agency. Show
+  // a full-page placeholder telling them to ask the agency to invite them.
+  // Agency accounts always have their own models, so they never hit this.
+  if (role === "chatter" && models.length === 0) {
+    return (
+      <div
+        className="h-[100dvh] w-full flex items-center justify-center text-white p-6"
+        style={{ background: "radial-gradient(900px 520px at 50% 42%, rgba(0,175,240,0.16) 0%, rgba(0,175,240,0.04) 35%, rgba(0,175,240,0) 65%), #0a1220" }}
+      >
+        <div className="max-w-md w-full bg-[#111827]/80 backdrop-blur rounded-2xl border border-[#1f2937] p-8 text-center shadow-2xl">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/landing/logo.png" alt="ppvs.io" style={{ width: 44, height: 44, borderRadius: 10, objectFit: "cover", margin: "0 auto" }} />
+          <h1 className="mt-4 text-[20px] font-semibold">Ask your agency to invite you</h1>
+          <p className="mt-2 text-[13px] text-[#9ca3af] leading-relaxed">
+            Your account is set up but no agency has linked you yet. Share the email you signed up with — <span className="text-white font-medium">{displayName}</span> — with your agency owner so they can add you.
+          </p>
+          <button
+            onClick={handleLogout}
+            className="mt-6 w-full py-2.5 rounded-lg bg-[#1f2937] hover:bg-[#2a2d35] text-[13px] font-semibold transition-colors"
+          >
+            Log out
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // Both agency and chatter render the same indigo design
   // (Create_prompt_design → chatter-page-classic/*). No more per-role size
   // split — the components are imported directly at module scope above.
 
   return (
     <div
-      className="chatter-root h-[100dvh] w-full flex flex-col bg-[#0d1117] text-white overflow-hidden"
-      style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif' }}
+      className="chatter-root h-[100dvh] w-full flex flex-col text-white overflow-hidden"
+      style={{
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif',
+        // Premium B2B navy backdrop with a soft brand-blue radial in the
+        // middle — matches the site-wide gradient direction (batch 75) but
+        // keeps the chat surface calm around the edges.
+        background:
+          "radial-gradient(900px 520px at 50% 42%, rgba(0,175,240,0.18) 0%, rgba(0,175,240,0.05) 35%, rgba(0,175,240,0) 65%), #0a1220",
+      }}
     >
       {/* Top-right toaster — pops a 5s toast when a tip/PPV this user sent
           gets paid. Only the link's creator sees it (API-scoped). */}
@@ -2256,6 +2290,18 @@ export default function ChatterPage() {
         onClose={() => setDeletingMessage(null)}
         onConfirm={(revoke) => void confirmDeleteMessage(revoke)}
       />
+      {/* Thin trust-signal footer (v3 brief). Sits above the chatter UI
+          shell so it never scrolls with the message list. */}
+      <div className="hidden md:flex shrink-0 items-center justify-between px-5 h-[28px] text-[10px] text-[#6b7280]"
+        style={{ background: "rgba(10,14,22,0.6)", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+        <div className="flex items-center gap-2">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/landing/logo.png" alt="ppvs.io" style={{ width: 16, height: 16, borderRadius: 4, objectFit: "cover" }} />
+          <span className="font-medium text-[#9ca3af]">ppvs.io</span>
+        </div>
+        <div className="text-[#9ca3af]">🔒 Secure • Private • Encrypted</div>
+        <div style={{ width: 60 }} />
+      </div>
     </div>
   );
 }

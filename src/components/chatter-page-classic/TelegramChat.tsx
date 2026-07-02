@@ -964,55 +964,44 @@ export function TelegramChat({
                           >
                             {m.media &&
                             (m.media.type === "photo" || m.media.type === "video") ? (
-                              isDeliveredOriginals ? (
-                                // Delivered originals → clean placeholder
-                                // (per user: don't show unblurred thumbs in
-                                // the chat UI). Tap on the wrapping button
-                                // opens the original in the lightbox.
-                                <div className={`w-full h-full flex flex-col items-center justify-center gap-0.5 ${
-                                  first.isChatter
-                                    ? "bg-gradient-to-br from-[#0098D4]/35 to-[#0098D4]/20"
-                                    : "bg-gradient-to-br from-[#1f2937] to-[#0d1117]"
-                                }`}>
-                                  <div className="text-[26px] leading-none">
-                                    {m.media.type === "video" ? "🎬" : "🖼️"}
-                                  </div>
-                                  <div className="text-[9px] font-semibold text-white/85 uppercase tracking-wider">
-                                    {m.media.type === "video" ? "Video" : "Photo"}
-                                  </div>
-                                  <div className="text-[8px] text-white/55 mt-0.5">Tap to open</div>
-                                </div>
-                              ) : (
-                                // Pre-blurred preview / fan's incoming media
-                                // → show the actual thumb (it's already
-                                // safe-to-display bytes for previews, and
-                                // gives the chatter useful context for
-                                // incoming).
-                                <>
-                                  {m.media.thumbDataUrl ? (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <img
-                                      src={m.media.thumbDataUrl}
-                                      alt=""
-                                      className="w-full h-full object-cover"
-                                      draggable={false}
-                                    />
-                                  ) : (
-                                    <div className={`w-full h-full ${
-                                      first.isChatter
-                                        ? "bg-gradient-to-br from-[#0098D4]/35 to-[#0098D4]/20"
-                                        : "bg-gradient-to-br from-[#1f2937] to-[#0d1117]"
-                                    }`} />
-                                  )}
-                                  {m.media.type === "video" && (
-                                    <div className="absolute inset-0 flex items-center justify-center">
-                                      <div className="w-8 h-8 rounded-full bg-black/55 flex items-center justify-center">
-                                        <Play className="w-4 h-4 text-white" fill="white" />
-                                      </div>
+                              // v3: show the actual unblurred thumbnail for
+                              // every chatter-side album — the workspace
+                              // always shows originals (blur belongs to the
+                              // fan's Telegram, not our UI). Fall back to a
+                              // brand-tinted placeholder only when no image
+                              // URL is available yet.
+                              <>
+                                {m.media.fullUrl ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={m.media.fullUrl}
+                                    alt=""
+                                    className="w-full h-full object-cover"
+                                    draggable={false}
+                                  />
+                                ) : m.media.thumbDataUrl ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={m.media.thumbDataUrl}
+                                    alt=""
+                                    className="w-full h-full object-cover"
+                                    draggable={false}
+                                  />
+                                ) : (
+                                  <div className={`w-full h-full ${
+                                    first.isChatter
+                                      ? "bg-gradient-to-br from-[#0098D4]/35 to-[#0098D4]/20"
+                                      : "bg-gradient-to-br from-[#1f2937] to-[#0d1117]"
+                                  }`} />
+                                )}
+                                {m.media.type === "video" && (
+                                  <div className="absolute inset-0 flex items-center justify-center">
+                                    <div className="w-8 h-8 rounded-full bg-black/55 flex items-center justify-center">
+                                      <Play className="w-4 h-4 text-white" fill="white" />
                                     </div>
-                                  )}
-                                </>
-                              )
+                                  </div>
+                                )}
+                              </>
                             ) : (
                               <div className="w-full h-full flex items-center justify-center text-[22px]">🔒</div>
                             )}

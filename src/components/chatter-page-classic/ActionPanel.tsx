@@ -522,19 +522,13 @@ export function ActionPanel({
                   <button
                     onClick={onSendPpv}
                     disabled={!hasRecipient || sending}
-                    className={`flex-1 py-3 text-white rounded-lg font-semibold text-[13px] transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed ${
-                      isFree
-                        ? "bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 shadow-emerald-500/20"
-                        : "bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] hover:from-[#0098D4] hover:to-[#0098D4] shadow-[#00AFF0]/20"
-                    }`}
+                    className="flex-1 py-3 text-white rounded-lg font-semibold text-[13px] transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] hover:from-[#0098D4] hover:to-[#0098D4] shadow-[#00AFF0]/20"
                   >
                     {sending
                       ? "Sending…"
                       : scheduleAt
                         ? `Schedule · ${formatScheduleShort(scheduleAt)}`
-                        : isFree
-                          ? `🎁 Send free to ${recipientLabel}`
-                          : `Send PPV to ${recipientLabel}`}
+                        : `Send to ${recipientLabel}`}
                   </button>
                   {onChangeScheduleAt && (
                     <div className="relative shrink-0">

@@ -281,11 +281,18 @@ function ChatterDashboardTab() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { data: ac } = await supabase
+    // A chatter can be linked to multiple models under the same agency, so
+    // agency_chatters may have several rows for this user. `.maybeSingle()`
+    // errors out on >1 row and returned null, which made the dashboard show
+    // "not connected to an agency" even for correctly linked chatters. Take
+    // the newest row instead.
+    const { data: acRows } = await supabase
       .from("agency_chatters")
       .select("id, model_id, invitations:invitation_id(agency_name)")
       .eq("chatter_id", user.id)
-      .maybeSingle();
+      .order("id", { ascending: false })
+      .limit(1);
+    const ac = (acRows && acRows.length > 0) ? acRows[0] : null;
 
     if (ac) {
       const row = ac as unknown as { model_id: string | null; invitations: { agency_name: string } | null };

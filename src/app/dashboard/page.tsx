@@ -455,10 +455,8 @@ function DashboardTab() {
     ? models.find((m) => m.id === scopeModelId)?.name ?? "Creator"
     : "All creators";
 
-  // 1000 ⭐ ≈ $11.05 net (Telegram peg $0.013 × our 85%), so 1 USD net ≈ 90.5 ⭐.
-  // Surfaced beside each $ amount as "$X / N ⭐" in the same font/weight.
-  const usdToStars = (usd: number) =>
-    `${Math.round(Math.max(0, usd) / 0.01105).toLocaleString("en-US")} ⭐`;
+  // v3: Stars removed from agency dashboard. Sales/Unlocks + Conversion Rate
+  // moved to the right side of the grid (slots 7 & 8).
   type Card =
     | { label: string; emoji: string; kind: "money"; usd: number }
     | { label: string; emoji: string; kind: "raw"; value: string; sub?: string };
@@ -469,8 +467,8 @@ function DashboardTab() {
         { label: "Net This Month", emoji: "🏆", kind: "money", usd: stats.netMonth },
         { label: "Net All Time", emoji: "🤑", kind: "money", usd: stats.netAllTime },
         { label: "Available Balance", emoji: "💳", kind: "money", usd: stats.availableBalance },
-        { label: "Sales / Unlocks", emoji: "🔓", kind: "raw", value: String(stats.sales) },
         { label: "Avg Order Value", emoji: "🛒", kind: "money", usd: stats.avgOrder },
+        { label: "Sales / Unlocks", emoji: "🔓", kind: "raw", value: String(stats.sales) },
         {
           label: "Conversion Rate",
           emoji: "🎯",
@@ -480,7 +478,7 @@ function DashboardTab() {
         },
       ]
     : (Array.from({ length: 8 }, (_, i) => ({
-        label: ["Net Today","Net This Week","Net This Month","Net All Time","Available Balance","Sales / Unlocks","Avg Order Value","Conversion Rate"][i],
+        label: ["Net Today","Net This Week","Net This Month","Net All Time","Available Balance","Avg Order Value","Sales / Unlocks","Conversion Rate"][i],
         emoji: "•",
         kind: "raw" as const,
         value: "…",
@@ -488,10 +486,18 @@ function DashboardTab() {
 
   const chartData = (stats?.chart ?? []).map((c) => ({ ...c, label: fmtMoney(c.value) }));
   const maxValue = Math.max(1, ...chartData.map((d) => d.value));
-  const topChatter = stats?.chatters?.[0] ?? null;
 
   return (
-    <div className="flex-1 bg-[#0d1117] overflow-y-auto p-4 md:p-6">
+    <div
+      className="flex-1 overflow-y-auto p-4 md:p-6"
+      style={{
+        // v3: single site-wide blue gradient backdrop instead of per-card
+        // glows. Positioned as a large soft radial blob top-left with the
+        // brand colour, fading into the neutral bg over the rest of the page.
+        background:
+          "radial-gradient(1200px 700px at 8% -10%, rgba(0,175,240,0.22) 0%, rgba(0,175,240,0.06) 32%, rgba(0,175,240,0) 60%), #0d1117",
+      }}
+    >
       <div className="max-w-[1400px] mx-auto space-y-6">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
@@ -567,26 +573,15 @@ function DashboardTab() {
             <div
               key={i}
               className="rounded-xl p-4 transition-colors"
-              style={
-                stat.kind === "money"
-                  ? {
-                      background:
-                        "linear-gradient(135deg, rgba(0,175,240,0.18) 0%, rgba(0,175,240,0.04) 55%, rgba(255,255,255,0) 100%), rgb(22,26,34)",
-                      border: "1px solid rgba(0,175,240,0.25)",
-                      boxShadow: "rgba(0,175,240,0.35) 0px 18px 50px -20px",
-                    }
-                  : { background: "#161a22", border: "1px solid #2a2d35" }
-              }
+              style={{ background: "#161a22", border: "1px solid #2a2d35" }}
             >
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[20px]">{stat.emoji}</span>
               </div>
               <div className="text-[11px] text-[#9ca3af] uppercase tracking-wider mb-1">{stat.label}</div>
               {stat.kind === "money" ? (
-                <div className="text-[22px] font-bold text-white whitespace-nowrap leading-tight">
+                <div className="text-[24px] font-bold text-white whitespace-nowrap leading-tight">
                   {fmtMoney(stat.usd)}
-                  <span className="text-[#9ca3af] font-bold"> / </span>
-                  {usdToStars(stat.usd)}
                 </div>
               ) : (
                 <>
@@ -621,68 +616,122 @@ function DashboardTab() {
                 ))}
               </div>
             </div>
-            <ChartCanvas
-              chartData={chartData}
-              maxValue={maxValue}
-              hoveredPoint={hoveredPoint}
-              setHoveredPoint={setHoveredPoint}
-              empty={stats ? "No sales in this window." : "Loading…"}
-              period={period}
-            />
+            {/* Taller chart per v3 brief. */}
+            <div style={{ minHeight: 340 }}>
+              <ChartCanvas
+                chartData={chartData}
+                maxValue={maxValue}
+                hoveredPoint={hoveredPoint}
+                setHoveredPoint={setHoveredPoint}
+                empty={stats ? "No sales in this window." : "Loading…"}
+                period={period}
+              />
+            </div>
           </div>
 
-          <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-5">
-            <h2 className="text-[16px] font-semibold text-white mb-4">Top Chatter ✍️</h2>
-            {topChatter ? (
-              <div className="text-center space-y-3">
-                <div className="w-20 h-20 mx-auto bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-full flex items-center justify-center text-white font-bold text-[24px]">
-                  {initials(topChatter.name) || "—"}
+          {/* v3: Conversations started bar chart replaces the old "Top Chatter"
+              card. Buckets the last 7 daily chart points (same source that
+              feeds the Net Sales chart) — height reflects daily net sales as
+              a proxy for conversation volume until we wire a dedicated
+              conversations count. */}
+          <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-5 flex flex-col">
+            <h2 className="text-[16px] font-semibold text-white mb-4">Conversations started 📊</h2>
+            {(() => {
+              const bars = (stats?.chart ?? []).slice(-7);
+              const maxV = Math.max(1, ...bars.map((b) => b.value));
+              if (bars.length === 0) {
+                return (
+                  <div className="text-center py-10 text-[13px] text-[#6b7280] flex-1 flex items-center justify-center">
+                    {stats ? "No activity yet." : "Loading…"}
+                  </div>
+                );
+              }
+              return (
+                <div className="flex-1 flex items-end gap-2 h-[260px] pt-4 pb-2">
+                  {bars.map((b, i) => {
+                    const pct = Math.round((b.value / maxV) * 100);
+                    const d = new Date(b.date);
+                    const label = d.toLocaleDateString("en-US", { weekday: "short" });
+                    return (
+                      <div key={i} className="flex-1 flex flex-col items-center gap-1 min-w-0">
+                        <div
+                          className="w-full rounded-t-md"
+                          style={{
+                            height: `${Math.max(3, pct)}%`,
+                            background:
+                              "linear-gradient(180deg, rgba(0,175,240,0.9) 0%, rgba(0,175,240,0.35) 100%)",
+                            boxShadow: "0 -6px 20px -8px rgba(0,175,240,0.4)",
+                          }}
+                          title={`${label}: ${b.value}`}
+                        />
+                        <div className="text-[10px] text-[#6b7280]">{label}</div>
+                      </div>
+                    );
+                  })}
                 </div>
-                <div>
-                  <div className="text-[18px] font-bold text-white">{topChatter.name}</div>
-                  <div className="text-[13px] text-[#9ca3af]">{topChatter.sales} sales</div>
+              );
+            })()}
+          </div>
+        </div>
+
+        {/* v3: split the old single Creators breakdown row into two boxes:
+            Creators Breakdown on the left, Top Chatters on the right. */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-5 flex flex-col">
+            <h2 className="text-[16px] font-semibold text-white mb-4">Creators Breakdown 👥</h2>
+            <div className="flex-1 overflow-y-auto max-h-[300px] space-y-2 pr-2 custom-scrollbar">
+              {(stats?.models ?? []).length === 0 ? (
+                <div className="py-6 text-center text-[13px] text-[#6b7280]">
+                  {stats ? "No sales yet." : "Loading…"}
                 </div>
-                <div className="pt-3 border-t border-[#2a2d35]">
-                  <div className="text-[11px] text-[#9ca3af] uppercase tracking-wider mb-1">Net Sales</div>
-                  <div className="text-[28px] font-bold text-[#00AFF0]">{fmtMoney(topChatter.net)}</div>
+              ) : (
+                stats!.models.map((m) => (
+                  <div key={m.id} className="flex items-center justify-between p-3 bg-[#1f2937]/30 rounded-lg hover:bg-[#1f2937]/50 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-full flex items-center justify-center text-white font-semibold text-[12px]">
+                        {initials(m.name) || "M"}
+                      </div>
+                      <div>
+                        <div className="text-[13px] text-white font-medium">{m.name}</div>
+                        <div className="text-[11px] text-[#6b7280]">{m.sales} sales</div>
+                      </div>
+                    </div>
+                    <div className="text-[15px] font-bold text-[#00AFF0]">{fmtMoney(m.net)}</div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+          <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-5 flex flex-col">
+            <h2 className="text-[16px] font-semibold text-white mb-4">Top Chatters ✍️</h2>
+            <div className="flex-1 overflow-y-auto max-h-[300px] space-y-2 pr-2 custom-scrollbar">
+              {(stats?.chatters ?? []).length === 0 ? (
+                <div className="py-6 text-center text-[13px] text-[#6b7280]">
+                  {stats ? "No chatter sales yet." : "Loading…"}
                 </div>
-              </div>
-            ) : (
-              <div className="text-center py-10 text-[13px] text-[#6b7280]">
-                {stats ? "No chatter sales yet." : "Loading…"}
-              </div>
-            )}
+              ) : (
+                stats!.chatters.slice(0, 10).map((c) => (
+                  <div key={c.id} className="flex items-center justify-between p-3 bg-[#1f2937]/30 rounded-lg hover:bg-[#1f2937]/50 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-full flex items-center justify-center text-white font-semibold text-[12px]">
+                        {initials(c.name) || "C"}
+                      </div>
+                      <div>
+                        <div className="text-[13px] text-white font-medium">{c.name}</div>
+                        <div className="text-[11px] text-[#6b7280]">{c.sales} sales</div>
+                      </div>
+                    </div>
+                    <div className="text-[15px] font-bold text-[#00AFF0]">{fmtMoney(c.net)}</div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Left column: Models breakdown stacked over Recent Sales */}
+          {/* Left column: Recent Sales */}
           <div className="md:col-span-2 space-y-6">
-            <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-5 flex flex-col">
-              <h2 className="text-[16px] font-semibold text-white mb-4">Creators breakdown 👥</h2>
-              <div className="flex-1 overflow-y-auto max-h-[300px] space-y-2 pr-2 custom-scrollbar">
-                {(stats?.models ?? []).length === 0 ? (
-                  <div className="py-6 text-center text-[13px] text-[#6b7280]">
-                    {stats ? "No sales yet." : "Loading…"}
-                  </div>
-                ) : (
-                  stats!.models.map((m) => (
-                    <div key={m.id} className="flex items-center justify-between p-3 bg-[#1f2937]/30 rounded-lg hover:bg-[#1f2937]/50 transition-colors">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-full flex items-center justify-center text-white font-semibold text-[12px]">
-                          {initials(m.name) || "M"}
-                        </div>
-                        <div>
-                          <div className="text-[13px] text-white font-medium">{m.name}</div>
-                          <div className="text-[11px] text-[#6b7280]">{m.sales} sales</div>
-                        </div>
-                      </div>
-                      <div className="text-[15px] font-bold text-[#00AFF0]">{fmtMoney(m.net)}</div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
 
             {/* Recent Sales — last 10 paid/delivered. Lives in the left
                 column so the right column (Top Fans) stays full-height. */}
@@ -731,7 +780,7 @@ function DashboardTab() {
                   {stats ? "No paying fans yet." : "Loading…"}
                 </div>
               ) : (
-                stats!.topFans.map((fan, idx) => (
+                stats!.topFans.slice(0, 10).map((fan, idx) => (
                   <div key={idx} className="flex items-center gap-3 p-3 bg-[#1f2937]/30 rounded-lg hover:bg-[#1f2937]/50 transition-colors">
                     <div className="w-10 h-10 bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-full flex items-center justify-center text-white font-semibold text-[13px] relative">
                       {initials(fan.name) || "F"}

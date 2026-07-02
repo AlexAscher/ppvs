@@ -393,6 +393,75 @@ function ChartCanvas({
   );
 }
 
+function ConversationsStartedCard({
+  chartData,
+  loading,
+}: {
+  chartData: { date: string; value: number }[];
+  loading: boolean;
+}) {
+  // v3: independent 7d/30d toggle. Pulls the last N daily points from the
+  // main chart series (already computed server-side for the Net Sales chart
+  // in dashboard/stats). Uses net sales as a proxy for daily conversation
+  // volume until we wire a dedicated conversations count.
+  const [range, setRange] = useState<7 | 30>(7);
+  const bars = chartData.slice(-range);
+  const maxV = Math.max(1, ...bars.map((b) => b.value));
+  return (
+    <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-5 flex flex-col">
+      <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+        <h2 className="text-[16px] font-semibold text-white">Conversations started 📊</h2>
+        <div className="flex bg-[#0d1117] border border-[#2a2d35] rounded-lg p-0.5 text-[11px]">
+          {([7, 30] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setRange(v)}
+              className={`px-2.5 py-1 rounded-md transition-colors ${
+                range === v ? "bg-[#00AFF0] text-white" : "text-[#9ca3af] hover:text-white"
+              }`}
+            >
+              {v}d
+            </button>
+          ))}
+        </div>
+      </div>
+      {bars.length === 0 ? (
+        <div className="text-center py-10 text-[13px] text-[#6b7280] flex-1 flex items-center justify-center">
+          {loading ? "Loading…" : "No activity yet."}
+        </div>
+      ) : (
+        <div className="flex-1 flex items-end gap-1 h-[220px] pt-4 pb-2">
+          {bars.map((b, i) => {
+            const pct = Math.round((b.value / maxV) * 100);
+            const d = new Date(b.date);
+            const label =
+              range === 7
+                ? d.toLocaleDateString("en-US", { weekday: "short" })
+                : d.getDate() % 5 === 0
+                  ? d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+                  : "";
+            return (
+              <div key={i} className="flex-1 flex flex-col items-center gap-1 min-w-0">
+                <div
+                  className="w-full rounded-t-md"
+                  style={{
+                    height: `${Math.max(3, pct)}%`,
+                    background: "linear-gradient(180deg, rgba(0,175,240,0.9) 0%, rgba(0,175,240,0.35) 100%)",
+                    boxShadow: "0 -6px 20px -8px rgba(0,175,240,0.4)",
+                  }}
+                  title={`${d.toLocaleDateString("en-US")}: ${b.value}`}
+                />
+                <div className="text-[9px] text-[#6b7280]">{label}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DashboardTab() {
   // Agency name for the "Hello X 👋" header — same source as the sidebar.
   const [agencyDisplayName, setAgencyDisplayName] = useState<string>("there");
@@ -617,62 +686,17 @@ function DashboardTab() {
                 ))}
               </div>
             </div>
-            {/* Taller chart per v3 brief. */}
-            <div style={{ minHeight: 340 }}>
-              <ChartCanvas
-                chartData={chartData}
-                maxValue={maxValue}
-                hoveredPoint={hoveredPoint}
-                setHoveredPoint={setHoveredPoint}
-                empty={stats ? "No sales in this window." : "Loading…"}
-                period={period}
-              />
-            </div>
+            <ChartCanvas
+              chartData={chartData}
+              maxValue={maxValue}
+              hoveredPoint={hoveredPoint}
+              setHoveredPoint={setHoveredPoint}
+              empty={stats ? "No sales in this window." : "Loading…"}
+              period={period}
+            />
           </div>
 
-          {/* v3: Conversations started bar chart replaces the old "Top Chatter"
-              card. Buckets the last 7 daily chart points (same source that
-              feeds the Net Sales chart) — height reflects daily net sales as
-              a proxy for conversation volume until we wire a dedicated
-              conversations count. */}
-          <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-5 flex flex-col">
-            <h2 className="text-[16px] font-semibold text-white mb-4">Conversations started 📊</h2>
-            {(() => {
-              const bars = (stats?.chart ?? []).slice(-7);
-              const maxV = Math.max(1, ...bars.map((b) => b.value));
-              if (bars.length === 0) {
-                return (
-                  <div className="text-center py-10 text-[13px] text-[#6b7280] flex-1 flex items-center justify-center">
-                    {stats ? "No activity yet." : "Loading…"}
-                  </div>
-                );
-              }
-              return (
-                <div className="flex-1 flex items-end gap-2 h-[260px] pt-4 pb-2">
-                  {bars.map((b, i) => {
-                    const pct = Math.round((b.value / maxV) * 100);
-                    const d = new Date(b.date);
-                    const label = d.toLocaleDateString("en-US", { weekday: "short" });
-                    return (
-                      <div key={i} className="flex-1 flex flex-col items-center gap-1 min-w-0">
-                        <div
-                          className="w-full rounded-t-md"
-                          style={{
-                            height: `${Math.max(3, pct)}%`,
-                            background:
-                              "linear-gradient(180deg, rgba(0,175,240,0.9) 0%, rgba(0,175,240,0.35) 100%)",
-                            boxShadow: "0 -6px 20px -8px rgba(0,175,240,0.4)",
-                          }}
-                          title={`${label}: ${b.value}`}
-                        />
-                        <div className="text-[10px] text-[#6b7280]">{label}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })()}
-          </div>
+          <ConversationsStartedCard chartData={stats?.chart ?? []} loading={!stats} />
         </div>
 
         {/* v3: split the old single Creators breakdown row into two boxes:

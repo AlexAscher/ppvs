@@ -50,6 +50,12 @@ export default function SignupPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  // Two-step signup: (1) collect the account form → Supabase sends a 6-digit
+  // OTP code to the email; (2) enter the code to activate the account.
+  // Supabase template needs to include `{{ .Token }}` (see project auth
+  // settings) — that part is configured out-of-band.
+  const [step, setStep] = useState<"form" | "otp">("form");
+  const [otp, setOtp] = useState("");
   // Same chatter-subdomain loop fix as /login — set href after hydration so
   // the link points back to the apex landing instead of looping the chatter
   // workspace's auth bounce.
@@ -62,7 +68,7 @@ export default function SignupPage() {
     setError("");
     setLoading(true);
 
-    const { error: signUpError } = await supabase.auth.signUp({
+    const { data, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -80,6 +86,39 @@ export default function SignupPage() {
       return;
     }
 
+    // If email confirmations are enabled, Supabase returns a user without a
+    // session — we then ask the user to enter the OTP code we just emailed.
+    // If confirmations are OFF (dev / trusted domain) a session is issued
+    // immediately and we can jump straight to the dashboard.
+    if (data.session) {
+      router.push("/dashboard");
+      router.refresh();
+    } else {
+      setStep("otp");
+      setLoading(false);
+    }
+  }
+
+  async function handleVerify(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    const token = otp.trim();
+    if (!/^\d{6}$/.test(token)) {
+      setError("Enter the 6-digit code from your email.");
+      setLoading(false);
+      return;
+    }
+    const { error: verifyErr } = await supabase.auth.verifyOtp({
+      email,
+      token,
+      type: "signup",
+    });
+    if (verifyErr) {
+      setError(verifyErr.message);
+      setLoading(false);
+      return;
+    }
     router.push("/dashboard");
     router.refresh();
   }
@@ -116,6 +155,47 @@ export default function SignupPage() {
         </div>
 
         <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[16px] p-7">
+          {step === "otp" ? (
+            <form onSubmit={handleVerify} className="space-y-4">
+              {error && (
+                <div className="bg-red-500/10 border border-red-500/20 rounded-[8px] px-3.5 py-3 text-[13px] text-red-400">
+                  {error}
+                </div>
+              )}
+              <div className="text-[13px] text-[var(--text-2)]" style={{ lineHeight: 1.6 }}>
+                We&apos;ve emailed a 6-digit code to <span className="text-[var(--text)] font-medium">{email}</span>. Enter it below to activate your account.
+              </div>
+              <div>
+                <label className="block text-[12px] text-[var(--text-2)] mb-[7px] font-medium">Verification code</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))}
+                  placeholder="000000"
+                  maxLength={6}
+                  required
+                  className="w-full bg-[var(--bg)] rounded-[8px] px-3.5 py-[10px] text-[18px] tracking-[0.4em] text-center text-[var(--text)] placeholder-[var(--text-3)] transition-colors outline-none"
+                  style={{ border: "1px solid var(--border)" }}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={loading || otp.length !== 6}
+                className="w-full bg-[var(--blue)] hover:bg-[var(--blue-hover)] disabled:opacity-60 text-white rounded-[8px] py-[12px] text-[14px] font-semibold transition-colors border-none mt-1 outline-none cursor-pointer"
+              >
+                {loading ? "Verifying…" : "Verify & continue"}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setStep("form"); setError(""); }}
+                className="w-full text-[12px] text-[var(--text-3)] hover:text-[var(--text-2)] transition-colors"
+              >
+                ← Use a different email
+              </button>
+            </form>
+          ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
               <div className="bg-red-500/10 border border-red-500/20 rounded-[8px] px-3.5 py-3 text-[13px] text-red-400">
@@ -208,13 +288,16 @@ export default function SignupPage() {
               {loading ? "Creating..." : role === "agency" ? "Create agency account" : "Create account"}
             </button>
           </form>
+          )}
 
-          <p className="text-[11px] text-[var(--text-3)] text-center mt-4" style={{ lineHeight: 1.6 }}>
-            By creating an account you agree to our{" "}
-            <a href="#" className="text-[var(--text-2)] hover:text-[var(--text)]">Terms</a>{" "}
-            and{" "}
-            <a href="#" className="text-[var(--text-2)] hover:text-[var(--text)]">Privacy Policy</a>
-          </p>
+          {step === "form" && (
+            <p className="text-[11px] text-[var(--text-3)] text-center mt-4" style={{ lineHeight: 1.6 }}>
+              By creating an account you agree to our{" "}
+              <Link href="/terms" className="text-[var(--text-2)] hover:text-[var(--text)]">Terms</Link>{" "}
+              and{" "}
+              <Link href="/terms" className="text-[var(--text-2)] hover:text-[var(--text)]">Privacy Policy</Link>
+            </p>
+          )}
         </div>
 
         <p className="text-center text-[13px] text-[var(--text-3)] mt-5">

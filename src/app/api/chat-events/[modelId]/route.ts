@@ -61,7 +61,7 @@ export async function GET(
       // history, mirroring what the fan would see before unlocking.
       admin
         .from("ppv_sends")
-        .select("id, code, created_at, caption, total_price, status, paid_at, ppv_send_items(ordinal, ppvs(preview_url, media_url))")
+        .select("id, code, created_at, caption, total_price, status, paid_at, ppv_send_items(ordinal, ppv_id, ppvs(preview_url, media_url))")
         .eq("model_id", modelId)
         .eq("peer_id", peerId)
         .in("status", ["sending", "sent", "delivered", "paid"])
@@ -76,15 +76,18 @@ export async function GET(
       total_price: number | string; status: string; paid_at: string | null;
       ppv_send_items: ItemJoin[] | null;
     };
+    type ItemWithPpvId = ItemJoin & { ppv_id?: string | null };
     const sends: PpvSendItem[] = ((sendsRes.data ?? []) as SendRow[]).map((s) => {
+      // v3: chatters see the ORIGINALS in their own workspace via the
+      // signed-URL endpoint (bucket is private). Falls back to preview_url
+      // only if we somehow don't have a ppv id.
       const items = (s.ppv_send_items ?? [])
         .slice()
         .sort((a, b) => (a.ordinal ?? 0) - (b.ordinal ?? 0))
         .map((it) => {
-          // v3 brief: chatters see the ORIGINALS (unblurred) in their own
-          // workspace, with "Pay N ⭐ (Paid|Unpaid)" caption underneath.
-          // Fall back to preview_url only when the original is missing.
-          const ppv = Array.isArray(it.ppvs) ? it.ppvs[0] ?? null : it.ppvs;
+          const raw = it as ItemWithPpvId;
+          if (raw.ppv_id) return `/api/ppv/file/${raw.ppv_id}?kind=original`;
+          const ppv = Array.isArray(raw.ppvs) ? raw.ppvs[0] ?? null : raw.ppvs;
           return ppv?.media_url || ppv?.preview_url || null;
         })
         .filter((u): u is string => !!u);

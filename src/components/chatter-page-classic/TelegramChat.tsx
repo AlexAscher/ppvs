@@ -605,7 +605,15 @@ export function TelegramChat({
   useEffect(() => {
     const el = messagesRef.current;
     if (!el) return;
-    if (atBottomRef.current) el.scrollTop = el.scrollHeight;
+    // Auto-scroll: (a) when the reader is already near the bottom (normal
+    // polling), (b) whenever the latest message was sent by the chatter —
+    // sends should always land in view regardless of prior scroll position.
+    const last = messages[messages.length - 1];
+    const chatterJustSent = !!last && last.isChatter;
+    if (atBottomRef.current || chatterJustSent) {
+      el.scrollTop = el.scrollHeight;
+      atBottomRef.current = true;
+    }
   }, [messages, selected?.id]);
 
   useEffect(() => {

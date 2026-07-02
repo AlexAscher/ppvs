@@ -661,10 +661,11 @@ export default function LandingPage() {
           </Link>
           <div className="flex items-center gap-5 text-[12px] text-[#6b7280]">
             <a href={BOOK_DEMO_HREF} target="_blank" rel="noreferrer" className="hover:text-white transition-colors">Contact</a>
+            {/* All legal buttons scroll to the top of the /terms page per brief. */}
             <Link href="/terms" className="hover:text-white transition-colors">Terms</Link>
-            <Link href="/privacy" className="hover:text-white transition-colors">Privacy</Link>
-            <Link href="/dmca" className="hover:text-white transition-colors">DMCA</Link>
-            <Link href="/content-policy" className="hover:text-white transition-colors">Content policy</Link>
+            <Link href="/terms" className="hover:text-white transition-colors">Privacy</Link>
+            <Link href="/terms" className="hover:text-white transition-colors">DMCA</Link>
+            <Link href="/terms" className="hover:text-white transition-colors">Content policy</Link>
           </div>
         </div>
         <div className="max-w-[1200px] mx-auto mt-6 text-[11px] text-[#4b5563] text-center">

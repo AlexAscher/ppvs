@@ -1418,22 +1418,23 @@ export default function ChatterPage() {
         const nowSec = Math.floor(Date.now() / 1000);
         const optimisticMessages: ApiMessage[] = orderedItems.length > 0
           ? orderedItems.map((item, idx) => {
-              const previewUrl = item.preview_url || item.media_url || "";
+              // v3: chatter sees the ORIGINALS in their workspace, not the
+              // pre-blurred preview. Hit the signed-url endpoint so the
+              // private ppvs bucket doesn't 403 the direct URL.
+              const origUrl = `/api/ppv/file/${item.id}?kind=original`;
               return {
                 id: optimisticPpvId - idx,
                 text: idx === 0 ? placeholderText : "",
                 date: nowSec,
                 isOutgoing: true,
                 groupedId: orderedItems.length > 1 ? groupedId : null,
-                media: previewUrl
-                  ? {
-                      type: "photo" as const,
-                      thumbDataUrl: null,
-                      width: 400,
-                      height: 600,
-                      optimisticUrl: previewUrl,
-                    }
-                  : null,
+                media: {
+                  type: "photo" as const,
+                  thumbDataUrl: null,
+                  width: 400,
+                  height: 600,
+                  optimisticUrl: origUrl,
+                },
               };
             })
           : [

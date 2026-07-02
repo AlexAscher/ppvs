@@ -1580,16 +1580,11 @@ export default function ChatterPage() {
 
   async function handleLogout() {
     await supabase.auth.signOut();
-    // v3: log out lands on the marketing home page.
-    if (typeof window !== "undefined") {
-      const apex = window.location.hostname.replace(/^chatter\./, "");
-      const scheme = window.location.protocol;
-      window.location.href = `${scheme}//${apex}/`;
-      return;
-    }
-    // Fallback (SSR / test env) — cross-subdomain redirect.
-    // (router.replace can't follow a cross-origin RSC redirect).
-    window.location.href = "/";
+    // v3: log out lands on the marketing home page. Resolve the apex host
+    // (chatter.ppvs.io → ppvs.io) so cross-subdomain sign out ends there.
+    if (typeof window === "undefined") return;
+    const apex = window.location.hostname.replace(/^chatter\./, "");
+    window.location.href = `${window.location.protocol}//${apex}/`;
   }
 
   // ── fan profile mutations ─────────────────────────────────────────────────

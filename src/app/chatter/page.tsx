@@ -1580,9 +1580,16 @@ export default function ChatterPage() {
 
   async function handleLogout() {
     await supabase.auth.signOut();
-    // Full-page nav so the cross-subdomain /login → apex redirect completes
+    // v3: log out lands on the marketing home page.
+    if (typeof window !== "undefined") {
+      const apex = window.location.hostname.replace(/^chatter\./, "");
+      const scheme = window.location.protocol;
+      window.location.href = `${scheme}//${apex}/`;
+      return;
+    }
+    // Fallback (SSR / test env) — cross-subdomain redirect.
     // (router.replace can't follow a cross-origin RSC redirect).
-    window.location.href = "/login";
+    window.location.href = "/";
   }
 
   // ── fan profile mutations ─────────────────────────────────────────────────
@@ -1941,9 +1948,34 @@ export default function ChatterPage() {
       : selectedDialog.title
     : "@user";
 
+  // v3: hide models that don't have @ppvstarbot connected via Chat
+  // Automation. Fetched from /api/creators/connection-status; empty set
+  // during load = show nothing yet so the chatter can't click into a
+  // model that would silently fall back to the blur+link path.
+  const [connectedModelIds, setConnectedModelIds] = useState<Set<string> | null>(null);
+  useEffect(() => {
+    if (models.length === 0) { setConnectedModelIds(new Set()); return; }
+    let cancelled = false;
+    const ids = models.map((m) => m.id).join(",");
+    fetch(`/api/creators/connection-status?modelIds=${ids}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((j) => {
+        if (cancelled || !j?.statuses) return;
+        const st = j.statuses as Record<string, { connected: boolean }>;
+        setConnectedModelIds(new Set(Object.entries(st).filter(([, v]) => v.connected).map(([k]) => k)));
+      })
+      .catch(() => setConnectedModelIds(new Set()));
+    return () => { cancelled = true; };
+  }, [models]);
   const modelOptions = useMemo(
-    () => models.map((m) => ({ id: m.id, name: m.name, unread: unreadByModel[m.id] ?? 0 })),
-    [models, unreadByModel],
+    () =>
+      models
+        // Agencies see every model (they need "Connect bot" affordance);
+        // chatters only see models with an active business connection so
+        // they can't send into a fallback path.
+        .filter((m) => role === "agency" || !connectedModelIds || connectedModelIds.has(m.id))
+        .map((m) => ({ id: m.id, name: m.name, unread: unreadByModel[m.id] ?? 0 })),
+    [models, unreadByModel, connectedModelIds, role],
   );
 
   const selectedModelExpired = useMemo(

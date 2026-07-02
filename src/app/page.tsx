@@ -203,7 +203,11 @@ export default function LandingPage() {
               <a href="#faq" style={{ color: "inherit", textDecoration: "none" }}>FAQ</a>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <Link href="/login" className="btn btn-ghost">{authed ? "Dashboard" : "Login"}</Link>
+              {/* v3: signed-in visitors see a single CTA ("Open dashboard").
+                  Anonymous visitors keep Login + Get Started. */}
+              {!authed && (
+                <Link href="/login" className="btn btn-ghost">Login</Link>
+              )}
               <Link href={ctaHref} className="btn btn-primary">{authed ? "Open dashboard" : "Get Started"}</Link>
             </div>
           </div>
@@ -249,7 +253,7 @@ export default function LandingPage() {
                 <img
                   src="/hero_ppvs.png"
                   alt="Fan unlocking PPV content inside Telegram"
-                  style={{ width: "100%", maxWidth: 380, height: "auto", maxHeight: "calc(100vh - 160px)", objectFit: "contain", filter: "drop-shadow(0 32px 64px rgba(0,0,0,0.55))", position: "relative", zIndex: 1 }}
+                  style={{ width: "100%", maxWidth: 520, height: "auto", maxHeight: "calc(100vh - 120px)", objectFit: "contain", filter: "drop-shadow(0 32px 64px rgba(0,0,0,0.55))", position: "relative", zIndex: 1 }}
                 />
               </div>
             </div>

@@ -109,7 +109,8 @@ function AgencySidebar({
 
   async function handleLogout() {
     await supabase.auth.signOut();
-    router.replace("/login");
+    // v3: log out / exit always lands on the home page.
+    router.replace("/");
   }
 
   return (
@@ -762,7 +763,8 @@ function DashboardTab() {
                         </div>
                       </div>
                       <div className="text-[14px] font-bold text-emerald-400 shrink-0">
-                        {fmtMoney(s.amount)}
+                        {/* v3: show what the agency actually receives (85%). */}
+                        {fmtMoney(s.amount * 0.85)}
                       </div>
                     </div>
                   ))

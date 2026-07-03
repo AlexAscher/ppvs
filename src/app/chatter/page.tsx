@@ -1889,32 +1889,25 @@ export default function ChatterPage() {
     // see a persistent blur exactly like the fan does before unlocking — the
     // raw outgoing photos that Telegram returned via gramJS are filtered out
     // during the polling merge above.
-    const virtualMsgs: (ChatMessage & { _sortKey: number })[] = ppvVirtuals.flatMap((v) => {
-      const groupedId = v.previewUrls.length > 1 ? `ppv_${v.sendId}` : null;
+    // One self-contained PPV bubble per send (see ChatMessage.ppv). This can
+    // never split into separate photos the way N grouped messages could.
+    const virtualMsgs: (ChatMessage & { _sortKey: number })[] = ppvVirtuals.map((v) => {
       const isPaid = v.status === "paid" || v.status === "delivered";
-      const captionLine = v.caption?.trim() || "";
       const n = v.previewUrls.length;
-      // v3 format: [caption]\n🔒 PPV · N items · X ⭐ (Paid|Unpaid)
-      const priceLine = v.priceStars > 0
+      const label = v.priceStars > 0
         ? `🔒 PPV · ${n} item${n === 1 ? "" : "s"} · ${v.priceStars} ⭐ (${isPaid ? "Paid" : "Unpaid"})`
         : `🎁 Free content · ${n} item${n === 1 ? "" : "s"}`;
-      const fullText = captionLine ? `${captionLine}\n${priceLine}` : priceLine;
-      return v.previewUrls.map((url, idx) => ({
-        id: `ppv_${v.sendId}_${idx}`,
-        text: idx === 0 ? fullText : "",
+      return {
+        id: `ppv_${v.sendId}`,
+        text: "",
         time: formatTime(v.createdAtSec),
         isChatter: true,
-        media: {
-          type: "photo" as const,
-          thumbDataUrl: null,
-          fullUrl: url,
-          width: 400,
-          height: 600,
-        },
+        media: null,
         replyPreview: null,
-        groupedId,
+        groupedId: null,
+        ppv: { urls: v.previewUrls, caption: v.caption?.trim() || "", label },
         _sortKey: v.createdAtSec,
-      }));
+      };
     });
     if (systemEvents.length === 0 && virtualMsgs.length === 0) return chatMessages;
     const realWithKeys = chatMessages.map((m, idx): ChatMessage & { _sortKey: number } => ({

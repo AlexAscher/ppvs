@@ -80,6 +80,11 @@ export interface Message {
    *  paid). Only the chatter sees these — they live in chat_system_events,
    *  not in Telegram. media/reply/groupedId are ignored on system msgs. */
   system?: { kind: "tip_paid" | "ppv_paid" } | null;
+  /** Self-contained PPV bubble. When present the message renders as a
+   *  single fixed album (grid of `urls`) with `caption` above and `label`
+   *  ("🔒 PPV · N items · X ⭐ (Unpaid)") below — no cross-message grouping,
+   *  so it can never split into separate photos. Overrides media/groupedId. */
+  ppv?: { urls: string[]; caption: string; label: string } | null;
 }
 
 export interface ChatListItem {
@@ -921,6 +926,62 @@ export function TelegramChat({
                     </div>
                     <div className="text-[10px] text-[#6b7280] mt-1">
                       {m.time} · Customer doesn&apos;t see this
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+            // Self-contained PPV bubble — a single message that carries the
+            // whole album + caption + status, so it never splits into
+            // separate photos regardless of message ordering.
+            if (chunk.kind === "single" && chunk.msg.ppv) {
+              const m = chunk.msg;
+              const ppv = m.ppv!;
+              const urls = ppv.urls;
+              const cols = urls.length === 1 ? 1 : 2;
+              return (
+                <div key={m.id} className="flex justify-end">
+                  <div className="flex flex-col gap-1 items-end">
+                    <div
+                      className="p-1 rounded-2xl inline-block bg-gradient-to-br from-[#00AFF0] to-[#0098D4] rounded-br-sm"
+                      style={{ maxWidth: cols * 100 + (cols - 1) * 2 + 8 }}
+                    >
+                      {urls.length > 0 && (
+                        <div
+                          className="grid gap-0.5 overflow-hidden rounded-xl"
+                          style={{ gridTemplateColumns: `repeat(${cols}, 100px)` }}
+                        >
+                          {urls.slice(0, 4).map((url, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => setOpenMedia({ type: "photo", thumbDataUrl: null, fullUrl: url, width: 400, height: 600 })}
+                              className="relative overflow-hidden bg-[#374151]"
+                              style={{ width: 100, height: 100 }}
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={url} alt="" className="w-full h-full object-cover" draggable={false} />
+                              {idx === 3 && urls.length > 4 && (
+                                <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white font-bold text-[16px]">
+                                  +{urls.length - 4}
+                                </div>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <div className="px-3 pt-2 pb-1">
+                        {ppv.caption && (
+                          <div className="text-[13px] leading-relaxed whitespace-pre-wrap break-words text-white mb-1">
+                            {twemoji(ppv.caption, `ppv-cap-${m.id}`)}
+                          </div>
+                        )}
+                        <div className="text-[12px] font-semibold text-white/95">{ppv.label}</div>
+                      </div>
+                    </div>
+                    <div className="text-[10px] text-[#6b7280] px-1 flex items-center gap-1 justify-end">
+                      {m.time}
+                      <ReadTicks read={readOutboxMaxId !== undefined && Number(m.id) > 0 && Number(m.id) <= readOutboxMaxId} />
                     </div>
                   </div>
                 </div>

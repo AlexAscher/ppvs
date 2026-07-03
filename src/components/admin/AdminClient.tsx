@@ -1223,14 +1223,117 @@ function PayoutsView({ onOpenAgency }: { onOpenAgency: (id: string) => void }) {
   );
 }
 
+// ─── Signup Requests ────────────────────────────────────────────────────────
+type SignupRequest = {
+  id: string;
+  email: string;
+  displayName: string | null;
+  role: string;
+  agencyName: string | null;
+  status: string;
+  createdAt: string;
+  reviewedAt: string | null;
+  emailInUse: boolean;
+};
+
+function SignupsView() {
+  const [rows, setRows] = useState<SignupRequest[] | null>(null);
+  const [reload, setReload] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    setRows(null);
+    fetch("/api/admin/signup-requests")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (cancelled || !j) return;
+        setRows(j.requests as SignupRequest[]);
+      })
+      .catch(() => setRows([]));
+    return () => { cancelled = true; };
+  }, [reload]);
+  const pending = (rows ?? []).filter((r) => r.status === "pending").length;
+
+  return (
+    <div className="p-4 md:p-6">
+      <div className="max-w-[1400px] mx-auto space-y-6">
+        <div className="flex items-start justify-between flex-wrap gap-3">
+          <div>
+            <h1 className="text-[24px] font-bold text-white mb-1">Signups 📨</h1>
+            <p className="text-[13px] text-[#9ca3af]">
+              Manual approval queue. Rows highlighted in red already have an account with the same email.
+            </p>
+          </div>
+          <div className="bg-[#161a22] border border-[#2a2d35] rounded-xl px-5 py-3">
+            <div className="text-[11px] uppercase tracking-wider text-[#9ca3af]">Pending</div>
+            <div className="text-[22px] font-bold text-white">{pending}</div>
+          </div>
+        </div>
+
+        <Panel title="">
+          {rows == null ? (
+            <div className="py-8 text-center text-[13px] text-[#6b7280]">Loading…</div>
+          ) : rows.length === 0 ? (
+            <div className="py-8 text-center text-[13px] text-[#6b7280]">No signup requests yet.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-[13px]">
+                <thead>
+                  <tr className="text-left text-[#9ca3af] border-b border-[#2a2d35]">
+                    <th className="px-3 py-2 font-medium">Submitted</th>
+                    <th className="px-3 py-2 font-medium">Email</th>
+                    <th className="px-3 py-2 font-medium">Name</th>
+                    <th className="px-3 py-2 font-medium">Role</th>
+                    <th className="px-3 py-2 font-medium">Agency</th>
+                    <th className="px-3 py-2 font-medium">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr
+                      key={r.id}
+                      className="border-b border-[#2a2d35]/40 align-top"
+                      style={r.emailInUse ? { background: "rgba(248,113,113,0.08)" } : undefined}
+                    >
+                      <td className="px-3 py-3 text-[#9ca3af] whitespace-nowrap">{fmtDateTime(r.createdAt)}</td>
+                      <td className="px-3 py-3 font-mono text-[12px] text-white">
+                        {r.email}
+                        {r.emailInUse && <div className="text-[10px] text-red-400 mt-1">⚠ email already registered</div>}
+                      </td>
+                      <td className="px-3 py-3 text-white">{r.displayName || "—"}</td>
+                      <td className="px-3 py-3">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#1f2937] text-[#9ca3af]">{r.role}</span>
+                      </td>
+                      <td className="px-3 py-3 text-white">{r.agencyName || "—"}</td>
+                      <td className="px-3 py-3">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${statusColor(r.status)}`}>{r.status}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Panel>
+        <button
+          onClick={() => setReload((k) => k + 1)}
+          className="px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-[#1f2937] text-[#9ca3af] hover:text-white"
+        >
+          Refresh
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Shell ──────────────────────────────────────────────────────────────────
 // Wallet tab will be rebuilt for TON in batch 56 (after Stars pay-in lands).
-type Tab = "overview" | "agencies" | "vault" | "payouts" | "settings";
+type Tab = "overview" | "agencies" | "vault" | "payouts" | "signups" | "settings";
 const NAV: { id: Tab; label: string; emoji: string }[] = [
   { id: "overview", label: "Overview", emoji: "📊" },
   { id: "agencies", label: "Agencies", emoji: "🏢" },
   { id: "vault", label: "Vault", emoji: "🔒" },
   { id: "payouts", label: "Payouts", emoji: "💸" },
+  { id: "signups", label: "Signups", emoji: "📨" },
   { id: "settings", label: "Settings", emoji: "⚙️" },
 ];
 
@@ -1357,6 +1460,7 @@ export function AdminClient() {
             </div>
           )}
           {tab === "payouts" && <PayoutsView onOpenAgency={openAgency} />}
+          {tab === "signups" && <SignupsView />}
           {tab === "settings" && <SettingsView />}
         </main>
       </div>

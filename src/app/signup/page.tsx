@@ -1,10 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { LogoWord } from "../logo";
-import { createClient } from "@/lib/supabase";
 import { homeUrl } from "@/lib/host-routes";
 
 type Role = "chatter" | "agency";
@@ -42,7 +40,6 @@ function RoleCard({ selected, onClick, icon, title, desc }: {
 }
 
 export default function SignupPage() {
-  const router = useRouter();
   const [role, setRole] = useState<Role>("agency");
   const [agencyName, setAgencyName] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -50,77 +47,43 @@ export default function SignupPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  // Two-step signup: (1) collect the account form → Supabase sends a 6-digit
-  // OTP code to the email; (2) enter the code to activate the account.
-  // Supabase template needs to include `{{ .Token }}` (see project auth
-  // settings) — that part is configured out-of-band.
-  const [step, setStep] = useState<"form" | "otp">("form");
-  const [otp, setOtp] = useState("");
+  // v3 (temporary): signups no longer go straight into Supabase Auth. The
+  // form POSTs to /api/signup-request which stores the row for a human to
+  // review; the page then swaps to a confirmation screen. Once we
+  // reintroduce the OTP flow the "otp" state below returns.
+  const [step, setStep] = useState<"form" | "submitted">("form");
   // Same chatter-subdomain loop fix as /login — set href after hydration so
   // the link points back to the apex landing instead of looping the chatter
   // workspace's auth bounce.
   const [backHref, setBackHref] = useState("/");
   useEffect(() => { setBackHref(homeUrl()); }, []);
-  const supabase = createClient();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setLoading(true);
 
-    const { data, error: signUpError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          display_name: displayName,
-          role,
-          agency_name: role === "agency" ? agencyName : null,
-        },
-      },
+    // v3: POST to /api/signup-request instead of creating an auth user
+    // directly. Password is intentionally NOT collected during manual
+    // approval — once the admin approves, we (or the user) can set it later.
+    const res = await fetch("/api/signup-request", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email,
+        displayName,
+        role,
+        agencyName: role === "agency" ? agencyName : null,
+      }),
     });
-
-    if (signUpError) {
-      setError(signUpError.message);
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) {
+      setError(body.error || "Something went wrong. Please try again.");
       setLoading(false);
       return;
     }
-
-    // If email confirmations are enabled, Supabase returns a user without a
-    // session — we then ask the user to enter the OTP code we just emailed.
-    // If confirmations are OFF (dev / trusted domain) a session is issued
-    // immediately and we can jump straight to the dashboard.
-    if (data.session) {
-      router.push("/dashboard");
-      router.refresh();
-    } else {
-      setStep("otp");
-      setLoading(false);
-    }
-  }
-
-  async function handleVerify(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-    const token = otp.trim();
-    if (!/^\d{6}$/.test(token)) {
-      setError("Enter the 6-digit code from your email.");
-      setLoading(false);
-      return;
-    }
-    const { error: verifyErr } = await supabase.auth.verifyOtp({
-      email,
-      token,
-      type: "signup",
-    });
-    if (verifyErr) {
-      setError(verifyErr.message);
-      setLoading(false);
-      return;
-    }
-    router.push("/dashboard");
-    router.refresh();
+    setStep("submitted");
+    setLoading(false);
   }
 
   return (
@@ -155,46 +118,22 @@ export default function SignupPage() {
         </div>
 
         <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[16px] p-7">
-          {step === "otp" ? (
-            <form onSubmit={handleVerify} className="space-y-4">
-              {error && (
-                <div className="bg-red-500/10 border border-red-500/20 rounded-[8px] px-3.5 py-3 text-[13px] text-red-400">
-                  {error}
-                </div>
-              )}
-              <div className="text-[13px] text-[var(--text-2)]" style={{ lineHeight: 1.6 }}>
-                We&apos;ve emailed a 6-digit code to <span className="text-[var(--text)] font-medium">{email}</span>. Enter it below to activate your account.
+          {step === "submitted" ? (
+            <div className="space-y-4 text-center">
+              <div className="mx-auto w-12 h-12 rounded-full bg-[rgba(0,175,240,0.12)] flex items-center justify-center text-[24px]">📨</div>
+              <div className="text-[16px] font-semibold text-[var(--text)]">Your application will be processed shortly.</div>
+              <div className="text-[13px] text-[var(--text-2)]" style={{ lineHeight: 1.65 }}>
+                We&apos;ve received your request for <span className="text-[var(--text)] font-medium">{email}</span> and will get back to you as soon as it&apos;s reviewed. For any questions, please contact{" "}
+                <a href="https://t.me/manimayn" target="_blank" rel="noreferrer" className="text-[var(--blue)] hover:underline font-medium">@manimayn</a>{" "}
+                on Telegram.
               </div>
-              <div>
-                <label className="block text-[12px] text-[var(--text-2)] mb-[7px] font-medium">Verification code</label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))}
-                  placeholder="000000"
-                  maxLength={6}
-                  required
-                  className="w-full bg-[var(--bg)] rounded-[8px] px-3.5 py-[10px] text-[18px] tracking-[0.4em] text-center text-[var(--text)] placeholder-[var(--text-3)] transition-colors outline-none"
-                  style={{ border: "1px solid var(--border)" }}
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={loading || otp.length !== 6}
-                className="w-full bg-[var(--blue)] hover:bg-[var(--blue-hover)] disabled:opacity-60 text-white rounded-[8px] py-[12px] text-[14px] font-semibold transition-colors border-none mt-1 outline-none cursor-pointer"
+              <Link
+                href="/"
+                className="inline-block mt-2 text-[13px] text-[var(--text-3)] hover:text-[var(--text-2)] transition-colors"
               >
-                {loading ? "Verifying…" : "Verify & continue"}
-              </button>
-              <button
-                type="button"
-                onClick={() => { setStep("form"); setError(""); }}
-                className="w-full text-[12px] text-[var(--text-3)] hover:text-[var(--text-2)] transition-colors"
-              >
-                ← Use a different email
-              </button>
-            </form>
+                ← Back to home
+              </Link>
+            </div>
           ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (

@@ -68,7 +68,12 @@ export async function GET(
         .order("created_at", { ascending: true })
         .limit(100),
     ]);
-    if (eventsRes.error) return Response.json({ error: eventsRes.error.message }, { status: 500 });
+    // chat_system_events (tip/ppv-paid banners) is OPTIONAL. If its table is
+    // missing or the query fails, we must still return `sends` so the chatter's
+    // blurred PPV bubbles render — the two datasets are independent and a
+    // missing banner table must never nuke PPV rendering.
+    if (eventsRes.error) console.warn("[chat-events] events query failed:", eventsRes.error.message);
+    if (sendsRes.error) console.warn("[chat-events] sends query failed:", sendsRes.error.message);
 
     type ItemJoin = { ordinal: number; ppvs: { preview_url: string | null; media_url: string | null } | { preview_url: string | null; media_url: string | null }[] | null };
     type SendRow = {
@@ -107,7 +112,7 @@ export async function GET(
       `[chat-events] model=${modelId} peer=${peerId} sends=${sends.length} urlsPerSend=[${sends.map((s) => s.previewUrls.length).join(",")}]`,
     );
     return Response.json({
-      events: (eventsRes.data ?? []) as ChatSystemEvent[],
+      events: (eventsRes.error ? [] : (eventsRes.data ?? [])) as ChatSystemEvent[],
       sends,
     });
   } catch (err: unknown) {

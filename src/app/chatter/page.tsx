@@ -819,10 +819,11 @@ export default function ChatterPage() {
       // returned for the PPV (we render our own virtual with "(Paid|Unpaid)"
       // caption) AND the empty paid-media "ghost" (outgoing, no text, no
       // media) gramJS emits for sendPaidMedia messages.
-      // Widened from 60s → 300s so a real outgoing paid-media copy that
-      // arrives with a slightly different Telegram timestamp still gets
-      // recognised as "the same PPV" and stays hidden behind the virtual.
-      const virtualWindowSec = 300;
+      // Wide window (15 min) so a real outgoing media copy that Telegram
+      // returned with a drifted timestamp still gets recognised as "the same
+      // PPV" and stays hidden behind the virtual. Safe because near-simultaneous
+      // non-PPV outgoing photos are rare, and the virtual carries the caption.
+      const virtualWindowSec = 900;
       const virtualsAtFilter = ppvVirtualsRef.current;
       const listForState = list.filter((m) => {
         if (!m.isOutgoing) return true;
@@ -2024,6 +2025,45 @@ export default function ChatterPage() {
     return (
       <div className="h-[100dvh] w-full flex items-center justify-center bg-[#0d1117]">
         <div className="inline-block w-8 h-8 border-2 border-[#374151] border-t-[#00AFF0] rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // v3: models exist but none have @ppvstarbot connected → the chip row is
+  // empty and no model can be selected. Show a clear message instead of a
+  // blank workspace. (connectedModelIds === null means the probe is still
+  // running — keep the normal loading UI in that case.)
+  if (models.length > 0 && connectedModelIds !== null && modelOptions.length === 0) {
+    const isAgency = role === "agency";
+    return (
+      <div
+        className="h-[100dvh] w-full flex items-center justify-center text-white p-6"
+        style={{ background: "radial-gradient(900px 520px at 50% 42%, rgba(0,175,240,0.16) 0%, rgba(0,175,240,0.04) 35%, rgba(0,175,240,0) 65%), #0a1220" }}
+      >
+        <div className="max-w-md w-full bg-[#111827]/80 backdrop-blur rounded-2xl border border-[#1f2937] p-8 text-center shadow-2xl">
+          <div className="text-[36px]">🤖</div>
+          <h1 className="mt-3 text-[20px] font-semibold">
+            {isAgency ? "Connect @ppvstarbot to a creator" : "No creators are ready yet"}
+          </h1>
+          <p className="mt-2 text-[13px] text-[#9ca3af] leading-relaxed">
+            {isAgency
+              ? "None of your creators have @ppvstarbot connected via Telegram Chat Automation yet. Open the Creators tab in your dashboard and connect the bot — creators appear here once connected."
+              : "None of your assigned creators have @ppvstarbot connected yet. Ask your agency to connect the bot for a creator — they'll show up here automatically."}
+          </p>
+          <div className="mt-6 flex gap-2 justify-center">
+            {isAgency && (
+              <button
+                onClick={() => { const t = dashboardUrl("agency"); if (/^https?:/i.test(t)) window.location.href = t; else router.push(t); }}
+                className="px-4 py-2.5 rounded-lg bg-[#00AFF0] hover:bg-[#0098D4] text-[13px] font-semibold transition-colors"
+              >
+                Go to Creators
+              </button>
+            )}
+            <button onClick={handleLogout} className="px-4 py-2.5 rounded-lg bg-[#1f2937] hover:bg-[#2a2d35] text-[13px] font-semibold transition-colors">
+              Log out
+            </button>
+          </div>
+        </div>
       </div>
     );
   }

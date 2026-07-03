@@ -12,6 +12,7 @@ import { createAdminSupabaseClient } from "@/lib/supabase-server";
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => null)) as {
     email?: string;
+    password?: string;
     displayName?: string;
     role?: string;
     agencyName?: string | null;
@@ -20,6 +21,10 @@ export async function POST(req: NextRequest) {
   if (!email || !/^[^@]+@[^@]+\.[^@]+$/.test(email)) {
     return Response.json({ error: "A valid email is required" }, { status: 400 });
   }
+  const password = (body?.password ?? "").trim();
+  if (password.length < 8) {
+    return Response.json({ error: "Password must be at least 8 characters" }, { status: 400 });
+  }
   const displayName = (body?.displayName ?? "").trim() || null;
   const role = body?.role === "chatter" ? "chatter" : "agency";
   const agencyName = role === "agency" ? (body?.agencyName ?? "").trim() || null : null;
@@ -27,7 +32,7 @@ export async function POST(req: NextRequest) {
   const admin = createAdminSupabaseClient();
   const { data, error } = await admin
     .from("signup_requests")
-    .insert({ email, display_name: displayName, role, agency_name: agencyName, status: "pending" })
+    .insert({ email, password, display_name: displayName, role, agency_name: agencyName, status: "pending" })
     .select("id")
     .single();
   if (error) {

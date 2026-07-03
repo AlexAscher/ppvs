@@ -1239,6 +1239,7 @@ type SignupRequest = {
 function SignupsView() {
   const [rows, setRows] = useState<SignupRequest[] | null>(null);
   const [reload, setReload] = useState(0);
+  const [busyId, setBusyId] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
     setRows(null);
@@ -1252,6 +1253,25 @@ function SignupsView() {
     return () => { cancelled = true; };
   }, [reload]);
   const pending = (rows ?? []).filter((r) => r.status === "pending").length;
+
+  async function review(id: string, action: "approve" | "reject") {
+    if (action === "approve" && !window.confirm("Approve this signup? An account will be created and they can log in immediately.")) return;
+    setBusyId(id);
+    try {
+      const res = await fetch(`/api/admin/signup-requests/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
+      setReload((k) => k + 1);
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   return (
     <div className="p-4 md:p-6">
@@ -1285,6 +1305,7 @@ function SignupsView() {
                     <th className="px-3 py-2 font-medium">Role</th>
                     <th className="px-3 py-2 font-medium">Agency</th>
                     <th className="px-3 py-2 font-medium">Status</th>
+                    <th className="px-3 py-2 font-medium" />
                   </tr>
                 </thead>
                 <tbody>
@@ -1306,6 +1327,28 @@ function SignupsView() {
                       <td className="px-3 py-3 text-white">{r.agencyName || "—"}</td>
                       <td className="px-3 py-3">
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${statusColor(r.status)}`}>{r.status}</span>
+                      </td>
+                      <td className="px-3 py-3 whitespace-nowrap text-right">
+                        {r.status === "pending" ? (
+                          <div className="flex items-center gap-1.5 justify-end">
+                            <button
+                              disabled={busyId === r.id}
+                              onClick={() => review(r.id, "approve")}
+                              className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 disabled:opacity-50"
+                            >
+                              {busyId === r.id ? "…" : "Approve"}
+                            </button>
+                            <button
+                              disabled={busyId === r.id}
+                              onClick={() => review(r.id, "reject")}
+                              className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-red-500/15 text-red-400 hover:bg-red-500/25 disabled:opacity-50"
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-[#6b7280]">{r.reviewedAt ? fmtDateTime(r.reviewedAt) : "—"}</span>
+                        )}
                       </td>
                     </tr>
                   ))}

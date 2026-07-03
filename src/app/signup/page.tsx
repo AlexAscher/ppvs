@@ -71,6 +71,7 @@ export default function SignupPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         email,
+        password,
         displayName,
         role,
         agencyName: role === "agency" ? agencyName : null,

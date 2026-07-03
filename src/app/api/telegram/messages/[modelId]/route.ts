@@ -143,10 +143,12 @@ export async function GET(
         const now = Date.now();
         if (now - (msgLogTs.get(modelId) ?? 0) > 30_000) {
           msgLogTs.set(modelId, now);
-          const sample = msgs.slice(0, 5).map((m) => ({
+          const sample = msgs.slice(0, 6).map((m) => ({
             id: m.id,
             out: m.out ?? null,
             from: peerUserId(m.fromId),
+            mediaCls: m.media ? (m.media as { className?: string }).className : null,
+            grp: m.groupedId ? m.groupedId.toString() : null,
           }));
           console.log(
             `[telegram/messages] model=${modelId} self=${selfId} peer=${peerId} sample=${JSON.stringify(sample)}`,

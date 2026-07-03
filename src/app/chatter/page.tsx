@@ -96,6 +96,9 @@ type ApiMessage = {
   /** Set by /api/telegram/messages for native Paid Media messages — always
    *  hidden in the chatter UI (our virtual PPV bubble represents them). */
   isPaidMedia?: boolean;
+  /** Optimistic PPV bubble payload (client-only, negative id). Rendered as a
+   *  single self-contained album bubble, same as the persistent virtual. */
+  ppv?: { urls: string[]; caption: string; label: string } | null;
 };
 
 type ActivityState = {
@@ -851,12 +854,12 @@ export default function ChatterPage() {
         // message with the same text within ±60s shows up from the server.
         const optimistic = prev.filter((m) => m.id < 0);
         const stillOptimistic = optimistic.filter((o) => {
-          // PPV media placeholders are dropped once a virtual PPV from
-          // /api/chat-events appears in the same ±60s window — the virtual
-          // is the persistent blur that replaces the optimistic one.
-          if (o.media) {
+          // Optimistic PPV bubble (ppv field) OR legacy media placeholder →
+          // dropped once a virtual PPV from /api/chat-events appears in the
+          // same ±120s window (the persistent virtual replaces it).
+          if (o.ppv || o.media) {
             return !virtualsAtFilter.some(
-              (v) => Math.abs(v.createdAtSec - o.date) < 60,
+              (v) => Math.abs(v.createdAtSec - o.date) < 120,
             );
           }
           return !listForState.some(
@@ -1422,54 +1425,27 @@ export default function ChatterPage() {
       // posts to the chat now). Replaced by the real message once
       // pollPpvSendStatus sees delivery.
       if (!wasScheduled) {
-        // Same format as the persistent virtual so the optimistic→virtual
-        // handoff is seamless. Just-sent → always (Unpaid).
-        const priceLine = priceForSend > 0
+        // v3: optimistic PPV is ONE self-contained bubble (ppv field), same
+        // renderer as the persistent virtual — so it can never render as a
+        // giant single photo or split. Just-sent → always (Unpaid).
+        const label = priceForSend > 0
           ? `🔒 PPV · ${itemCount} item${itemCount === 1 ? "" : "s"} · ${priceForSend} ⭐ (Unpaid)`
           : `🎁 Free content · ${itemCount} item${itemCount === 1 ? "" : "s"}`;
-        const placeholderText = capturedCaption.trim()
-          ? `${capturedCaption.trim()}\n${priceLine}`
-          : priceLine;
-        // Visual placeholders: one ApiMessage per selected PPV item, joined
-        // by a synthetic groupedId so the UI renders them as a single album
-        // (same look as the real Telegram message that lands later). Each
-        // item carries the pre-blurred preview_url via `optimisticUrl` so
-        // the chatter sees the actual blurred jpeg, not just emoji text.
         const orderedItems = ordered
           .map((id) => ppvItems.find((p) => p.id === id))
           .filter((p): p is NonNullable<typeof p> => !!p);
-        const groupedId = `optimistic_${optimisticPpvId}`;
+        const urls = orderedItems.map((item) => `/api/ppv/file/${item.id}?kind=original`);
         const nowSec = Math.floor(Date.now() / 1000);
-        const optimisticMessages: ApiMessage[] = orderedItems.length > 0
-          ? orderedItems.map((item, idx) => {
-              // v3: chatter sees the ORIGINALS in their workspace, not the
-              // pre-blurred preview. Hit the signed-url endpoint so the
-              // private ppvs bucket doesn't 403 the direct URL.
-              const origUrl = `/api/ppv/file/${item.id}?kind=original`;
-              return {
-                id: optimisticPpvId - idx,
-                text: idx === 0 ? placeholderText : "",
-                date: nowSec,
-                isOutgoing: true,
-                groupedId: orderedItems.length > 1 ? groupedId : null,
-                media: {
-                  type: "photo" as const,
-                  thumbDataUrl: null,
-                  width: 400,
-                  height: 600,
-                  optimisticUrl: origUrl,
-                },
-              };
-            })
-          : [
-              {
-                id: optimisticPpvId,
-                text: placeholderText,
-                date: nowSec,
-                isOutgoing: true,
-              },
-            ];
-        setApiMessages((prev) => [...prev, ...optimisticMessages]);
+        const optimisticMsg: ApiMessage = {
+          id: optimisticPpvId,
+          text: "",
+          date: nowSec,
+          isOutgoing: true,
+          groupedId: null,
+          media: null,
+          ppv: { urls, caption: capturedCaption.trim(), label },
+        };
+        setApiMessages((prev) => [...prev, optimisticMsg]);
       }
       // POST returns immediately — Telegram upload runs in background via
       // next/server `after()`. Clear the compose UI and follow the outcome.
@@ -1855,12 +1831,13 @@ export default function ChatterPage() {
         }
         return {
           id: String(m.id),
-          text: m.text || (media ? "" : "—"),
+          text: m.ppv ? "" : (m.text || (media ? "" : "—")),
           time: formatTime(m.date),
           isChatter: m.isOutgoing,
-          media,
+          media: m.ppv ? null : media,
           replyPreview,
-          groupedId: m.groupedId ?? null,
+          groupedId: m.ppv ? null : (m.groupedId ?? null),
+          ppv: m.ppv ?? null,
         };
       }),
     [apiMessages, selectedModelId, selectedDialog],

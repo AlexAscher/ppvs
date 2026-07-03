@@ -103,6 +103,9 @@ export async function GET(
       };
     });
 
+    console.log(
+      `[chat-events] model=${modelId} peer=${peerId} sends=${sends.length} urlsPerSend=[${sends.map((s) => s.previewUrls.length).join(",")}]`,
+    );
     return Response.json({
       events: (eventsRes.data ?? []) as ChatSystemEvent[],
       sends,

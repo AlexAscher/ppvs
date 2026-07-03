@@ -39,13 +39,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return Response.json({ ok: true, status: "rejected" });
   }
 
-  // approve → create the account
-  if (!r.password) {
-    return Response.json({ error: "No password stored for this request — reject and ask them to re-apply." }, { status: 400 });
-  }
+  // approve → create the account. Use the password the user chose at signup;
+  // for legacy requests captured before we stored it, generate a temp one and
+  // hand it back to the admin to share (the user can change it later).
+  const usedGenerated = !r.password;
+  const password =
+    r.password ||
+    `Ppv-${Math.random().toString(36).slice(2, 8)}${Math.floor(1000 + Math.random() * 9000)}`;
   const { error: createErr } = await admin.auth.admin.createUser({
     email: r.email,
-    password: r.password,
+    password,
     email_confirm: true,
     user_metadata: {
       display_name: r.display_name ?? undefined,
@@ -60,5 +63,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     .from("signup_requests")
     .update({ status: "approved", reviewed_at: new Date().toISOString(), password: null })
     .eq("id", id);
-  return Response.json({ ok: true, status: "approved" });
+  return Response.json({
+    ok: true,
+    status: "approved",
+    // Only surface the password when WE generated it (legacy request) — for
+    // normal requests the user already knows their own password.
+    tempPassword: usedGenerated ? password : null,
+  });
 }

@@ -1265,6 +1265,11 @@ function SignupsView() {
       });
       const j = await res.json();
       if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
+      if (j.tempPassword) {
+        window.alert(
+          `Account created. This request had no stored password, so a temporary one was generated:\n\n${j.tempPassword}\n\nShare it with the user — they can change it after logging in.`,
+        );
+      }
       setReload((k) => k + 1);
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : "Failed");

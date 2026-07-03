@@ -419,7 +419,7 @@ export default function LandingPage() {
         <section className="final-cta" style={{ textAlign: "center", padding: "104px 0", position: "relative" }}>
           <div className="wrap" style={{ maxWidth: 1200, margin: "0 auto", padding: "0 48px", position: "relative" }}>
             <h2 style={{ fontSize: 40, fontWeight: 700, marginBottom: 14 }}>Ready to monetize your Telegram audience?</h2>
-            <p style={{ color: C.textDim, fontSize: 17, marginBottom: 30 }}>Join creators and agencies using PPVS to turn conversations into revenue.</p>
+            <p style={{ color: C.textDim, fontSize: 17, marginBottom: 30 }}>Turn conversations into revenue on a more personal level.</p>
             <Link href={ctaHref} className="btn btn-primary btn-lg">Start Selling PPVs 💸</Link>
             <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 7, fontSize: 13, color: C.textFaint, flexWrap: "wrap", marginTop: 18 }}>
               <span>No KYC</span><span style={{ color: C.line }}>•</span><span>No monthly fees</span><span style={{ color: C.line }}>•</span><span>No setup costs</span>

@@ -399,16 +399,15 @@ export default function ChatterPage() {
         if (cancelled) return;
         const list = rows ?? [];
         setModels(list);
-        // If we arrived via the Inbox deep-link, pick that model and stash
-        // the peer so the dialogs effect can auto-select it once dialogs
-        // arrive. Otherwise default to the first model.
+        // Deep-link (Inbox → /chatter?modelId=...) still wins. Otherwise we
+        // wait — the auto-select useEffect below picks the first model that
+        // has @ppvstarbot connected, so vault / chats / dashboard don't
+        // briefly render for an unconnected model.
         const deep = initialDeepLinkRef.current;
         const wanted = deep.modelId && list.find((m) => m.id === deep.modelId);
         if (wanted) {
           setSelectedModelId(wanted.id);
           deepLinkPeerRef.current = deep.peerId;
-        } else if (list.length > 0) {
-          setSelectedModelId(list[0].id);
         }
       } else {
         // A chatter can be assigned to several models — load every one so
@@ -442,13 +441,14 @@ export default function ChatterPage() {
           const list = rows ?? [];
           if (list.length > 0) {
             setModels(list);
+            // Same deferred selection as the agency branch — wait for the
+            // connection-status probe before picking a default so we never
+            // preview an unconnected model.
             const deep = initialDeepLinkRef.current;
             const wanted = deep.modelId && list.find((m) => m.id === deep.modelId);
             if (wanted) {
               setSelectedModelId(wanted.id);
               deepLinkPeerRef.current = deep.peerId;
-            } else {
-              setSelectedModelId(list[0].id);
             }
           }
         }
@@ -816,17 +816,27 @@ export default function ChatterPage() {
       // returned for the PPV (we render our own virtual with "(Paid|Unpaid)"
       // caption) AND the empty paid-media "ghost" (outgoing, no text, no
       // media) gramJS emits for sendPaidMedia messages.
-      const virtualWindowSec = 60;
+      // Widened from 60s → 300s so a real outgoing paid-media copy that
+      // arrives with a slightly different Telegram timestamp still gets
+      // recognised as "the same PPV" and stays hidden behind the virtual.
+      const virtualWindowSec = 300;
       const virtualsAtFilter = ppvVirtualsRef.current;
       const listForState = list.filter((m) => {
         if (!m.isOutgoing) return true;
         // Empty paid-media ghost: outgoing, blank text, no media.
         if (!m.text && !m.media) return false;
-        // Outgoing media within ±60s of a virtual = the real PPV copy.
+        // Outgoing media within ±virtualWindowSec of ANY virtual (or with an
+        // exact caption match) = the real PPV copy Telegram returned; keep
+        // the virtual, drop this duplicate.
         if (m.media) {
-          return !virtualsAtFilter.some(
+          const near = virtualsAtFilter.some(
             (v) => Math.abs(m.date - v.createdAtSec) < virtualWindowSec,
           );
+          if (near) return false;
+          // Caption-match fallback: if Telegram date is way off, match by
+          // caption instead so we still drop the duplicate photo tile.
+          const captionMatch = m.text && virtualsAtFilter.some((v) => v.caption && v.caption.trim() === m.text.trim());
+          if (captionMatch) return false;
         }
         return true;
       });
@@ -1968,6 +1978,20 @@ export default function ChatterPage() {
       .catch(() => setConnectedModelIds(new Set()));
     return () => { cancelled = true; };
   }, [models]);
+  // Once we know which models have @ppvstarbot connected, pick the first
+  // one automatically so vault / chats / dashboard immediately reflect an
+  // usable model. Also clears selection if it's pointing at an unconnected
+  // model (e.g. bot was just removed).
+  useEffect(() => {
+    if (!connectedModelIds) return;
+    if (selectedModelId && !connectedModelIds.has(selectedModelId)) {
+      setSelectedModelId(null);
+    }
+    if (!selectedModelId) {
+      const first = models.find((m) => connectedModelIds.has(m.id));
+      if (first) setSelectedModelId(first.id);
+    }
+  }, [connectedModelIds, models, selectedModelId]);
   const modelOptions = useMemo(
     () =>
       models

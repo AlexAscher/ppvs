@@ -93,6 +93,9 @@ type ApiMessage = {
   media?: ApiMessageMedia | null;
   groupedId?: string | null;
   replyTo?: { msgId: number; quoteText: string | null } | null;
+  /** Set by /api/telegram/messages for native Paid Media messages — always
+   *  hidden in the chatter UI (our virtual PPV bubble represents them). */
+  isPaidMedia?: boolean;
 };
 
 type ActivityState = {
@@ -823,18 +826,19 @@ export default function ChatterPage() {
       const virtualsAtFilter = ppvVirtualsRef.current;
       const listForState = list.filter((m) => {
         if (!m.isOutgoing) return true;
-        // Empty paid-media ghost: outgoing, blank text, no media.
+        // Native Paid Media copy (the message the business bot sent) — ALWAYS
+        // hidden. Our virtual PPV bubble represents it, and its caption text
+        // would otherwise split the virtual album into single photos.
+        if (m.isPaidMedia) return false;
+        // Empty ghost (outgoing, blank text, no media) from sendPaidMedia.
         if (!m.text && !m.media) return false;
-        // Outgoing media within ±virtualWindowSec of ANY virtual (or with an
-        // exact caption match) = the real PPV copy Telegram returned; keep
-        // the virtual, drop this duplicate.
+        // Fallback (non-native blur album) — hide the outgoing media copy
+        // that lands within ±window of a virtual, or matches its caption.
         if (m.media) {
           const near = virtualsAtFilter.some(
             (v) => Math.abs(m.date - v.createdAtSec) < virtualWindowSec,
           );
           if (near) return false;
-          // Caption-match fallback: if Telegram date is way off, match by
-          // caption instead so we still drop the duplicate photo tile.
           const captionMatch = m.text && virtualsAtFilter.some((v) => v.caption && v.caption.trim() === m.text.trim());
           if (captionMatch) return false;
         }
@@ -1417,11 +1421,14 @@ export default function ChatterPage() {
       // posts to the chat now). Replaced by the real message once
       // pollPpvSendStatus sees delivery.
       if (!wasScheduled) {
+        // Same format as the persistent virtual so the optimistic→virtual
+        // handoff is seamless. Just-sent → always (Unpaid).
+        const priceLine = priceForSend > 0
+          ? `🔒 PPV · ${itemCount} item${itemCount === 1 ? "" : "s"} · ${priceForSend} ⭐ (Unpaid)`
+          : `🎁 Free content · ${itemCount} item${itemCount === 1 ? "" : "s"}`;
         const placeholderText = capturedCaption.trim()
-          ? capturedCaption
-          : priceForSend > 0
-            ? `🔒 PPV · ${itemCount} item${itemCount > 1 ? "s" : ""} · ${priceForSend} ⭐`
-            : `🎁 Free content · ${itemCount} item${itemCount > 1 ? "s" : ""}`;
+          ? `${capturedCaption.trim()}\n${priceLine}`
+          : priceLine;
         // Visual placeholders: one ApiMessage per selected PPV item, joined
         // by a synthetic groupedId so the UI renders them as a single album
         // (same look as the real Telegram message that lands later). Each
@@ -1885,9 +1892,11 @@ export default function ChatterPage() {
       const groupedId = v.previewUrls.length > 1 ? `ppv_${v.sendId}` : null;
       const isPaid = v.status === "paid" || v.status === "delivered";
       const captionLine = v.caption?.trim() || "";
+      const n = v.previewUrls.length;
+      // v3 format: [caption]\n🔒 PPV · N items · X ⭐ (Paid|Unpaid)
       const priceLine = v.priceStars > 0
-        ? `Pay ${v.priceStars} ⭐ (${isPaid ? "Paid" : "Unpaid"})`
-        : "🎁 Free content";
+        ? `🔒 PPV · ${n} item${n === 1 ? "" : "s"} · ${v.priceStars} ⭐ (${isPaid ? "Paid" : "Unpaid"})`
+        : `🎁 Free content · ${n} item${n === 1 ? "" : "s"}`;
       const fullText = captionLine ? `${captionLine}\n${priceLine}` : priceLine;
       return v.previewUrls.map((url, idx) => ({
         id: `ppv_${v.sendId}_${idx}`,

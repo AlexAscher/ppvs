@@ -26,11 +26,26 @@ export async function GET(req: NextRequest) {
   if (ids.length === 0) return Response.json({ statuses: {} });
 
   const admin = createAdminSupabaseClient();
+  // Access set: models the user owns as an agency PLUS models they're linked
+  // to as a chatter (agency_chatters). The old query only matched
+  // agency_user_id = user.id, so for a chatter it returned nothing → the
+  // chatter workspace couldn't resolve any connected model and rendered
+  // blank. Union both.
+  const [{ data: owned }, { data: assigned }] = await Promise.all([
+    admin.from("models").select("id").eq("agency_user_id", user.id).in("id", ids),
+    admin.from("agency_chatters").select("model_id").eq("chatter_id", user.id).in("model_id", ids),
+  ]);
+  const allowed = new Set<string>([
+    ...((owned ?? []) as { id: string }[]).map((m) => m.id),
+    ...((assigned ?? []) as { model_id: string | null }[]).map((r) => r.model_id).filter((x): x is string => !!x),
+  ]);
+  const allowedIds = ids.filter((id) => allowed.has(id));
+  if (allowedIds.length === 0) return Response.json({ statuses: {} });
+
   const { data: rows, error } = await admin
     .from("models")
     .select("id, agency_user_id, tg_user_id, session_string, api_id, api_hash, session_status")
-    .in("id", ids)
-    .eq("agency_user_id", user.id);
+    .in("id", allowedIds);
   if (error) return Response.json({ error: error.message }, { status: 500 });
 
   const statuses: Record<string, { connected: boolean; tgUserId: string | null }> = {};

@@ -20,6 +20,11 @@ export type MessageItem = {
   // message list and `quoteText` to render the highlighted snippet
   // (newer Telegram protocol).
   replyTo: { msgId: number; quoteText: string | null } | null;
+  // True when the underlying Telegram message is native Paid Media
+  // (MessageMediaPaidMedia). Our chatter UI renders its own virtual PPV
+  // bubble from ppv_sends, so the real paid-media copy is always hidden to
+  // avoid a duplicate (and the caption text breaking the album grouping).
+  isPaidMedia: boolean;
 };
 
 // ── message direction (self-id based) ──────────────────────────────────────
@@ -156,6 +161,12 @@ export async function GET(
             media: extractMessageMedia(m),
             groupedId: m.groupedId ? m.groupedId.toString() : null,
             replyTo: extractReplyTo(m),
+            // MessageMediaPaidMedia isn't handled by extractMessageMedia
+            // (returns null), so detect it directly off the raw media.
+            isPaidMedia:
+              !!m.media &&
+              (m.media instanceof Api.MessageMediaPaidMedia ||
+                (m.media as { className?: string }).className === "MessageMediaPaidMedia"),
           }))
           .reverse();
       },
@@ -267,6 +278,7 @@ export async function POST(
                   : null,
             }
           : null,
+      isPaidMedia: false,
     };
     return Response.json({ ok: true, message });
   } catch (err: unknown) {

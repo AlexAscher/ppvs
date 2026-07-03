@@ -429,7 +429,7 @@ function ConversationsStartedCard({
   return (
     <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-5 flex flex-col">
       <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
-        <h2 className="text-[16px] font-semibold text-white">Conversations started 📊</h2>
+        <h2 className="text-[16px] font-semibold text-white">Conversations Started 📊</h2>
         <span className="text-[11px] text-[#9ca3af]">Last 7 days</span>
       </div>
       {bars.length === 0 ? (
@@ -762,7 +762,7 @@ function DashboardTab() {
             {/* Recent Sales — last 10 paid/delivered. Lives in the left
                 column so the right column (Top Fans) stays full-height. */}
             <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-5 flex flex-col">
-              <h2 className="text-[16px] font-semibold text-white mb-4">Recent sales 💸</h2>
+              <h2 className="text-[16px] font-semibold text-white mb-4">Recent Sales 💸</h2>
               <div className="flex-1 overflow-y-auto max-h-[360px] space-y-1.5 pr-2 custom-scrollbar">
                 {(stats?.recentSales ?? []).length === 0 ? (
                   <div className="py-6 text-center text-[13px] text-[#6b7280]">

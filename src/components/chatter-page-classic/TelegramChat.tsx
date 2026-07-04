@@ -81,10 +81,17 @@ export interface Message {
    *  not in Telegram. media/reply/groupedId are ignored on system msgs. */
   system?: { kind: "tip_paid" | "ppv_paid" } | null;
   /** Self-contained PPV bubble. When present the message renders as a
-   *  single fixed album (grid of `urls`) with `caption` above and `label`
-   *  ("🔒 PPV · N items · X ⭐ (Unpaid)") below — no cross-message grouping,
-   *  so it can never split into separate photos. Overrides media/groupedId. */
-  ppv?: { urls: string[]; caption: string; label: string } | null;
+   *  single fixed album (grid of `items`) with `caption` above and `label`
+   *  ("N items · X ⭐ (Unpaid)") in a pill below — no cross-message grouping,
+   *  so it can never split into separate photos. Overrides media/groupedId.
+   *  Video items show a first-frame + play overlay; `readMaxId` (the max real
+   *  Telegram message id this send maps to) drives the ✓/✓✓ ticks. */
+  ppv?: {
+    items: { orig: string; poster: string; kind: "photo" | "video" }[];
+    caption: string;
+    label: string;
+    readMaxId?: number;
+  } | null;
 }
 
 export interface ChatListItem {
@@ -486,9 +493,9 @@ function ReadTicks({ read }: { read: boolean }) {
       style={{ color }}
     >
       {read ? (
-        <svg width="20" height="10" viewBox="0 0 20 10" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M1 5.2 L3.9 8.1 L8.7 1.9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-          <path d="M10.8 5.2 L13.7 8.1 L18.5 1.9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        <svg width="15" height="10" viewBox="0 0 15 10" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M1 5.2 L4 8.1 L9 1.9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M5.4 5.2 L8.3 8.1 L13.3 1.9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       ) : (
         <svg width="12" height="10" viewBox="0 0 12 10" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -942,8 +949,12 @@ export function TelegramChat({
             if (chunk.kind === "single" && chunk.msg.ppv) {
               const m = chunk.msg;
               const ppv = m.ppv!;
-              const urls = ppv.urls;
-              const cols = urls.length === 1 ? 1 : 2;
+              const items = ppv.items;
+              const cols = items.length === 1 ? 1 : 2;
+              const ppvRead =
+                readOutboxMaxId !== undefined &&
+                (ppv.readMaxId ?? 0) > 0 &&
+                (ppv.readMaxId ?? 0) <= readOutboxMaxId;
               return (
                 <div key={m.id} className="flex justify-end">
                   <div className="flex flex-col gap-1 items-end">
@@ -951,24 +962,47 @@ export function TelegramChat({
                       className="p-1 rounded-2xl inline-block bg-gradient-to-br from-[#00AFF0] to-[#0098D4] rounded-br-sm"
                       style={{ maxWidth: cols * 100 + (cols - 1) * 2 + 8 }}
                     >
-                      {urls.length > 0 && (
+                      {items.length > 0 && (
                         <div
                           className="grid gap-0.5 overflow-hidden rounded-xl"
                           style={{ gridTemplateColumns: `repeat(${cols}, 100px)` }}
                         >
-                          {urls.slice(0, 4).map((url, idx) => (
+                          {items.slice(0, 4).map((item, idx) => (
                             <button
                               key={idx}
                               type="button"
-                              onClick={() => setOpenMedia({ type: "photo", thumbDataUrl: null, fullUrl: url, width: 400, height: 600 })}
+                              onClick={() =>
+                                setOpenMedia(
+                                  item.kind === "video"
+                                    ? { type: "video", thumbDataUrl: null, fullUrl: item.orig, width: 400, height: 600, durationSec: null }
+                                    : { type: "photo", thumbDataUrl: null, fullUrl: item.orig, width: 400, height: 600 },
+                                )
+                              }
                               className="relative overflow-hidden bg-[#374151]"
                               style={{ width: 100, height: 100 }}
                             >
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={url} alt="" className="w-full h-full object-cover" draggable={false} />
-                              {idx === 3 && urls.length > 4 && (
+                              {item.kind === "video" ? (
+                                <>
+                                  <video
+                                    src={item.orig}
+                                    preload="metadata"
+                                    muted
+                                    playsInline
+                                    className="w-full h-full object-cover"
+                                  />
+                                  <div className="absolute inset-0 flex items-center justify-center">
+                                    <div className="w-7 h-7 rounded-full bg-black/55 flex items-center justify-center">
+                                      <svg width="12" height="12" viewBox="0 0 12 12" fill="white"><path d="M2 1.5 L10 6 L2 10.5 Z" /></svg>
+                                    </div>
+                                  </div>
+                                </>
+                              ) : (
+                                /* eslint-disable-next-line @next/next/no-img-element */
+                                <img src={item.orig} alt="" className="w-full h-full object-cover" draggable={false} />
+                              )}
+                              {idx === 3 && items.length > 4 && (
                                 <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white font-bold text-[16px]">
-                                  +{urls.length - 4}
+                                  +{items.length - 4}
                                 </div>
                               )}
                             </button>
@@ -988,7 +1022,7 @@ export function TelegramChat({
                     </div>
                     <div className="text-[10px] text-[#6b7280] px-1 flex items-center gap-1 justify-end">
                       {m.time}
-                      <ReadTicks read={readOutboxMaxId !== undefined && Number(m.id) > 0 && Number(m.id) <= readOutboxMaxId} />
+                      <ReadTicks read={ppvRead} />
                     </div>
                   </div>
                 </div>

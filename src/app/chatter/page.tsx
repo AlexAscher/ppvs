@@ -98,7 +98,34 @@ type ApiMessage = {
   isPaidMedia?: boolean;
   /** Optimistic PPV bubble payload (client-only, negative id). Rendered as a
    *  single self-contained album bubble, same as the persistent virtual. */
-  ppv?: { urls: string[]; caption: string; label: string } | null;
+  ppv?: PpvBubblePayload | null;
+};
+
+/** One media tile inside a PPV bubble (photo → <img>, video → <video>
+ *  first-frame + play overlay, click opens the original). */
+type PpvBubbleItem = { orig: string; poster: string; kind: "photo" | "video" };
+/** Rendered PPV bubble. `readMaxId` is the max real Telegram message id this
+ *  send maps to (for ✓/✓✓ ticks); 0/undefined = just-sent (single check). */
+type PpvBubblePayload = {
+  items: PpvBubbleItem[];
+  caption: string;
+  label: string;
+  readMaxId?: number;
+};
+
+/** A persistent PPV send surfaced from /api/chat-events, rendered as a
+ *  blurred-for-fan / original-for-chatter bubble. `readMaxId` is filled in
+ *  client-side by correlating against the hidden native paid-media messages. */
+type PpvVirtual = {
+  sendId: string;
+  code: string;
+  createdAtSec: number;
+  caption: string;
+  priceStars: number;
+  status: string;
+  paidAt: string | null;
+  items: PpvBubbleItem[];
+  readMaxId: number;
 };
 
 type ActivityState = {
@@ -187,28 +214,8 @@ export default function ChatterPage() {
   // message contains. Populated from /api/chat-events.sends.
   // Ref shadow so fetchMessages (in a stable useCallback) can read the
   // latest virtuals without being recreated each time the state changes.
-  const ppvVirtualsRef = useRef<{
-    sendId: string;
-    code: string;
-    createdAtSec: number;
-    caption: string;
-    priceStars: number;
-    status: string;
-    paidAt: string | null;
-    previewUrls: string[];
-  }[]>([]);
-  const [ppvVirtuals, setPpvVirtuals] = useState<
-    {
-      sendId: string;
-      code: string;
-      createdAtSec: number;
-      caption: string;
-      priceStars: number;
-      status: string;
-      paidAt: string | null;
-      previewUrls: string[];
-    }[]
-  >([]);
+  const ppvVirtualsRef = useRef<PpvVirtual[]>([]);
+  const [ppvVirtuals, setPpvVirtuals] = useState<PpvVirtual[]>([]);
   const [systemEvents, setSystemEvents] = useState<
     { id: string; kind: "tip_paid" | "ppv_paid"; body: string; createdAt: number }[]
   >([]);
@@ -770,7 +777,7 @@ export default function ChatterPage() {
           sends?: {
             id: string; code: string; created_at: string; caption: string | null;
             total_price: number; status: string; paid_at: string | null;
-            previewUrls: string[];
+            items: PpvBubbleItem[];
           }[];
         };
         const mapped = (ev.events ?? []).map((e) => ({
@@ -779,10 +786,25 @@ export default function ChatterPage() {
           body: e.body,
           createdAt: Math.floor(new Date(e.created_at).getTime() / 1000),
         }));
+        // The real native paid-media messages are hidden from the chat (see
+        // the listForState filter below), but we still need their Telegram ids
+        // to drive ✓/✓✓ ticks on the virtual PPV bubble. Collect (id, date)
+        // for every outgoing paid-media message so we can map each send to the
+        // max id it produced by timestamp proximity.
+        const paidOut = list
+          .filter((m) => m.isOutgoing && m.isPaidMedia && m.id > 0)
+          .map((m) => ({ id: m.id, date: m.date }));
+        const readMaxIdFor = (createdAtSec: number): number => {
+          let max = 0;
+          for (const p of paidOut) {
+            if (Math.abs(p.date - createdAtSec) <= 180 && p.id > max) max = p.id;
+          }
+          return max;
+        };
         // PPV sends → virtual blurred album messages so chatters always see
         // a blur (never the unblurred original) regardless of how Telegram
         // rendered the outgoing message. Will be merged into the chat below.
-        const nextVirtuals = (ev.sends ?? []).map((s) => ({
+        const nextVirtuals: PpvVirtual[] = (ev.sends ?? []).map((s) => ({
           sendId: s.id,
           code: s.code,
           createdAtSec: Math.floor(new Date(s.created_at).getTime() / 1000),
@@ -790,7 +812,8 @@ export default function ChatterPage() {
           priceStars: s.total_price > 0 ? Math.round(s.total_price * 77) : 0,
           status: s.status,
           paidAt: s.paid_at,
-          previewUrls: s.previewUrls,
+          items: s.items ?? [],
+          readMaxId: readMaxIdFor(Math.floor(new Date(s.created_at).getTime() / 1000)),
         }));
         ppvVirtualsRef.current = nextVirtuals;
         setPpvVirtuals(nextVirtuals);
@@ -1434,7 +1457,13 @@ export default function ChatterPage() {
         const orderedItems = ordered
           .map((id) => ppvItems.find((p) => p.id === id))
           .filter((p): p is NonNullable<typeof p> => !!p);
-        const urls = orderedItems.map((item) => `/api/ppv/file/${item.id}?kind=original`);
+        const isVideoUrl = (u: string | null | undefined) =>
+          !!u && /\.(mp4|mov|m4v|webm|mkv)(\?|$)/i.test(u);
+        const bubbleItems: PpvBubbleItem[] = orderedItems.map((item) => ({
+          orig: `/api/ppv/file/${item.id}?kind=original`,
+          poster: `/api/ppv/file/${item.id}?kind=preview`,
+          kind: isVideoUrl(item.media_url) ? "video" : "photo",
+        }));
         const nowSec = Math.floor(Date.now() / 1000);
         const optimisticMsg: ApiMessage = {
           id: optimisticPpvId,
@@ -1443,7 +1472,7 @@ export default function ChatterPage() {
           isOutgoing: true,
           groupedId: null,
           media: null,
-          ppv: { urls, caption: capturedCaption.trim(), label },
+          ppv: { items: bubbleItems, caption: capturedCaption.trim(), label },
         };
         setApiMessages((prev) => [...prev, optimisticMsg]);
       }
@@ -1516,7 +1545,7 @@ export default function ChatterPage() {
         if (data.status === "failed") {
           clearOptimistic();
           setNotice("");
-          setError(`PPV send failed: ${data.error ?? "unknown error"}`);
+          setError(`PPV send failed: ${data.error ?? "unknown error"} — please try again.`);
           return;
         }
       } catch {
@@ -1870,7 +1899,7 @@ export default function ChatterPage() {
     // never split into separate photos the way N grouped messages could.
     const virtualMsgs: (ChatMessage & { _sortKey: number })[] = ppvVirtuals.map((v) => {
       const isPaid = v.status === "paid" || v.status === "delivered";
-      const n = v.previewUrls.length;
+      const n = v.items.length;
       const label = v.priceStars > 0
         ? `${n} item${n === 1 ? "" : "s"} · ${v.priceStars} ⭐ (${isPaid ? "Paid" : "Unpaid"})`
         : `${n} item${n === 1 ? "" : "s"} · Free`;
@@ -1882,7 +1911,7 @@ export default function ChatterPage() {
         media: null,
         replyPreview: null,
         groupedId: null,
-        ppv: { urls: v.previewUrls, caption: v.caption?.trim() || "", label },
+        ppv: { items: v.items, caption: v.caption?.trim() || "", label, readMaxId: v.readMaxId },
         _sortKey: v.createdAtSec,
       };
     });
@@ -1943,9 +1972,13 @@ export default function ChatterPage() {
   // Automation. Fetched from /api/creators/connection-status; empty set
   // during load = show nothing yet so the chatter can't click into a
   // model that would silently fall back to the blur+link path.
+  // null = the connection probe hasn't resolved yet for the current models.
+  // We deliberately DON'T reset it to an empty Set when models is momentarily
+  // empty during load — leaving it null keeps `connectionProbing` true so a
+  // connected bot never flashes the "Connect @ppvstarbot" screen for a frame.
   const [connectedModelIds, setConnectedModelIds] = useState<Set<string> | null>(null);
   useEffect(() => {
-    if (models.length === 0) { setConnectedModelIds(new Set()); return; }
+    if (models.length === 0) return;
     let cancelled = false;
     const ids = models.map((m) => m.id).join(",");
     fetch(`/api/creators/connection-status?modelIds=${ids}`)
@@ -1955,9 +1988,12 @@ export default function ChatterPage() {
         const st = j.statuses as Record<string, { connected: boolean }>;
         setConnectedModelIds(new Set(Object.entries(st).filter(([, v]) => v.connected).map(([k]) => k)));
       })
-      .catch(() => setConnectedModelIds(new Set()));
+      .catch(() => { if (!cancelled) setConnectedModelIds(new Set()); });
     return () => { cancelled = true; };
   }, [models]);
+  // True while the connection probe hasn't resolved yet (models loaded but we
+  // don't yet know which have @ppvstarbot). Drives the loading spinner.
+  const connectionProbing = models.length > 0 && connectedModelIds === null;
   // Once we know which models have @ppvstarbot connected, pick the first
   // one automatically so vault / chats / dashboard immediately reflect an
   // usable model. Also clears selection if it's pointing at an unconnected
@@ -1995,6 +2031,21 @@ export default function ChatterPage() {
     return (
       <div className="h-[100dvh] w-full flex items-center justify-center bg-[#0d1117]">
         <div className="inline-block w-8 h-8 border-2 border-[#374151] border-t-[#00AFF0] rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // While the @ppvstarbot connection probe is still running for the current
+  // models, show a loader — never the connect screen or an empty workspace, so
+  // an already-connected creator doesn't flash "Connect @ppvstarbot" for a
+  // frame on load.
+  if (connectionProbing) {
+    return (
+      <div
+        className="h-[100dvh] w-full flex items-center justify-center text-white"
+        style={{ background: "radial-gradient(900px 520px at 50% 42%, rgba(0,175,240,0.16) 0%, rgba(0,175,240,0.04) 35%, rgba(0,175,240,0) 65%), #0a1220" }}
+      >
+        <div className="w-9 h-9 rounded-full border-2 border-white/20 border-t-[#00AFF0] animate-spin" />
       </div>
     );
   }

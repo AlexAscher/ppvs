@@ -5,12 +5,10 @@ import { withTelegramClient } from "@/lib/telegram-pool";
 import { createAdminSupabaseClient } from "@/lib/supabase-server";
 import {
   generatePpvCode,
-  sendBlurredPreviewWithLink,
   sendOriginalsAlbum,
   type PpvPreviewItem,
   type OriginalItem,
 } from "@/lib/ppv-delivery";
-import { ppvMediaPathFromUrl } from "@/lib/ppv-storage";
 import { consume, getClientIp, tooManyRequests } from "@/lib/rate-limit";
 import { createStarsInvoiceLink, starsToUsd } from "@/lib/stars";
 import { findActiveBusinessConnection, sendPaidMediaAsBusiness, type PaidMediaItem } from "@/lib/business-bot";
@@ -210,10 +208,6 @@ export async function POST(req: NextRequest) {
       .filter((p): p is PpvRow & { media_url: string } => !!p.media_url)
       .map((p) => ({ ppvId: p.id, mediaUrl: p.media_url, previewUrl: p.preview_url }));
 
-    // Map ppvId → media_url so the backfill callback can derive the preview
-    // storage path (same {userId}/{id}_preview.jpg convention as upload).
-    const mediaUrlByPpvId = new Map(previewItems.map((p) => [p.ppvId, p.mediaUrl]));
-
     // For the free-send path: build OriginalItem[] (same shape /api/ppv/deliver
     // uses) so we can reuse sendOriginalsAlbum directly.
     const originalItems: OriginalItem[] = ordered
@@ -236,32 +230,11 @@ export async function POST(req: NextRequest) {
       api_hash: auth.model.api_hash,
       previewItems,
       originalItems,
-      mediaUrlByPpvId,
       payUrl,
       priceStars,
       isFreeSend,
       scheduleDate,
     };
-
-    // Upload a freshly-generated blur as the item's preview_url so the next
-    // send skips the heavy original download. Derives the storage path from
-    // the original's path: {userId}/{id}.{ext} → {userId}/{id}_preview.jpg.
-    async function backfillPreview(ppvId: string, jpeg: Buffer): Promise<void> {
-      const mediaUrl = sendCtx.mediaUrlByPpvId.get(ppvId);
-      if (!mediaUrl) return;
-      const origPath = ppvMediaPathFromUrl(mediaUrl);
-      if (!origPath) return;
-      const previewPath = `${origPath.replace(/\.[^./]+$/, "")}_preview.jpg`;
-      const { error: upErr } = await admin.storage
-        .from("ppvs")
-        .upload(previewPath, jpeg, { contentType: "image/jpeg", upsert: true });
-      if (upErr) {
-        console.warn(`[ppv/send] preview backfill upload failed for ppv=${ppvId}:`, upErr.message);
-        return;
-      }
-      const publicUrl = admin.storage.from("ppvs").getPublicUrl(previewPath).data.publicUrl;
-      await admin.from("ppvs").update({ preview_url: publicUrl }).eq("id", ppvId);
-    }
 
     // ─── Background delivery ────────────────────────────────────────────────
     // We respond to the chatter immediately so the UI feels snappy. The
@@ -308,100 +281,82 @@ export async function POST(req: NextRequest) {
               console.warn("[ppv/send native] getMe failed:", e instanceof Error ? e.message : e);
             }
           }
+          // Paid sends are NATIVE-ONLY. No business connection or a failed
+          // sendPaidMedia throws → the outer catch marks the send `failed`
+          // with the reason, and the chatter UI surfaces a "please try again"
+          // line. We never fall back to a blurred preview + pay link.
           const conn = modelTgUserId
             ? await findActiveBusinessConnection(admin, modelTgUserId)
             : null;
-          if (conn) {
-            try {
-              // Build sendPaidMedia inputs from media URLs. Guess photo vs
-              // video by extension; sendPaidMediaAsBusiness downloads the file
-              // server-side and re-uploads as multipart so Telegram never has
-              // to fetch our Supabase URLs itself.
-              const isVideo = (u: string) =>
-                /\.(mp4|mov|m4v|webm|mkv)(\?|$)/i.test(u);
-              const items: PaidMediaItem[] = sendCtx.previewItems.map((p) => ({
-                kind: isVideo(p.mediaUrl) ? ("video" as const) : ("photo" as const),
-                url: p.mediaUrl,
-              }));
-              if (items.length > 0) {
-                const out = await sendPaidMediaAsBusiness({
-                  connectionId: conn.connectionId,
-                  chatId: sendCtx.peerId,
-                  stars: sendCtx.priceStars,
-                  payload: code,
-                  caption: sendCtx.caption,
-                  media: items,
-                });
-                console.log(`[ppv/send native] sent message=${out.messageId} via connection=${conn.connectionId}`);
-                await admin
-                  .from("ppv_sends")
-                  .update({ status: "sent", error: null })
-                  .eq("id", sendCtx.sendId);
-                return; // Done — Telegram handles blur + unlock.
-              }
-            } catch (e) {
-              const msg = e instanceof Error ? e.message : String(e);
-              console.warn("[ppv/send native] sendPaidMedia failed, falling back:", msg);
-              // Don't fail the whole send — fall through to blurred-link path.
-            }
+          if (!conn) {
+            throw new Error(
+              "@ppvstarbot is not connected to this creator yet — connect it, then try again.",
+            );
           }
+          // Build sendPaidMedia inputs from media URLs. Guess photo vs video by
+          // extension; sendPaidMediaAsBusiness downloads the file server-side
+          // and re-uploads as multipart so Telegram never fetches our URLs.
+          const isVideo = (u: string) => /\.(mp4|mov|m4v|webm|mkv)(\?|$)/i.test(u);
+          const items: PaidMediaItem[] = sendCtx.previewItems.map((p) => ({
+            kind: isVideo(p.mediaUrl) ? ("video" as const) : ("photo" as const),
+            url: p.mediaUrl,
+          }));
+          if (items.length === 0) throw new Error("No media to send.");
+          const out = await sendPaidMediaAsBusiness({
+            connectionId: conn.connectionId,
+            chatId: sendCtx.peerId,
+            stars: sendCtx.priceStars,
+            payload: code,
+            caption: sendCtx.caption,
+            media: items,
+          });
+          console.log(`[ppv/send native] sent message=${out.messageId} via connection=${conn.connectionId}`);
+          await admin
+            .from("ppv_sends")
+            .update({ status: "sent", error: null })
+            .eq("id", sendCtx.sendId);
+          return; // Done — Telegram handles blur + unlock.
         }
 
+        // Free sends only: push originals directly (paid sends are native-only
+        // and have already returned or thrown above).
         await withTelegramClient(
           sendCtx.modelId,
           sendCtx.session_string,
           sendCtx.api_id,
           sendCtx.api_hash,
           async (tg) => {
-            if (sendCtx.isFreeSend) {
-              // Originals straight to fan as a single album (forceAlbum=true)
-              // so multi-file free sends arrive as one grouped message
-              // instead of N individual messages. Cached file_ids are
-              // bypassed for this path — small cost, much better UX.
-              await sendOriginalsAlbum(
-                tg,
-                sendCtx.peerId,
-                sendCtx.accessHash,
-                sendCtx.originalItems,
-                sendCtx.caption,
-                async (ppvId, serialized) => {
-                  try {
-                    await admin.from("ppvs").update({ tg_file_id: serialized }).eq("id", ppvId);
-                  } catch (e: unknown) {
-                    console.error(
-                      `[ppv/send free] cache write failed for ppv=${ppvId}:`,
-                      e instanceof Error ? e.message : e,
-                    );
-                  }
-                },
-                true, // forceAlbum
-                sendCtx.scheduleDate,
-              );
-            } else {
-              await sendBlurredPreviewWithLink(
-                tg,
-                sendCtx.peerId,
-                sendCtx.accessHash,
-                sendCtx.previewItems,
-                sendCtx.caption,
-                sendCtx.payUrl,
-                sendCtx.priceStars,
-                backfillPreview,
-                sendCtx.scheduleDate,
-              );
-            }
+            // Originals straight to fan as a single album (forceAlbum=true)
+            // so multi-file free sends arrive as one grouped message
+            // instead of N individual messages. Cached file_ids are
+            // bypassed for this path — small cost, much better UX.
+            await sendOriginalsAlbum(
+              tg,
+              sendCtx.peerId,
+              sendCtx.accessHash,
+              sendCtx.originalItems,
+              sendCtx.caption,
+              async (ppvId, serialized) => {
+                try {
+                  await admin.from("ppvs").update({ tg_file_id: serialized }).eq("id", ppvId);
+                } catch (e: unknown) {
+                  console.error(
+                    `[ppv/send free] cache write failed for ppv=${ppvId}:`,
+                    e instanceof Error ? e.message : e,
+                  );
+                }
+              },
+              true, // forceAlbum
+              sendCtx.scheduleDate,
+            );
           },
           180_000,
         );
 
-        if (sendCtx.isFreeSend) {
-          await admin
-            .from("ppv_sends")
-            .update({ status: "delivered", delivered_at: new Date().toISOString(), error: null })
-            .eq("id", sendCtx.sendId);
-        } else {
-          await admin.from("ppv_sends").update({ status: "sent", error: null }).eq("id", sendCtx.sendId);
-        }
+        await admin
+          .from("ppv_sends")
+          .update({ status: "delivered", delivered_at: new Date().toISOString(), error: null })
+          .eq("id", sendCtx.sendId);
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : "Failed";
         console.error("[ppv/send background] error:", message);

@@ -21,6 +21,11 @@ export type ChatSystemEvent = {
   created_at: string;
 };
 
+/** One media item inside a PPV send, as the chatter bubble renders it.
+ *  `orig` = signed original (chatters see unblurred); `poster` = preview jpg
+ *  (public) used as a video first-frame; `kind` decides <img> vs <video>. */
+export type PpvBubbleItem = { orig: string; poster: string; kind: "photo" | "video" };
+
 export type PpvSendItem = {
   id: string;
   code: string;
@@ -29,8 +34,10 @@ export type PpvSendItem = {
   total_price: number;
   status: string;
   paid_at: string | null;
-  previewUrls: string[];
+  items: PpvBubbleItem[];
 };
+
+const VIDEO_EXT_RE = /\.(mp4|mov|m4v|webm|mkv)(\?|$)/i;
 
 export async function GET(
   req: NextRequest,
@@ -84,18 +91,30 @@ export async function GET(
     type ItemWithPpvId = ItemJoin & { ppv_id?: string | null };
     const sends: PpvSendItem[] = ((sendsRes.data ?? []) as SendRow[]).map((s) => {
       // v3: chatters see the ORIGINALS in their own workspace via the
-      // signed-URL endpoint (bucket is private). Falls back to preview_url
-      // only if we somehow don't have a ppv id.
+      // signed-URL endpoint (bucket is private). Each item also carries a
+      // public `poster` (preview jpg) + `kind` so videos render a first-frame
+      // + play overlay instead of a broken <img>.
       const items = (s.ppv_send_items ?? [])
         .slice()
         .sort((a, b) => (a.ordinal ?? 0) - (b.ordinal ?? 0))
-        .map((it) => {
+        .map((it): PpvBubbleItem | null => {
           const raw = it as ItemWithPpvId;
-          if (raw.ppv_id) return `/api/ppv/file/${raw.ppv_id}?kind=original`;
           const ppv = Array.isArray(raw.ppvs) ? raw.ppvs[0] ?? null : raw.ppvs;
-          return ppv?.media_url || ppv?.preview_url || null;
+          const mediaUrl = ppv?.media_url ?? null;
+          const kind: "photo" | "video" =
+            mediaUrl && VIDEO_EXT_RE.test(mediaUrl) ? "video" : "photo";
+          if (raw.ppv_id) {
+            return {
+              orig: `/api/ppv/file/${raw.ppv_id}?kind=original`,
+              poster: `/api/ppv/file/${raw.ppv_id}?kind=preview`,
+              kind,
+            };
+          }
+          const direct = mediaUrl || ppv?.preview_url || null;
+          if (!direct) return null;
+          return { orig: direct, poster: ppv?.preview_url || direct, kind };
         })
-        .filter((u): u is string => !!u);
+        .filter((x): x is PpvBubbleItem => !!x);
       return {
         id: s.id,
         code: s.code,
@@ -104,12 +123,12 @@ export async function GET(
         total_price: Number(s.total_price ?? 0),
         status: s.status,
         paid_at: s.paid_at,
-        previewUrls: items,
+        items,
       };
     });
 
     console.log(
-      `[chat-events] model=${modelId} peer=${peerId} sends=${sends.length} urlsPerSend=[${sends.map((s) => s.previewUrls.length).join(",")}]`,
+      `[chat-events] model=${modelId} peer=${peerId} sends=${sends.length} itemsPerSend=[${sends.map((s) => s.items.length).join(",")}]`,
     );
     return Response.json({
       events: (eventsRes.error ? [] : (eventsRes.data ?? [])) as ChatSystemEvent[],

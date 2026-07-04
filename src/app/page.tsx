@@ -162,16 +162,60 @@ export default function LandingPage() {
     return () => { document.documentElement.style.zoom = prev; };
   }, []);
 
+  // Hold a loader over the page until GlobalEmojiSwap has swapped the unicode
+  // glyphs to Apple-style PNGs AND those PNGs have finished loading — so the
+  // landing reveals already showing the iPhone emojis instead of flashing the
+  // system (Segoe/Android) glyphs for ~0.5s first. Safety-timed so a slow CDN
+  // can never hold the page hostage.
+  const [emojiReady, setEmojiReady] = useState(false);
+  useEffect(() => {
+    let done = false;
+    const finish = () => { if (!done) { done = true; setEmojiReady(true); } };
+    const start = performance.now();
+    const tick = () => {
+      if (done) return;
+      const imgs = Array.from(
+        document.querySelectorAll("img[data-emoji-glyph]"),
+      ) as HTMLImageElement[];
+      // Swap hasn't happened yet — give GlobalEmojiSwap up to 700ms to run.
+      if (imgs.length === 0) {
+        if (performance.now() - start < 700) { requestAnimationFrame(tick); return; }
+        finish();
+        return;
+      }
+      const pending = imgs.filter((im) => !im.complete);
+      if (pending.length === 0) { finish(); return; }
+      let left = pending.length;
+      const one = () => { left -= 1; if (left <= 0) finish(); };
+      pending.forEach((im) => {
+        im.addEventListener("load", one, { once: true });
+        im.addEventListener("error", one, { once: true });
+      });
+    };
+    requestAnimationFrame(tick);
+    const safety = setTimeout(finish, 2500);
+    return () => { done = true; clearTimeout(safety); };
+  }, []);
+
   const ctaHref = authed ? "/dashboard" : "/signup";
 
   return (
     <div style={{ background: C.bg, color: C.text, fontFamily: "'Inter',-apple-system,sans-serif", lineHeight: 1.5, WebkitFontSmoothing: "antialiased" }}>
+      {/* Emoji-swap loader — covers the page until Apple-style emoji PNGs are
+          loaded (see emojiReady effect) so the landing never flashes the
+          system-font glyphs first. */}
+      {!emojiReady && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: C.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ width: 34, height: 34, borderRadius: "50%", border: `3px solid ${C.line}`, borderTopColor: C.accent, animation: "ppvs_spin 0.8s linear infinite" }} />
+        </div>
+      )}
       {/* embed google fonts + tiny keyframes/scoped styles that would be tedious to inline */}
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap');
         .land h1,.land h2,.land h3{font-family:'Space Grotesk','Inter',sans-serif;letter-spacing:-0.02em;}
         .land .accent{color:${C.accent};}
         @keyframes ppvs_scroll {from{transform:translateX(0);}to{transform:translateX(-50%);}}
+        @keyframes ppvs_spin {to{transform:rotate(360deg);}}
         .land .marquee-track{display:inline-flex;animation:ppvs_scroll 30s linear infinite;}
         .land .marquee-track span{display:inline-flex;align-items:center;font-size:12px;font-weight:700;letter-spacing:0.08em;color:${C.textDim};padding:0 26px;}
         .land .marquee-track span::after{content:'◆';font-size:7px;color:${C.accent};margin-left:26px;}
@@ -258,7 +302,7 @@ export default function LandingPage() {
                     { ic: <TonMark size={22} />, l1: "Crypto", l2: "Payouts" },
                   ].map((b, i) => (
                     <div key={i} style={{ background: C.bgCard, border: `1px solid ${C.line}`, borderRadius: 12, padding: "15px 10px", textAlign: "center", fontSize: 11, fontWeight: 700, color: C.textDim, lineHeight: 1.4 }}>
-                      <div style={{ display: "flex", justifyContent: "center", marginBottom: 8, minHeight: 22 }}>{b.ic}</div>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 26, marginBottom: 8 }}>{b.ic}</div>
                       {b.l1}<br />{b.l2}
                     </div>
                   ))}

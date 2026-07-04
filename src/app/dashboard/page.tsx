@@ -6,7 +6,6 @@ import { PPVsTab } from "@/components/ppv/PPVsTab";
 import { ChattersTab } from "@/components/chatters/ChattersTab";
 import { ChatterDashboardLayout } from "@/components/chatters/ChatterDashboardLayout";
 import { SettingsTab } from "@/components/settings/SettingsTab";
-import { InboxTab } from "@/components/inbox/InboxTab";
 import { createClient } from "@/lib/supabase";
 import { chatterWorkspaceUrl } from "@/lib/host-routes";
 import {
@@ -21,13 +20,12 @@ import { agencyNet } from "@/lib/platform";
 // AGENCY DASHBOARD
 // ─────────────────────────────────────────────
 
-type AgencyTab = "dashboard" | "inbox" | "ppvs" | "models" | "chatters" | "wallet" | "settings";
+type AgencyTab = "dashboard" | "ppvs" | "models" | "chatters" | "wallet" | "settings";
 
 const menuItems = [
-  // Labels + emojis mirror the main-site feature names. Inbox + Settings have
-  // no main-page equivalent, so they keep their existing label/emoji.
+  // Labels + emojis mirror the main-site feature names. Settings has no
+  // main-page equivalent, so it keeps its existing label/emoji.
   { id: "dashboard" as AgencyTab, label: "Agency Dashboard", emoji: "📊" },
-  { id: "inbox" as AgencyTab, label: "Inbox", emoji: "📥" },
   { id: "ppvs" as AgencyTab, label: "Vault", emoji: "🔒" },
   { id: "models" as AgencyTab, label: "Creators", emoji: "🎭" },
   { id: "chatters" as AgencyTab, label: "Chatters", emoji: "💬" },
@@ -1761,7 +1759,6 @@ function AgencyDashboard() {
         </div>
         <div className="flex-1 flex min-h-0 overflow-hidden">
           {activeTab === "dashboard" && <DashboardTab />}
-          {activeTab === "inbox" && <InboxTab />}
           {activeTab === "ppvs" && <PPVsTab />}
           {activeTab === "models" && <ModelsTab />}
           {activeTab === "chatters" && <ChattersTab />}

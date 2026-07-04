@@ -475,21 +475,26 @@ function FanAvatar({
 }
 
 /** Telegram-style delivery ticks for our outgoing messages: a single
- *  grey check = sent, a double blue check = read by the fan (derived from
- *  the dialog's read_outbox_max_id). */
+ *  white check = sent, two blue checks (side-by-side, non-overlapping) =
+ *  read by the fan (derived from the dialog's read_outbox_max_id). */
 function ReadTicks({ read }: { read: boolean }) {
+  const color = read ? "#34a3f5" : "#ffffff";
   return (
     <span
       className="inline-flex shrink-0"
       title={read ? "Read" : "Sent"}
-      style={{ color: read ? "#34a3f5" : "#9ca3af" }}
+      style={{ color }}
     >
-      <svg width="15" height="10" viewBox="0 0 15 10" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M1 5.2 L3.9 8.1 L9.3 1.9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-        {read && (
-          <path d="M5.4 8.1 L10.8 1.9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-        )}
-      </svg>
+      {read ? (
+        <svg width="20" height="10" viewBox="0 0 20 10" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M1 5.2 L3.9 8.1 L8.7 1.9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M10.8 5.2 L13.7 8.1 L18.5 1.9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ) : (
+        <svg width="12" height="10" viewBox="0 0 12 10" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M1 5.2 L4.4 8.1 L10.5 1.9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )}
     </span>
   );
 }
@@ -972,11 +977,13 @@ export function TelegramChat({
                       )}
                       <div className="px-3 pt-2 pb-1">
                         {ppv.caption && (
-                          <div className="text-[13px] leading-relaxed whitespace-pre-wrap break-words text-white mb-1">
+                          <div className="text-[13px] leading-relaxed whitespace-pre-wrap break-words text-white mb-1.5">
                             {twemoji(ppv.caption, `ppv-cap-${m.id}`)}
                           </div>
                         )}
-                        <div className="text-[12px] font-semibold text-white/95">{ppv.label}</div>
+                        <div className="inline-flex items-center bg-black/25 rounded-2xl px-3 py-1 text-[12px] text-white font-normal">
+                          {ppv.label}
+                        </div>
                       </div>
                     </div>
                     <div className="text-[10px] text-[#6b7280] px-1 flex items-center gap-1 justify-end">

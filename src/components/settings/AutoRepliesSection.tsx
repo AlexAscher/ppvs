@@ -226,6 +226,10 @@ export function AutoRepliesSection() {
             greeting + optional photo/video. Sent once per fan, then your
             chatters take over.
           </p>
+          <p className="text-[11px] text-[#6b7280] mt-1.5 italic">
+            Auto replies are sent only if no chatter or agency member replied
+            to the fan before the timer went off.
+          </p>
         </div>
         {/* Model picker */}
         <div className="relative shrink-0">

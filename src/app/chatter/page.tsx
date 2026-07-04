@@ -1429,8 +1429,8 @@ export default function ChatterPage() {
         // renderer as the persistent virtual — so it can never render as a
         // giant single photo or split. Just-sent → always (Unpaid).
         const label = priceForSend > 0
-          ? `🔒 PPV · ${itemCount} item${itemCount === 1 ? "" : "s"} · ${priceForSend} ⭐ (Unpaid)`
-          : `🎁 Free content · ${itemCount} item${itemCount === 1 ? "" : "s"}`;
+          ? `${itemCount} item${itemCount === 1 ? "" : "s"} · ${priceForSend} ⭐ (Unpaid)`
+          : `${itemCount} item${itemCount === 1 ? "" : "s"} · Free`;
         const orderedItems = ordered
           .map((id) => ppvItems.find((p) => p.id === id))
           .filter((p): p is NonNullable<typeof p> => !!p);
@@ -1872,8 +1872,8 @@ export default function ChatterPage() {
       const isPaid = v.status === "paid" || v.status === "delivered";
       const n = v.previewUrls.length;
       const label = v.priceStars > 0
-        ? `🔒 PPV · ${n} item${n === 1 ? "" : "s"} · ${v.priceStars} ⭐ (${isPaid ? "Paid" : "Unpaid"})`
-        : `🎁 Free content · ${n} item${n === 1 ? "" : "s"}`;
+        ? `${n} item${n === 1 ? "" : "s"} · ${v.priceStars} ⭐ (${isPaid ? "Paid" : "Unpaid"})`
+        : `${n} item${n === 1 ? "" : "s"} · Free`;
       return {
         id: `ppv_${v.sendId}`,
         text: "",

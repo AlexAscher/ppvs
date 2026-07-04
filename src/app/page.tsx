@@ -68,7 +68,7 @@ const FAQ_GROUPS: { title: string; items: Faq[] }[] = [
         ),
       },
       { q: "Why do I receive less than what fans pay for Stars?", a: <p>Telegram sets a fixed creator withdrawal rate of $0.013 per Star, regardless of what fans paid to purchase them. Fans buying through Apple or Google Pay often pay more due to their 30% in-app fee — that gap belongs to Telegram and the app stores, not ppvs.io. This applies to every Telegram Stars transaction.</p> },
-      { q: "How do payouts work?", a: <p>As fans purchase PPVs, your Stars rewards accumulate and convert to GRAM. After a 25-day holding period, your balance becomes available to withdraw to your crypto wallet. The holding period covers Telegram&apos;s 21-day window plus a short buffer we keep for fraud review. Minimum withdrawal is $30.</p> },
+      { q: "How do payouts work?", a: <p>As fans purchase PPVs on ppvs.io, your Stars rewards accumulate and convert to GRAM. After a 25-day holding period, your balance becomes available to withdraw to your crypto wallet. The holding period covers Telegram&apos;s 21-day window plus a short buffer we keep for fraud review. Minimum withdrawal is $30.</p> },
       { q: "What currency are payouts in?", a: <p>Payouts are made in GRAM on the TON network. We handle the Stars-to-GRAM conversion and cover the network fee from our 15% cut — you receive your full 85% with no additional deductions.</p> },
       { q: "How do fans pay?", a: <p>Fans pay with Telegram Stars — Telegram&apos;s native currency. Stars can be purchased directly inside Telegram using Apple Pay, Google Pay, or a card. No separate account, no external checkout, no friction.</p> },
     ],
@@ -77,8 +77,8 @@ const FAQ_GROUPS: { title: string; items: Faq[] }[] = [
     title: "Security & Telegram",
     items: [
       { q: "Will Telegram ban my account for using ppvs.io?", a: <p>ppvs.io uses MTProto — the same API Telegram itself is built on. We implement careful session management to mimic normal human behavior. As with any third-party API usage there is a small risk, but we take every precaution to minimize it. To date, none of our users have had an account banned through normal platform use.</p> },
-      { q: "What happens to my earnings if my Telegram account is banned?", a: <p>Your earnings are attributed to the PPVS bot account, not your personal Telegram account. If your creator account is ever banned or suspended, your accumulated balance is not lost — contact support with proof of account ownership and we&apos;ll process your withdrawal as normal.</p> },
-      { q: "Is my content secure inside the vault?", a: <p>Your vault content is encrypted and stored securely — only you and your team can access it. Once a fan unlocks a PPV, screenshot protection activates so they cannot capture or save the content. Unlocked media is only accessible within that fan&apos;s own chat session.</p> },
+      { q: "What happens to my earnings if my Telegram account is banned?", a: <p>Your earnings are attributed to the ppvs.io bot account, not your personal Telegram account. If your creator account is ever banned or suspended, your accumulated balance is not lost — contact support with proof of account ownership and we&apos;ll process your withdrawal as normal.</p> },
+      { q: "Is my content secure inside the vault?", a: <p>Your ppvs.io vault content is encrypted and stored securely — only you and your team can access it. Once a fan unlocks a PPV, screenshot protection activates so they cannot capture or save the content. Unlocked media is only accessible within that fan&apos;s own chat session.</p> },
       { q: "Do fans need another app or an account?", a: <p>No. Everything happens natively inside Telegram. Fans pay with Telegram Stars and content unlocks instantly — no downloads, no accounts, no redirects.</p> },
     ],
   },
@@ -94,11 +94,27 @@ const FAQ_GROUPS: { title: string; items: Faq[] }[] = [
   {
     title: "Getting Started",
     items: [
-      { q: "How does PPVS work?", a: <p>PPVS lets agencies and creators sell pay-per-view content directly inside Telegram. Fans unlock content using Telegram Stars without ever leaving the chat. You manage everything — content, chatters, payouts — from your agency dashboard.</p> },
+      { q: "How does ppvs.io work?", a: <p>ppvs.io lets agencies and creators sell pay-per-view content directly inside Telegram. Fans unlock content using Telegram Stars without ever leaving the chat. You manage everything — content, chatters, payouts — from your agency dashboard.</p> },
       { q: "How long does setup take?", a: <p>Setup takes minutes. Connect your Telegram account, upload your first content, add your chatters, and you&apos;re ready to sell. No calls, no contracts, no approval process.</p> },
     ],
   },
 ];
+
+function TonMark({ size = 22 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <circle cx="28" cy="28" r="28" fill="#0098EA" />
+      <path
+        d="M17.5 17.5h21c1.6 0 2.5 1.7 1.7 3L30.4 40c-.9 1.6-3.2 1.6-4.1 0L16 20.5c-.8-1.3.1-3 1.7-3zm10.5 3.5v14.5"
+        stroke="#ffffff"
+        strokeWidth="3.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+    </svg>
+  );
+}
 
 function FaqItem({ q, a, defaultOpen }: { q: string; a: React.ReactNode; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(!!defaultOpen);
@@ -236,19 +252,19 @@ export default function LandingPage() {
                 </div>
                 <div className="box-row" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, maxWidth: 480 }}>
                   {[
-                    { ic: "💌", l1: "Send", l2: "PPVs" },
-                    { ic: "👥", l1: "Manage", l2: "Chatters" },
-                    { ic: "📊", l1: "Agency", l2: "Dashboard" },
-                    { ic: "💎", l1: "Crypto", l2: "Payouts" },
+                    { ic: <span style={{ fontSize: 20 }}>💌</span>, l1: "Send", l2: "PPVs" },
+                    { ic: <span style={{ fontSize: 20 }}>👥</span>, l1: "Manage", l2: "Chatters" },
+                    { ic: <span style={{ fontSize: 20 }}>📊</span>, l1: "Agency", l2: "Dashboard" },
+                    { ic: <TonMark size={22} />, l1: "Crypto", l2: "Payouts" },
                   ].map((b, i) => (
                     <div key={i} style={{ background: C.bgCard, border: `1px solid ${C.line}`, borderRadius: 12, padding: "15px 10px", textAlign: "center", fontSize: 11, fontWeight: 700, color: C.textDim, lineHeight: 1.4 }}>
-                      <span style={{ fontSize: 20, display: "block", marginBottom: 8 }}>{b.ic}</span>
+                      <div style={{ display: "flex", justifyContent: "center", marginBottom: 8, minHeight: 22 }}>{b.ic}</div>
                       {b.l1}<br />{b.l2}
                     </div>
                   ))}
                 </div>
               </div>
-              <div className="hero-visual" style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", position: "relative", paddingLeft: 110 }}>
+              <div className="hero-visual" style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", position: "relative", paddingLeft: 160 }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src="/hero_ppvs.png"
@@ -370,8 +386,8 @@ export default function LandingPage() {
             </div>
             <div className="price-wrap" style={{ maxWidth: 480, margin: "0 auto", position: "relative" }}>
               <div className="price-card" style={{ background: "linear-gradient(165deg,#141c2c,#0e1320)", border: `1px solid ${C.accentDeep}`, borderRadius: 20, padding: 42, position: "relative", boxShadow: "0 0 0 1px rgba(47,184,255,0.08), 0 30px 60px -20px rgba(13,143,224,.25), 0 0 80px -10px rgba(47,184,255,0.08)" }}>
-                <span style={{ position: "absolute", bottom: -1, left: -1, width: 22, height: 22, border: "2px solid rgba(47,184,255,0.5)", borderWidth: "0 0 2px 2px", borderRadius: "0 0 0 20px" }} />
-                <span style={{ position: "absolute", bottom: -1, right: -1, width: 22, height: 22, border: "2px solid rgba(47,184,255,0.5)", borderWidth: "0 0 2px 2px", borderRadius: "0 0 20px 0", transform: "scaleX(-1)" }} />
+                <span style={{ position: "absolute", bottom: -1, left: -1, width: 22, height: 22, borderStyle: "solid", borderColor: "rgba(47,184,255,0.5)", borderWidth: "0 0 2px 2px", borderRadius: "0 0 0 20px", pointerEvents: "none" }} />
+                <span style={{ position: "absolute", bottom: -1, right: -1, width: 22, height: 22, borderStyle: "solid", borderColor: "rgba(47,184,255,0.5)", borderWidth: "0 2px 2px 0", borderRadius: "0 0 20px 0", pointerEvents: "none" }} />
                 <div style={{ position: "absolute", top: -13, left: 32, background: C.accent, color: "#06121c", fontSize: 10, fontWeight: 800, padding: "5px 14px", borderRadius: 99, letterSpacing: ".04em" }}>AVAILABLE NOW</div>
                 <h3 style={{ fontSize: 13, color: C.textDim, fontWeight: 600, marginBottom: 18 }}>Platform Fee</h3>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 6 }}>
@@ -450,6 +466,7 @@ export default function LandingPage() {
                 <h4 style={{ fontSize: 12, fontWeight: 700, marginBottom: 14, color: C.text }}>Company</h4>
                 <a href="https://t.me/manimayn" target="_blank" rel="noreferrer" style={FA_LINK}>Contact</a>
                 <a href="https://t.me/manimayn" target="_blank" rel="noreferrer" style={FA_LINK}>Book a demo</a>
+                <a href="https://t.me/ppvsio" target="_blank" rel="noreferrer" style={FA_LINK}>Updates</a>
               </div>
               <div>
                 <h4 style={{ fontSize: 12, fontWeight: 700, marginBottom: 14, color: C.text }}>Legal</h4>

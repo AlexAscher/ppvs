@@ -4,6 +4,28 @@ import { getCachedAuthUser } from "@/lib/auth-cache";
 import { PLATFORM_FEE_PCT } from "@/lib/platform";
 import { computeAgencyBalances, MIN_WITHDRAWAL_USD } from "@/lib/payouts-balance";
 
+// Serialize payout requests per agency. Without this two concurrent POSTs
+// can both read `available` before either insert lands, both pass the
+// `amount <= available` check, and the agency withdraws more than its
+// cleared balance. Single-instance in-memory is enough for the current
+// deploy; a multi-node prod would replace this with a Postgres advisory
+// lock or a Redis mutex.
+declare global {
+  var __ppvs_payout_locks__: Map<string, Promise<unknown>> | undefined;
+}
+const payoutLocks: Map<string, Promise<unknown>> =
+  globalThis.__ppvs_payout_locks__ ?? new Map();
+globalThis.__ppvs_payout_locks__ = payoutLocks;
+
+async function withAgencyLock<T>(agencyId: string, fn: () => Promise<T>): Promise<T> {
+  const prev = payoutLocks.get(agencyId) ?? Promise.resolve();
+  const next = prev.then(fn, fn);
+  payoutLocks.set(agencyId, next.finally(() => {
+    if (payoutLocks.get(agencyId) === next) payoutLocks.delete(agencyId);
+  }));
+  return next;
+}
+
 /**
  * Agency payout requests.
  *   GET  → list this agency's payouts (newest first) + balance header:
@@ -87,24 +109,30 @@ export async function POST(req: NextRequest) {
     const currency = (body?.currency ?? "").trim().toUpperCase() || null;
     const network = (body?.network ?? "").trim().toUpperCase() || null;
 
-    const admin = createAdminSupabaseClient();
-    const bal = await computeAgencyBalances(admin, user.id);
-    if (amount > bal.available) {
-      return Response.json(
-        { error: `Amount exceeds available balance ($${bal.available.toFixed(2)}).` },
-        { status: 400 },
-      );
-    }
+    // Serialize concurrent payout requests from the same agency so the
+    // balance check + insert form an atomic block. Without this two POSTs
+    // can each pass `amount <= bal.available` before either row lands, and
+    // the agency withdraws more than its cleared balance.
+    return await withAgencyLock(user.id, async () => {
+      const admin = createAdminSupabaseClient();
+      const bal = await computeAgencyBalances(admin, user.id);
+      if (amount > bal.available) {
+        return Response.json(
+          { error: `Amount exceeds available balance ($${bal.available.toFixed(2)}).` },
+          { status: 400 },
+        );
+      }
 
-    const { data, error } = await admin
-      .from("payouts")
-      .insert({ agency_user_id: user.id, amount, address, currency, network, status: "pending" })
-      .select("id, amount, address, currency, network, status, created_at, paid_at")
-      .single();
-    if (error) return Response.json({ error: error.message }, { status: 500 });
+      const { data, error } = await admin
+        .from("payouts")
+        .insert({ agency_user_id: user.id, amount, address, currency, network, status: "pending" })
+        .select("id, amount, address, currency, network, status, created_at, paid_at")
+        .single();
+      if (error) return Response.json({ error: error.message }, { status: 500 });
 
-    const after = await computeAgencyBalances(admin, user.id);
-    return Response.json({ payout: data as PayoutRow, availableBalance: after.available });
+      const after = await computeAgencyBalances(admin, user.id);
+      return Response.json({ payout: data as PayoutRow, availableBalance: after.available });
+    });
   } catch (e: unknown) {
     return Response.json({ error: e instanceof Error ? e.message : "Failed" }, { status: 500 });
   }

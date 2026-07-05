@@ -36,17 +36,29 @@ export function consume(key: string, limit: number, windowMs: number): boolean {
   return true;
 }
 
-/** Best-effort client IP from common reverse-proxy headers. */
+/**
+ * Client IP from the trusted reverse proxy.
+ *
+ * We deploy behind Caddy on ppvs.io, which appends the real peer IP to the
+ * RIGHT of X-Forwarded-For (and sets X-Real-IP). Reading the LEFTMOST XFF
+ * value would let a client spoof the IP simply by sending its own XFF header
+ * — the rate-limit buckets are then infinite. Instead we prefer headers set
+ * by trusted upstream (cf-connecting-ip / x-real-ip) and, for XFF, take the
+ * RIGHTMOST entry, which is the one Caddy just added.
+ */
 export function getClientIp(req: { headers: Headers }): string {
   const h = req.headers;
-  const xff = h.get("x-forwarded-for");
-  if (xff) return xff.split(",")[0].trim();
-  return (
+  const trusted =
     h.get("cf-connecting-ip") ||
     h.get("x-real-ip") ||
-    h.get("fly-client-ip") ||
-    "unknown"
-  );
+    h.get("fly-client-ip");
+  if (trusted) return trusted.trim();
+  const xff = h.get("x-forwarded-for");
+  if (xff) {
+    const parts = xff.split(",").map((s) => s.trim()).filter(Boolean);
+    if (parts.length > 0) return parts[parts.length - 1];
+  }
+  return "unknown";
 }
 
 /** 429 response with retry hint. */

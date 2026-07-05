@@ -13,6 +13,8 @@
  * real withdrawal data without a redeploy.
  */
 
+import { timingSafeEqual } from "node:crypto";
+
 const API = "https://api.telegram.org";
 
 function botToken(): string {
@@ -88,9 +90,12 @@ export async function answerPreCheckout(id: string, ok: boolean, errorMessage?: 
   });
 }
 
-/** Constant-time-ish check of the webhook secret Telegram echoes back. */
+/** Constant-time check of the webhook secret Telegram echoes back. */
 export function verifyWebhookSecret(headerValue: string | null): boolean {
   const expected = process.env.TELEGRAM_STARS_BOT_SECRET;
-  if (!expected) return false;
-  return !!headerValue && headerValue === expected;
+  if (!expected || !headerValue) return false;
+  const a = Buffer.from(headerValue);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
 }

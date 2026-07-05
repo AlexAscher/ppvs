@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { requireAdmin } from "@/lib/admin-auth";
 import { createAdminSupabaseClient } from "@/lib/supabase-server";
+import { decryptIfNeeded } from "@/lib/crypto";
 
 /**
  * POST /api/admin/signup-requests/:id  { action: "approve" | "reject" }
@@ -39,12 +40,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return Response.json({ ok: true, status: "rejected" });
   }
 
-  // approve → create the account. Use the password the user chose at signup;
-  // for legacy requests captured before we stored it, generate a temp one and
-  // hand it back to the admin to share (the user can change it later).
-  const usedGenerated = !r.password;
+  // approve → create the account. The stored password is encrypted
+  // (v1:iv:ct:tag) since the security hardening pass; `decryptIfNeeded`
+  // transparently passes through legacy plaintext rows so pending requests
+  // captured before the rollout still approve. If we have nothing to
+  // decrypt (or decrypt fails), fall back to a generated temp password and
+  // hand it to the admin.
+  const decrypted = decryptIfNeeded(r.password);
+  const usedGenerated = !decrypted;
   const password =
-    r.password ||
+    decrypted ||
     `Ppv-${Math.random().toString(36).slice(2, 8)}${Math.floor(1000 + Math.random() * 9000)}`;
   const { error: createErr } = await admin.auth.admin.createUser({
     email: r.email,

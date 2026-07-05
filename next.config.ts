@@ -1,13 +1,8 @@
 import type { NextConfig } from "next";
 
-// Security headers applied to every response. These are the cheap wins we'd
-// otherwise lean on Cloudflare for. Intentionally NO X-Frame-Options / CSP
-// frame-ancestors: the /pay + Mini App pages are embedded inside Telegram's
-// webview, and a framing restriction would blank them out. A full
-// Content-Security-Policy is deferred — the app uses many inline styles and
-// the Telegram WebApp SDK, so a strict CSP needs dedicated testing before it
-// can ship without white-screening the app.
-const securityHeaders = [
+// Baseline headers applied to every response. Cheap wins we'd otherwise
+// lean on Cloudflare for.
+const baseSecurityHeaders = [
   // Stop MIME sniffing (a classic XSS vector on user-uploaded media).
   { key: "X-Content-Type-Options", value: "nosniff" },
   // Don't leak full URLs (which can contain pay codes) to third parties.
@@ -25,13 +20,37 @@ const securityHeaders = [
   { key: "X-DNS-Prefetch-Control", value: "on" },
 ];
 
+// Frame protection. Dashboard / admin / chatter workspace are not meant to
+// be embedded anywhere; framing them enables clickjacking on the agency's
+// authenticated session. Only /pay, /tip and /mini opt out — they render
+// inside Telegram's webview.
+const frameDenyHeader = { key: "X-Frame-Options", value: "DENY" };
+
+// Routes that must never be embedded — the agency's authenticated surface
+// and every state-changing API. /pay, /tip, /mini are excluded on purpose
+// (they render inside Telegram's webview).
+const NON_FRAMEABLE = [
+  "/dashboard/:path*",
+  "/chatter/:path*",
+  "/admin/:path*",
+  "/vault/:path*",
+  "/send/:path*",
+  "/team/:path*",
+  "/settings/:path*",
+  "/login",
+  "/signup",
+  "/api/:path*",
+];
+
 const nextConfig: NextConfig = {
   async headers() {
+    // Baseline headers apply to every route. Frame-deny stacks on top for
+    // the sensitive routes only — Next.js merges headers across matching
+    // sources, so listing frame-deny on specific paths gives those routes
+    // baseline + DENY while /pay, /tip and /mini stay frameable.
     return [
-      {
-        source: "/:path*",
-        headers: securityHeaders,
-      },
+      { source: "/:path*", headers: baseSecurityHeaders },
+      ...NON_FRAMEABLE.map((source) => ({ source, headers: [frameDenyHeader] })),
     ];
   },
 };

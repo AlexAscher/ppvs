@@ -76,8 +76,10 @@ export async function GET(
   if (!sourceUrl) return Response.json({ error: "No media" }, { status: 404 });
   const path = ppvMediaPathFromUrl(sourceUrl);
   if (!path) {
-    // Not a Storage url we recognise — redirect to it as-is.
-    return Response.redirect(sourceUrl, 302);
+    // Not a Storage url we recognise. Do NOT redirect — media_url is written
+    // by an anon-key client, so a hostile agency could otherwise turn this
+    // endpoint into a public open-redirect (kind=preview is unauthenticated).
+    return Response.json({ error: "No media" }, { status: 404 });
   }
 
   const { data: signed, error } = await admin.storage

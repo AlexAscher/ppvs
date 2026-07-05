@@ -1,15 +1,29 @@
 import { NextRequest } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase-server";
+import { consume, getClientIp, tooManyRequests } from "@/lib/rate-limit";
+import { encrypt } from "@/lib/crypto";
 
 /**
  * POST /api/signup-request
- *  { email, displayName, role, agencyName }
+ *  { email, password, displayName, role, agencyName }
  *
- * v3 (temporary): signups no longer hit Supabase Auth directly — they land
- * in signup_requests for a human to review. Response is 200 as long as we
- * managed to persist (or de-dupe against) a pending row.
+ * v3 (temporary): signups don't hit Supabase Auth directly — they land in
+ * signup_requests for a human to review. On approval the stored password is
+ * decrypted and passed to `admin.auth.admin.createUser` so the applicant
+ * can log in with the credentials they chose (see admin/signup-requests).
+ *
+ * The password is stored ENCRYPTED (AES-256-GCM via SESSION_ENC_KEY) rather
+ * than plaintext. If the requests table leaks in isolation, passwords stay
+ * confidential; the trust envelope matches session_string / api_hash on
+ * `models`, which use the same key.
  */
+
 export async function POST(req: NextRequest) {
+  // Cap signup floods by IP — the endpoint is public and previously took a
+  // pending row per POST with no limit.
+  const ip = getClientIp(req);
+  if (!consume(`signup|${ip}`, 5, 60_000)) return tooManyRequests(60);
+
   const body = (await req.json().catch(() => null)) as {
     email?: string;
     password?: string;
@@ -25,6 +39,13 @@ export async function POST(req: NextRequest) {
   if (password.length < 8) {
     return Response.json({ error: "Password must be at least 8 characters" }, { status: 400 });
   }
+  let encryptedPassword: string;
+  try {
+    encryptedPassword = encrypt(password);
+  } catch (e) {
+    console.error("[signup-request] encrypt failed:", e instanceof Error ? e.message : e);
+    return Response.json({ error: "Signup temporarily unavailable" }, { status: 503 });
+  }
   const displayName = (body?.displayName ?? "").trim() || null;
   const role = body?.role === "chatter" ? "chatter" : "agency";
   const agencyName = role === "agency" ? (body?.agencyName ?? "").trim() || null : null;
@@ -32,7 +53,14 @@ export async function POST(req: NextRequest) {
   const admin = createAdminSupabaseClient();
   const { data, error } = await admin
     .from("signup_requests")
-    .insert({ email, password, display_name: displayName, role, agency_name: agencyName, status: "pending" })
+    .insert({
+      email,
+      password: encryptedPassword,
+      display_name: displayName,
+      role,
+      agency_name: agencyName,
+      status: "pending",
+    })
     .select("id")
     .single();
   if (error) {

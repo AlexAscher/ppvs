@@ -70,29 +70,26 @@ function filenameFromUrl(url: string, fallbackExt: string): string {
 }
 
 /**
- * Download a media URL on the server and return its bytes + content-type.
- * We do this so Telegram never has to fetch the URL itself (private bucket /
- * geo / mime headaches surface as "failed to get HTTP URL content" or
- * "wrong type of the web page content").
+ * Download a PPV media object from our Supabase Storage bucket and return
+ * its bytes + content-type.
  *
- * Supabase Storage URLs are extracted to their object path and downloaded via
- * the admin client (service_role) so private buckets work too; other URLs go
- * through plain fetch.
+ * Restricted to the `ppvs` bucket — `media_url` / `preview_url` are written
+ * by the agency-side client (anon key), so accepting an arbitrary URL here
+ * would let a hostile agency point sends at internal addresses
+ * (`http://169.254.169.254/…`, `http://localhost:…`) → blind SSRF, bytes
+ * exfiltrated to a fan via `sendPaidMedia`. If the URL isn't recognised as
+ * a bucket object we throw rather than fetch it.
  */
 async function fetchBytes(url: string): Promise<{ buffer: Buffer; contentType: string }> {
   const path = ppvMediaPathFromUrl(url);
-  if (path) {
-    const admin = createAdminSupabaseClient();
-    const { data, error } = await admin.storage.from("ppvs").download(path);
-    if (error || !data) throw new Error(`storage download ${path}: ${error?.message ?? "no data"}`);
-    const ab = await data.arrayBuffer();
-    return { buffer: Buffer.from(ab), contentType: data.type || "application/octet-stream" };
+  if (!path) {
+    throw new Error("Refusing to fetch non-Storage media URL");
   }
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`fetch media ${url}: HTTP ${res.status}`);
-  const ab = await res.arrayBuffer();
-  const ct = res.headers.get("content-type") || "application/octet-stream";
-  return { buffer: Buffer.from(ab), contentType: ct };
+  const admin = createAdminSupabaseClient();
+  const { data, error } = await admin.storage.from("ppvs").download(path);
+  if (error || !data) throw new Error(`storage download ${path}: ${error?.message ?? "no data"}`);
+  const ab = await data.arrayBuffer();
+  return { buffer: Buffer.from(ab), contentType: data.type || "application/octet-stream" };
 }
 
 /**

@@ -22,6 +22,7 @@ export function TipClient({
   );
   const [errMsg, setErrMsg] = useState("");
 
+  // Read-only status check. Payment is settled by Telegram Stars.
   async function handlePay() {
     setState("loading");
     setErrMsg("");
@@ -36,6 +37,14 @@ export function TipClient({
         error?: string;
         alreadyPaid?: boolean;
       };
+      if (res.status === 402) {
+        setErrMsg(
+          data.error ||
+            "This tip is not paid yet. Open the link in Telegram to pay with Stars.",
+        );
+        setState("error");
+        return;
+      }
       if (!res.ok || data.error) {
         setErrMsg(data.error || `HTTP ${res.status}`);
         setState("error");
@@ -149,9 +158,7 @@ export function TipClient({
                     color: "white",
                   }}
                 >
-                  {state === "loading"
-                    ? "Processing…"
-                    : `Send $${amount.toFixed(2)} Tip 💰`}
+                  {state === "loading" ? "Checking…" : "I've paid — check status"}
                 </button>
 
                 <div
@@ -162,7 +169,7 @@ export function TipClient({
                     color: "#484f58",
                   }}
                 >
-                  Payment gateway temporarily disabled — clicking sends tip for testing.
+                  Payment is processed by Telegram Stars. Open this link inside Telegram to pay.
                 </div>
               </>
             )}

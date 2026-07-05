@@ -31,18 +31,11 @@ export async function GET(
   try {
     const { modelId } = await params;
 
-    const cached = cache.get(modelId);
-    if (cached && Date.now() - cached.ts < CACHE_TTL) {
-      // Wrap Node Buffer in Uint8Array so it satisfies BodyInit (newer
-      // @types/node strip the BodyInit overload for plain Buffer).
-      return new Response(new Uint8Array(cached.data), {
-        headers: {
-          "Content-Type": "image/jpeg",
-          "Cache-Control": "public, max-age=300",
-        },
-      });
-    }
-
+    // Auth before cache: gate the model-scoped image on ownership BEFORE any
+    // cache hit. The cached bytes are the model's own profile photo, so
+    // returning them to an unauthenticated caller would still leak model
+    // information (existence + avatar) even if the byte payload is public
+    // on Telegram itself.
     const supabase = await createSupabaseServerClient();
     const {
       data: { user },
@@ -57,6 +50,18 @@ export async function GET(
       .single();
 
     if (error || !model) return new Response("Not found", { status: 404 });
+
+    const cached = cache.get(modelId);
+    if (cached && Date.now() - cached.ts < CACHE_TTL) {
+      // Wrap Node Buffer in Uint8Array so it satisfies BodyInit (newer
+      // @types/node strip the BodyInit overload for plain Buffer).
+      return new Response(new Uint8Array(cached.data), {
+        headers: {
+          "Content-Type": "image/jpeg",
+          "Cache-Control": "private, max-age=300",
+        },
+      });
+    }
 
     const session = new StringSession(model.session_string);
     const tg = new TelegramClient(
@@ -82,7 +87,7 @@ export async function GET(
     return new Response(new Uint8Array(photo), {
       headers: {
         "Content-Type": "image/jpeg",
-        "Cache-Control": "public, max-age=300",
+        "Cache-Control": "private, max-age=300",
       },
     });
   } catch {

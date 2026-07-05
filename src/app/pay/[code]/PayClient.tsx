@@ -64,13 +64,11 @@ export function PayClient({
 
   const remainingMs = expiryMs != null ? Math.max(0, expiryMs - now) : null;
 
+  // Read-only status check. Payment is settled by Telegram Stars; this button
+  // just asks the server whether the webhook has already closed out the send.
   async function handlePay() {
     setState("loading");
     setErrMsg("");
-    // Malum disabled — unlock directly via /api/ppv/deliver. The server marks
-    // the send paid and kicks off the Telegram push in the background. We
-    // intentionally DON'T render the unlocked URLs here: the fan sees a
-    // playful "content is flying to your Telegram" screen instead.
     try {
       const res = await fetch("/api/ppv/deliver", {
         method: "POST",
@@ -81,6 +79,14 @@ export function PayClient({
         ok?: boolean;
         error?: string;
       };
+      if (res.status === 402) {
+        setErrMsg(
+          data.error ||
+            "This order is not paid yet. Open the link in Telegram to pay with Stars.",
+        );
+        setState("error");
+        return;
+      }
       if (!res.ok || data.error) {
         setErrMsg(data.error || `HTTP ${res.status}`);
         setState("error");
@@ -206,11 +212,11 @@ export function PayClient({
               className="w-full py-[13px] rounded-[10px] text-[14px] font-semibold transition-all border-none cursor-pointer"
               style={{ background: state === "loading" ? "#00AFF060" : "#00AFF0", color: "white" }}
             >
-              {state === "loading" ? "Unlocking..." : `Pay $${basePrice.toFixed(2)} & Unlock`}
+              {state === "loading" ? "Checking..." : "I've paid — check status"}
             </button>
 
             <div style={{ textAlign: "center", marginTop: 12, fontSize: 11, color: "#484f58" }}>
-              Payment gateway temporarily disabled — clicking Pay unlocks content for testing.
+              Payment is processed by Telegram Stars. Open this link inside Telegram to pay.
             </div>
           </div>
         </div>

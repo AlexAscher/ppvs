@@ -67,11 +67,23 @@ export async function fulfillPpvPaid(
   if (send.status === "paid" || send.status === "delivered") return false;
 
   const now = new Date().toISOString();
-  const { error: updErr } = await admin
+  // Compare-and-swap: only flip to paid if the row is still in an unpaid
+  // state. Telegram retries webhooks aggressively so two concurrent
+  // successful_payment deliveries can hit us; without CAS both would fire
+  // fans.total_spent bumps and sales alerts. Using .neq("status","paid")
+  // makes the update no-op on a second concurrent call.
+  const { data: updated, error: updErr } = await admin
     .from("ppv_sends")
     .update({ status: "paid", paid_at: now, malum_txn: send.malum_txn ?? externalTxn })
-    .eq("id", send.id);
+    .eq("id", send.id)
+    .not("status", "in", "(paid,delivered)")
+    .select("id");
   if (updErr) throw new Error(`mark-paid failed: ${updErr.message}`);
+  if (!updated || updated.length === 0) {
+    // Another concurrent webhook won the race and already marked the send
+    // paid — treat as "already fulfilled" so we don't double-count.
+    return false;
+  }
 
   after(async () => {
     try {
@@ -223,8 +235,16 @@ export async function fulfillPpvPaid(
 export async function fulfillTipPaid(admin: SupabaseClient, tip: TipRow): Promise<boolean> {
   if (tip.status === "paid") return false;
   const tnow = new Date().toISOString();
-  const { error: tErr } = await admin.from("tips").update({ status: "paid", paid_at: tnow }).eq("id", tip.id);
+  // Compare-and-swap: only flip to paid if the tip is still pending. See
+  // fulfillPpvPaid for the concurrent-webhook rationale.
+  const { data: tUpdated, error: tErr } = await admin
+    .from("tips")
+    .update({ status: "paid", paid_at: tnow })
+    .eq("id", tip.id)
+    .neq("status", "paid")
+    .select("id");
   if (tErr) throw new Error(`tip mark-paid failed: ${tErr.message}`);
+  if (!tUpdated || tUpdated.length === 0) return false;
 
   after(async () => {
     try {

@@ -3,14 +3,20 @@ import { TelegramClient, Api } from "telegram";
 import { StringSession } from "telegram/sessions";
 import { buildTelegramClientOptions } from "@/lib/telegram-client";
 import { consume, getClientIp, tooManyRequests } from "@/lib/rate-limit";
+import { getCachedAuthUser } from "@/lib/auth-cache";
 
 export async function POST(request: NextRequest) {
   try {
+    // Only a logged-in agency wires a new model — never anonymous. Without
+    // this gate the endpoint is a public SMS-flood / Telegram-ban vector on
+    // any phone number the caller picks.
+    const user = await getCachedAuthUser();
+    if (!user) return Response.json({ error: "Not authenticated" }, { status: 401 });
+
     const { apiId, apiHash, phone } = await request.json();
 
-    // Each call dials Telegram and triggers an SMS/code to `phone`. Without a
-    // limit this is an SMS-flood / Telegram-ban vector. Cap both by IP and by
-    // target phone so a single number can't be hammered from many IPs.
+    // Belt-and-suspenders even for authed callers — cap by IP and by target
+    // phone so a compromised session can't SMS-hammer a single number.
     const ip = getClientIp(request);
     if (!consume(`send-code-ip|${ip}`, 5, 60_000)) return tooManyRequests(60);
     if (typeof phone === "string" && phone.trim()) {

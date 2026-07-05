@@ -187,6 +187,12 @@ export function ActionPanel({
   // straight to TG without a pay link.
   const parsedPrice = Number(priceInput);
   const isFree = !priceInput.trim() || !Number.isFinite(parsedPrice) || parsedPrice <= 0;
+  // Telegram's sendPaidMedia hard-limits star_count to 10 000 — anything above
+  // returns EXTENDED_MEDIA_AMOUNT_INVALID. Gate the Send button so the chatter
+  // can't even attempt it.
+  const MAX_STARS_PER_SEND = 10_000;
+  const overStarCap =
+    Number.isFinite(parsedPrice) && parsedPrice > MAX_STARS_PER_SEND;
 
   const scopedItems = currentFolderId
     ? ppvItems.filter((i) => i.group_id === currentFolderId)
@@ -521,8 +527,12 @@ export function ActionPanel({
                 <div className="flex gap-2">
                   <button
                     onClick={onSendPpv}
-                    disabled={!hasRecipient || sending}
-                    className="flex-1 py-3 text-white rounded-lg font-semibold text-[13px] transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] hover:from-[#0098D4] hover:to-[#0098D4] shadow-[#00AFF0]/20"
+                    disabled={!hasRecipient || sending || overStarCap}
+                    className={`flex-1 py-3 text-white rounded-lg font-semibold text-[13px] transition-all shadow-lg disabled:cursor-not-allowed ${
+                      overStarCap
+                        ? "bg-[#374151] text-[#9ca3af] shadow-none"
+                        : "disabled:opacity-50 bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] hover:from-[#0098D4] hover:to-[#0098D4] shadow-[#00AFF0]/20"
+                    }`}
                   >
                     {sending
                       ? "Sending…"
@@ -562,11 +572,13 @@ export function ActionPanel({
                 </div>
 
                 <div className="text-[10px] text-[#6b7280] text-center leading-relaxed">
-                  {scheduleAt
-                    ? `Will be delivered at ${formatScheduleShort(scheduleAt)}.`
-                    : isFree
-                      ? "Free send: originals go straight to fan's Telegram, no pay link."
-                      : "Sends blurred preview + pay link to fan's Telegram. Unlocks on payment."}
+                  {overStarCap
+                    ? "Maximum total star price set by Telegram is 10000 stars."
+                    : scheduleAt
+                      ? `Will be delivered at ${formatScheduleShort(scheduleAt)}.`
+                      : isFree
+                        ? "Free send: originals go straight to fan's Telegram, no pay link."
+                        : "Sends blurred preview to the fan. Unlocks on payment."}
                 </div>
               </div>
             )}

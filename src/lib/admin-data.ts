@@ -112,7 +112,7 @@ export function makeChartBuckets(days: number): { date: string; ts: number; valu
   return buckets;
 }
 
-export type ChartPeriod = "1d" | "7d" | "30d" | "all";
+export type ChartPeriod = "1d" | "7d" | "30d" | "90d" | "ytd" | "all";
 export type ChartBucket = { date: string; ts: number; value: number };
 
 const HOUR_MS = 3_600_000;
@@ -167,11 +167,26 @@ export function buildChartBuckets(period: ChartPeriod, earliestTs?: number): Cha
     return buckets;
   }
 
-  if (period === "7d" || period === "30d") {
-    const days = period === "7d" ? 7 : 30;
+  if (period === "7d" || period === "30d" || period === "90d") {
+    const days = period === "7d" ? 7 : period === "30d" ? 30 : 90;
     const todayStart = startOfDay(new Date(now));
     for (let i = days - 1; i >= 0; i--) {
       const t = todayStart - i * DAY_MS;
+      const d = new Date(t);
+      buckets.push({
+        date: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        ts: t,
+        value: 0,
+      });
+    }
+    return buckets;
+  }
+
+  if (period === "ytd") {
+    // Daily buckets from Jan 1 of the current year through today.
+    const yearStart = new Date(new Date(now).getFullYear(), 0, 1).getTime();
+    const todayStart = startOfDay(new Date(now));
+    for (let t = yearStart; t <= todayStart; t += DAY_MS) {
       const d = new Date(t);
       buckets.push({
         date: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
@@ -218,7 +233,13 @@ export function bucketFor(
 
 /** Validate + normalize the `period` query string. */
 export function parseChartPeriod(raw: string | null | undefined): ChartPeriod {
-  if (raw === "1d" || raw === "30d" || raw === "all") return raw;
+  if (
+    raw === "1d" ||
+    raw === "30d" ||
+    raw === "90d" ||
+    raw === "ytd" ||
+    raw === "all"
+  ) return raw;
   return "7d";
 }
 

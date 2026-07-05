@@ -167,9 +167,14 @@ export async function sendPaidMediaAsBusiness(params: {
     | null;
   if (!j?.ok || !j.result) {
     const desc = j?.description ?? `HTTP ${res.status}`;
-    // PEER_ID_INVALID via business_connection_id almost always means the fan
-    // hasn't messaged the model since the bot was connected — Telegram only
-    // lets the bot push into chats it has already received an update from.
+    // Map Telegram's cryptic error strings to something the chatter can act on.
+    // - EXTENDED_MEDIA_AMOUNT_INVALID: star_count outside 1..10 000 (hard cap).
+    // - PEER_ID_INVALID: fan hasn't messaged the model since the bot connected.
+    if (/EXTENDED_MEDIA_AMOUNT_INVALID/i.test(desc)) {
+      throw new Error(
+        "Max is 10 000⭐ per PPV (Telegram limit) — split into multiple PPVs to exceed.",
+      );
+    }
     const hint = /PEER_ID_INVALID/i.test(desc)
       ? " (the fan must send the model at least one message after the bot is connected — Telegram only lets the bot push into chats it has already received an update from)"
       : "";

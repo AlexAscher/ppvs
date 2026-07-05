@@ -132,10 +132,39 @@ export function GlobalEmojiSwap() {
     }
 
     scheduleScan();
-    // Catch route changes / lazily-rendered content. 1.5s is fine for
-    // typical SPA navigation.
-    const interval = setInterval(scheduleScan, 1500);
+    // MutationObserver catches newly-inserted subtrees the instant React
+    // commits them — swaps run in the same paint frame, so switching chats /
+    // opening dialogs never flashes the system-font glyph before the Apple
+    // PNG. We batch to a microtask so a burst of inserts (a fresh chat's
+    // whole message list) does ONE walk instead of one-per-node.
+    const dirty = new Set<Node>();
+    let pending = false;
+    function flush() {
+      pending = false;
+      for (const root of dirty) {
+        if (root.isConnected) swapInRoot(root);
+      }
+      dirty.clear();
+    }
+    const observer = new MutationObserver((records) => {
+      for (const r of records) {
+        for (const n of r.addedNodes) {
+          if (n.nodeType === Node.ELEMENT_NODE || n.nodeType === Node.TEXT_NODE) {
+            dirty.add(n);
+          }
+        }
+      }
+      if (!pending && dirty.size > 0) {
+        pending = true;
+        queueMicrotask(flush);
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    // Belt-and-suspenders backstop for edge cases the observer can miss
+    // (character-data-only edits inside an already-swapped node).
+    const interval = setInterval(scheduleScan, 5000);
     return () => {
+      observer.disconnect();
       clearInterval(interval);
       if (raf) cancelAnimationFrame(raf);
     };

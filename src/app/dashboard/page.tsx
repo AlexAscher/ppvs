@@ -243,7 +243,7 @@ function formatRelative(ts: number): string {
   return new Date(ts).toLocaleDateString("en-US");
 }
 
-type ChartPeriod = "1d" | "7d" | "30d" | "all";
+type ChartPeriod = "1d" | "7d" | "30d" | "90d" | "ytd";
 
 /**
  * Net Sales chart. SVG with a fixed `viewBox="0 0 100 50"` so the
@@ -441,11 +441,14 @@ function ConversationsStartedCard({
             const d = new Date(b.date);
             const label = d.toLocaleDateString("en-US", { weekday: "short" });
             return (
-              <div key={i} className="flex-1 flex flex-col items-center gap-1 min-w-0">
+              <div key={i} className="flex-1 flex flex-col items-center gap-1 min-w-0 h-full justify-end">
                 <div
                   className="w-full rounded-t-md"
                   style={{
+                    // Height is % of the column, which is now h-full (was
+                    // content-sized, collapsing every bar to a few px).
                     height: `${Math.max(3, pct)}%`,
+                    minHeight: b.value > 0 ? 6 : 3,
                     background: "linear-gradient(180deg, rgba(0,175,240,0.9) 0%, rgba(0,175,240,0.35) 100%)",
                     boxShadow: "0 -6px 20px -8px rgba(0,175,240,0.4)",
                   }}
@@ -669,7 +672,7 @@ function DashboardTab() {
             <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
               <h2 className="text-[16px] font-semibold text-white">Net Sales 📈</h2>
               <div className="flex bg-[#0d1117] border border-[#2a2d35] rounded-lg p-0.5 text-[12px]">
-                {(["1d", "7d", "30d", "all"] as ChartPeriod[]).map((p) => (
+                {(["1d", "7d", "30d", "90d", "ytd"] as ChartPeriod[]).map((p) => (
                   <button
                     key={p}
                     type="button"
@@ -680,7 +683,7 @@ function DashboardTab() {
                         : "text-[#9ca3af] hover:text-white"
                     }`}
                   >
-                    {p === "1d" ? "1 Day" : p === "7d" ? "7 Days" : p === "30d" ? "30 Days" : "All Time"}
+                    {p === "1d" ? "1 Day" : p === "7d" ? "7 Days" : p === "30d" ? "30 Days" : p === "90d" ? "90 Days" : "YTD"}
                   </button>
                 ))}
               </div>

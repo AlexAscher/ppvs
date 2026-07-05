@@ -483,41 +483,6 @@ export function ActionPanel({
                   </div>
                 </div>
 
-                {/* Urgency timer — only meaningful for paid sends (a free
-                    send has no pay link to expire). */}
-                {!isFree && (
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-[11px] text-[#9ca3af] font-medium">Expires</span>
-                      {expiresInHours > 0 && (
-                        <span className="text-[10px] text-[#f59e0b]">⏳ link dies in {expiresInHours}h</span>
-                      )}
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {[
-                        { label: "No timer", h: 0 },
-                        { label: "1h", h: 1 },
-                        { label: "6h", h: 6 },
-                        { label: "12h", h: 12 },
-                        { label: "24h", h: 24 },
-                        { label: "48h", h: 48 },
-                      ].map((opt) => (
-                        <button
-                          key={opt.h}
-                          type="button"
-                          onClick={() => onExpiresInHoursChange(opt.h)}
-                          className={`px-2.5 py-1 rounded-md text-[10px] font-medium border transition-all ${
-                            expiresInHours === opt.h
-                              ? "bg-[#00AFF0] text-white border-[#00AFF0]"
-                              : "bg-transparent text-[#9ca3af] border-[#374151] hover:border-[#4b5563] hover:text-[#d1d5db]"
-                          }`}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
 
                 {/* Pricing hint (avg / most common / top) removed per user
                     request — was visually noisy and the chatter rarely

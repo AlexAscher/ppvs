@@ -237,14 +237,34 @@ export default function LandingPage() {
         .land .math .result{color:${C.green};font-weight:700;}
         @media(max-width:960px){
           .land .wrap{padding:0 24px !important;}
-          .land .nav-inner{padding:14px 24px !important;}
-          .land .hero-grid,.land .role-section,.land .role-section.reverse,.land .card-row{grid-template-columns:1fr !important;}
+          .land .nav-inner{padding:14px 20px !important;gap:12px !important;}
+          .land .nav-links{display:none !important;}
+          .land .hero{min-height:auto !important;padding:32px 0 40px !important;}
+          .land .hero-grid,.land .role-section,.land .role-section.reverse,.land .card-row{grid-template-columns:1fr !important;gap:32px !important;}
+          .land .role-section,.land .role-section.reverse{padding:0 24px !important;}
           .land .role-section.reverse .role-screenshot{order:initial !important;}
+          .land .role-section > div:last-child{padding-left:0 !important;}
           .land .hero h1{font-size:38px !important;}
-          .land .hero-visual img{max-width:280px !important;}
+          .land .hero-visual{padding-left:0 !important;justify-content:center !important;}
+          .land .hero-visual img{max-width:340px !important;}
           .land .box-row{max-width:100% !important;}
           .land .foot-grid{grid-template-columns:1fr 1fr !important;}
           .land .hero-copy{padding-right:0 !important;}
+        }
+        @media(max-width:640px){
+          .land .wrap{padding:0 18px !important;}
+          .land .nav-inner{padding:12px 16px !important;}
+          .land .logo span,.land .logo{font-size:15px !important;}
+          .land .btn{padding:9px 14px !important;font-size:12px !important;}
+          .land .btn-lg{padding:12px 18px !important;font-size:13px !important;}
+          .land .hero h1{font-size:30px !important;line-height:1.1 !important;}
+          .land .hero-visual img{max-width:260px !important;}
+          .land section{padding:56px 0 !important;}
+          .land h2{font-size:26px !important;}
+          .land .box-row{gap:8px !important;}
+          .land .box-row > div{padding:12px 6px !important;font-size:10px !important;}
+          .land .foot-grid{grid-template-columns:1fr !important;gap:24px !important;}
+          .land .price-card{padding:28px 22px !important;}
         }
       `}</style>
 
@@ -257,7 +277,7 @@ export default function LandingPage() {
               <img src="/landing/logo.png" alt="PPVS.IO logo" style={{ width: 34, height: 34, borderRadius: 8, objectFit: "cover" }} />
               PPVS.IO
             </Link>
-            <div style={{ display: "flex", alignItems: "center", gap: 28, fontSize: 14, color: C.textDim }}>
+            <div className="nav-links" style={{ display: "flex", alignItems: "center", gap: 28, fontSize: 14, color: C.textDim }}>
               <a href="#features" style={{ color: "inherit", textDecoration: "none" }}>Features</a>
               <a href="#pricing" style={{ color: "inherit", textDecoration: "none" }}>Pricing</a>
               <a href="#faq" style={{ color: "inherit", textDecoration: "none" }}>FAQ</a>

@@ -246,6 +246,38 @@ function formatRelative(ts: number): string {
 type ChartPeriod = "1d" | "7d" | "30d" | "90d" | "ytd";
 
 /**
+ * Nice-tick Y-axis: 5 evenly-spaced ticks (top → 0) chosen so labels are
+ * always whole/round numbers.
+ *   maxValue ≤ 4  → step 1 (0/1/2/3/4)
+ *   maxValue ≤ 8  → step 2
+ *   maxValue ≤ 20 → step 5
+ *   otherwise     → smallest step from {1,2,2.5,5}×10^n s.t. 4·step ≥ max
+ * Returns { top, ticks } where `top` = ticks[0] (use for chart scaling too).
+ */
+function computeNiceTicks(maxValue: number): { top: number; ticks: number[] } {
+  if (!Number.isFinite(maxValue) || maxValue <= 0) {
+    return { top: 4, ticks: [4, 3, 2, 1, 0] };
+  }
+  let step: number;
+  if (maxValue <= 4) step = 1;
+  else if (maxValue <= 8) step = 2;
+  else if (maxValue <= 20) step = 5;
+  else {
+    let found = 0;
+    outer: for (let mag = 1; mag < 15; mag++) {
+      const scale = Math.pow(10, mag);
+      for (const c of [1, 2, 2.5, 5]) {
+        const s = c * scale;
+        if (s * 4 >= maxValue) { found = s; break outer; }
+      }
+    }
+    step = found || Math.ceil(maxValue / 4);
+  }
+  const top = step * 4;
+  return { top, ticks: [top, step * 3, step * 2, step, 0] };
+}
+
+/**
  * Net Sales chart. SVG with a fixed `viewBox="0 0 100 50"` so the
  * `<polyline>` / `<path>` work in unit coordinates (the previous version
  * mixed `%` into SVG attribute values, which browsers silently dropped —
@@ -293,7 +325,8 @@ function ChartCanvas({
   const VB_H = 50;
   const n = chartData.length;
   const x = (i: number) => (n === 1 ? 50 : (i / (n - 1)) * VB_W);
-  const y = (v: number) => VB_H - (v / maxValue) * VB_H;
+  const { top: niceTop, ticks: yTickValues } = computeNiceTicks(maxValue);
+  const y = (v: number) => VB_H - (v / niceTop) * VB_H;
 
   const linePoints = chartData.map((d, i) => `${x(i).toFixed(2)},${y(d.value).toFixed(2)}`).join(" ");
   const areaPath =
@@ -312,16 +345,15 @@ function ChartCanvas({
   const targetLabels = Math.min(maxLabels, vw < 480 ? 4 : vw < 900 ? 5 : period === "7d" ? 7 : 8);
   const stride = Math.max(1, Math.ceil(n / targetLabels));
 
-  // Y-axis $ ticks — 5 rungs (top→bottom) picked adaptively off maxValue.
-  const yTicks = (() => {
-    if (maxValue <= 0) return [0, 0, 0, 0, 0];
-    // Round the max up to a "nice" value so the ticks read cleanly ($10 / $50 / $500 / etc).
-    const magnitude = Math.pow(10, Math.floor(Math.log10(maxValue)));
-    const niceMax = Math.ceil(maxValue / magnitude) * magnitude;
-    return [niceMax, niceMax * 0.75, niceMax * 0.5, niceMax * 0.25, 0];
-  })();
-  const fmtTick = (v: number) =>
-    v >= 1000 ? `$${(v / 1000).toFixed(v >= 10_000 ? 0 : 1)}k` : `$${Math.round(v)}`;
+  // Y-axis $ labels — see computeNiceTicks above (5 rungs, always round $).
+  const yTicks = yTickValues;
+  const fmtTick = (v: number): string => {
+    if (v === 0) return "$0";
+    if (v >= 10_000) return `$${(v / 1000).toFixed(0)}k`;
+    if (v >= 1000) return `$${(v / 1000).toFixed(1)}k`;
+    if (v < 10 && v % 1 !== 0) return `$${v.toFixed(1)}`;
+    return `$${Math.round(v)}`;
+  };
 
   return (
     <div className="relative">
@@ -423,7 +455,12 @@ function ConversationsStartedCard({
   // /api/dashboard/stats.conversations7d (new fan rows per day). No toggle
   // — brief now shows a static "Last 7 days" label instead.
   const bars = chartData.slice(-7);
-  const maxV = Math.max(1, ...bars.map((b) => b.value));
+  const maxV = Math.max(0, ...bars.map((b) => b.value));
+  // Same nice-tick logic as Net Sales, but the values are integer counts of
+  // conversations rather than dollars — reuse the algorithm, then format as
+  // plain integers.
+  const { top: niceTop, ticks: yTicks } = computeNiceTicks(maxV);
+  const fmtCount = (v: number) => String(Math.round(v));
   return (
     <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-5 flex flex-col">
       <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
@@ -435,29 +472,54 @@ function ConversationsStartedCard({
           {loading ? "Loading…" : "No activity yet."}
         </div>
       ) : (
-        <div className="flex-1 flex items-end gap-1 h-[220px] pt-4 pb-2">
-          {bars.map((b, i) => {
-            const pct = Math.round((b.value / maxV) * 100);
-            const d = new Date(b.date);
-            const label = d.toLocaleDateString("en-US", { weekday: "short" });
-            return (
-              <div key={i} className="flex-1 flex flex-col items-center gap-1 min-w-0 h-full justify-end">
-                <div
-                  className="w-full rounded-t-md"
-                  style={{
-                    // Height is % of the column, which is now h-full (was
-                    // content-sized, collapsing every bar to a few px).
-                    height: `${Math.max(3, pct)}%`,
-                    minHeight: b.value > 0 ? 6 : 3,
-                    background: "linear-gradient(180deg, rgba(0,175,240,0.9) 0%, rgba(0,175,240,0.35) 100%)",
-                    boxShadow: "0 -6px 20px -8px rgba(0,175,240,0.4)",
-                  }}
-                  title={`${d.toLocaleDateString("en-US")}: ${b.value}`}
-                />
-                <div className="text-[9px] text-[#6b7280]">{label}</div>
-              </div>
-            );
-          })}
+        // Left Y-axis labels + gridlines, matching the Net Sales card. The
+        // bar row is offset by ml-8 so the labels never overlap the chart.
+        <div className="relative flex-1 h-[220px] pt-4 pb-2">
+          <div className="absolute left-0 top-4 bottom-8 w-8 flex flex-col justify-between text-right text-[10px] text-[#6b7280] pointer-events-none">
+            {yTicks.map((v, i) => (
+              <div key={i} className="leading-none pr-1.5 -translate-y-1">{fmtCount(v)}</div>
+            ))}
+          </div>
+          <div className="absolute left-8 right-0 top-4 bottom-8">
+            {[0, 1, 2, 3, 4].map((i) => (
+              <div
+                key={i}
+                className="absolute w-full border-t border-[#2a2d35]"
+                style={{ top: `${i * 25}%` }}
+              />
+            ))}
+            <div className="absolute inset-0 flex items-end gap-1">
+              {bars.map((b, i) => {
+                const pct = niceTop > 0 ? (b.value / niceTop) * 100 : 0;
+                const d = new Date(b.date);
+                return (
+                  <div key={i} className="flex-1 flex flex-col items-center gap-1 min-w-0 h-full justify-end">
+                    <div
+                      className="w-full rounded-t-md"
+                      style={{
+                        height: `${pct}%`,
+                        minHeight: b.value > 0 ? 6 : 0,
+                        background: "linear-gradient(180deg, rgba(0,175,240,0.9) 0%, rgba(0,175,240,0.35) 100%)",
+                        boxShadow: "0 -6px 20px -8px rgba(0,175,240,0.4)",
+                      }}
+                      title={`${d.toLocaleDateString("en-US")}: ${b.value}`}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div className="absolute left-8 right-0 bottom-0 h-6 flex items-end gap-1">
+            {bars.map((b, i) => {
+              const d = new Date(b.date);
+              const label = d.toLocaleDateString("en-US", { weekday: "short" });
+              return (
+                <div key={i} className="flex-1 text-center text-[9px] text-[#6b7280] min-w-0">
+                  {label}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>

@@ -2141,13 +2141,6 @@ export default function ChatterPage() {
         onLogout={handleLogout}
         ecoOn={eco}
         onToggleEco={() => { void setEcoMode(!eco); }}
-        onBack={() => {
-          // Agency goes back to ppvs.io/dashboard; chatter stays on chatter.ppvs.io/dashboard.
-          // Use a full-page nav (window.location) because it may cross subdomains.
-          const target = dashboardUrl(role ?? "chatter");
-          if (/^https?:/i.test(target)) window.location.href = target;
-          else router.push(target);
-        }}
         reloading={reloading}
         onReload={async () => {
           if (reloading) return;

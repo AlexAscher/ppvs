@@ -201,6 +201,10 @@ export default function ChatterPage() {
   const [role, setRole] = useState<"agency" | "chatter" | null>(null);
 
   const [models, setModels] = useState<Model[]>([]);
+  // True once the models-load effect has resolved (success or empty). Guards
+  // the chatter "Ask your agency to invite you" screen so it doesn't flash
+  // before assigned models actually arrive.
+  const [modelsLoaded, setModelsLoaded] = useState(false);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
 
   const [dialogsByModel, setDialogsByModel] = useState<Record<string, Dialog[]>>({});
@@ -466,6 +470,7 @@ export default function ChatterPage() {
           }
         }
       }
+      if (!cancelled) setModelsLoaded(true);
     })();
     return () => {
       cancelled = true;
@@ -703,14 +708,19 @@ export default function ChatterPage() {
     const tid = setTimeout(() => {
       void fetchDialogs(selectedModelId, true);
     }, 0);
+    // When a dialog is OPEN, poll fast (2s eco-independent) so read-receipt
+    // ticks (✓ → ✓✓) flip within a couple of seconds. When no dialog is
+    // open, fall back to the slow eco-scaled cadence so background models
+    // don't pound Telegram.
+    const intervalMs = selectedDialog ? 2000 : DIALOGS_POLL_MS * ecoMul;
     const iv = setInterval(() => {
       void fetchDialogs(selectedModelId, false);
-    }, DIALOGS_POLL_MS * ecoMul);
+    }, intervalMs);
     return () => {
       clearTimeout(tid);
       clearInterval(iv);
     };
-  }, [selectedModelId, fetchDialogs, ecoMul]);
+  }, [selectedModelId, selectedDialog, fetchDialogs, ecoMul]);
 
   useEffect(() => {
     if (role !== "agency") return;
@@ -2092,6 +2102,19 @@ export default function ChatterPage() {
   // v3: chatter without any linked model = not connected to an agency. Show
   // a full-page placeholder telling them to ask the agency to invite them.
   // Agency accounts always have their own models, so they never hit this.
+  // Wait for the initial models fetch to resolve before showing the "Ask
+  // your agency to invite you" screen — otherwise a chatter with real
+  // assignments briefly sees it while the fetch is in-flight.
+  if (role === "chatter" && !modelsLoaded) {
+    return (
+      <div
+        className="h-[100dvh] w-full flex items-center justify-center text-white"
+        style={{ background: "radial-gradient(900px 520px at 50% 42%, rgba(0,175,240,0.16) 0%, rgba(0,175,240,0.04) 35%, rgba(0,175,240,0) 65%), #0a1220" }}
+      >
+        <div className="w-9 h-9 rounded-full border-2 border-white/20 border-t-[#00AFF0] animate-spin" />
+      </div>
+    );
+  }
   if (role === "chatter" && models.length === 0) {
     return (
       <div

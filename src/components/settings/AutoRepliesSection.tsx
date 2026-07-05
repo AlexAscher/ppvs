@@ -127,17 +127,34 @@ export function AutoRepliesSection() {
     setUploading(true);
     setMsg("");
     try {
-      // Path scheme: {agencyUserId}/auto_reply_{modelId}.{ext}. Replacing the
-      // file overwrites the previous attachment for this model.
+      // Path scheme includes a per-upload nonce so a new attachment always
+      // lands at a NEW Storage object — never at the same path as the old
+      // one. The old scheme (`auto_reply_{modelId}.{ext}`) meant that if the
+      // user swapped file types the DB still pointed at the old ext, and the
+      // auto-reply worker kept sending the previous image. Nonce path avoids
+      // both storage/CDN caching and stale DB pointers on ext changes.
+      // (The previous file is best-effort deleted below so orphans don't pile
+      // up in the bucket.)
       const ext = (file.name.split(".").pop() ?? "bin").toLowerCase();
-      const path = `${agencyUserId}/auto_reply_${selectedModelId}.${ext}`;
+      const nonce = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const path = `${agencyUserId}/auto_reply_${selectedModelId}_${nonce}.${ext}`;
       const { error: upErr } = await supabase.storage
         .from("ppvs")
-        .upload(path, file, { upsert: true, contentType: file.type });
+        .upload(path, file, { upsert: false, contentType: file.type });
       if (upErr) throw upErr;
       const publicUrl = supabase.storage.from("ppvs").getPublicUrl(path).data.publicUrl;
       // Cache-buster so the UI shows the new file immediately.
       const url = `${publicUrl}?t=${Date.now()}`;
+      // Best-effort remove the previous attachment so it doesn't sit in
+      // Storage forever. Failure is silently ignored — the new file is
+      // already live and referenced.
+      const prev = config.mediaUrl;
+      if (prev) {
+        const m = prev.split("?")[0].match(/\/storage\/v1\/object\/public\/ppvs\/(.+)$/);
+        if (m) {
+          void supabase.storage.from("ppvs").remove([m[1]]);
+        }
+      }
       setConfig((c) => ({ ...c, mediaUrl: url, mediaType: kind }));
       setMsg("Uploaded ✓");
     } catch (e: unknown) {

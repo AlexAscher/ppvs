@@ -164,15 +164,39 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ age
     );
     chatters.sort((a, b) => b.gmv - a.gmv);
 
-    const allFans: AdminAgencyFan[] = fans
-      .map((f) => ({
-        peerId: f.peer_id,
-        username: f.telegram_username,
-        name: f.telegram_name || (f.telegram_username ? `@${f.telegram_username}` : "Fan"),
-        modelName: nameByModel.get(f.model_id) ?? "—",
-        spent: Number(f.total_spent ?? 0),
-        lastSeen: f.last_seen_at,
-      }))
+    // Dedupe by peer_id — the same Telegram user can have one `fans` row per
+    // model of the same agency, so without dedupe the admin panel showed the
+    // same person 2-3 times. We merge spend + keep the earliest last_seen so
+    // the row reflects the fan, not any single model relationship.
+    const fanByPeer = new Map<string, AdminAgencyFan>();
+    for (const f of fans) {
+      const key = String(f.peer_id ?? "");
+      if (!key) continue;
+      const modelName = nameByModel.get(f.model_id) ?? "—";
+      const spent = Number(f.total_spent ?? 0);
+      const existing = fanByPeer.get(key);
+      if (!existing) {
+        fanByPeer.set(key, {
+          peerId: f.peer_id,
+          username: f.telegram_username,
+          name: f.telegram_name || (f.telegram_username ? `@${f.telegram_username}` : "Fan"),
+          modelName,
+          spent,
+          lastSeen: f.last_seen_at,
+        });
+      } else {
+        existing.spent += spent;
+        // Keep the freshest last_seen across the fan's per-model rows.
+        if (f.last_seen_at && (!existing.lastSeen || new Date(f.last_seen_at) > new Date(existing.lastSeen))) {
+          existing.lastSeen = f.last_seen_at;
+        }
+        // If a duplicate row happens to have a display name and the first
+        // didn't, upgrade it.
+        if (!existing.username && f.telegram_username) existing.username = f.telegram_username;
+        if ((!existing.name || existing.name === "Fan") && f.telegram_name) existing.name = f.telegram_name;
+      }
+    }
+    const allFans: AdminAgencyFan[] = Array.from(fanByPeer.values())
       .sort((a, b) => b.spent - a.spent);
     const topFans = allFans.filter((f) => f.spent > 0).slice(0, 10);
     const payingFans = allFans.filter((f) => f.spent > 0).length;

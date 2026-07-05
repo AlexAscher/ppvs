@@ -461,6 +461,15 @@ function ConversationsStartedCard({
   // plain integers.
   const { top: niceTop, ticks: yTicks } = computeNiceTicks(maxV);
   const fmtCount = (v: number) => String(Math.round(v));
+  // Hover/click state — desktop hover + mobile tap both surface a tooltip
+  // showing the exact date + count. Auto-clears after ~2.5s on tap so the
+  // tooltip doesn't stick when the user moves on.
+  const [activeBar, setActiveBar] = useState<number | null>(null);
+  useEffect(() => {
+    if (activeBar === null) return;
+    const t = setTimeout(() => setActiveBar(null), 2500);
+    return () => clearTimeout(t);
+  }, [activeBar]);
   return (
     <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-5 flex flex-col">
       <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
@@ -474,7 +483,8 @@ function ConversationsStartedCard({
       ) : (
         // Left Y-axis labels + gridlines, matching the Net Sales card. The
         // bar row is offset by ml-8 so the labels never overlap the chart.
-        <div className="relative flex-1 h-[220px] pt-4 pb-2">
+        // The whole box adapts down to narrow screens via clamp() height.
+        <div className="relative flex-1 pt-4 pb-2" style={{ height: "clamp(180px, 42vw, 240px)" }}>
           <div className="absolute left-0 top-4 bottom-8 w-8 flex flex-col justify-between text-right text-[10px] text-[#6b7280] pointer-events-none">
             {yTicks.map((v, i) => (
               <div key={i} className="leading-none pr-1.5 -translate-y-1">{fmtCount(v)}</div>
@@ -492,17 +502,35 @@ function ConversationsStartedCard({
               {bars.map((b, i) => {
                 const pct = niceTop > 0 ? (b.value / niceTop) * 100 : 0;
                 const d = new Date(b.date);
+                const isActive = activeBar === i;
+                const dateLabel = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
                 return (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-1 min-w-0 h-full justify-end">
+                  <div
+                    key={i}
+                    className="relative flex-1 flex flex-col items-center gap-1 min-w-0 h-full justify-end cursor-pointer group"
+                    onMouseEnter={() => setActiveBar(i)}
+                    onMouseLeave={() => setActiveBar(null)}
+                    onClick={() => setActiveBar(i)}
+                  >
+                    {isActive && (
+                      <div
+                        className="absolute z-10 px-2 py-1 rounded-md bg-[#0d1117] border border-[#2a2d35] shadow-lg text-white pointer-events-none whitespace-nowrap"
+                        style={{ top: -4, left: "50%", transform: "translate(-50%, -100%)", fontSize: 11 }}
+                      >
+                        <div className="font-semibold text-[#00AFF0]">{b.value} {b.value === 1 ? "conversation" : "conversations"}</div>
+                        <div className="text-[10px] text-[#9ca3af]">{dateLabel}</div>
+                      </div>
+                    )}
                     <div
-                      className="w-full rounded-t-md"
+                      className="w-full rounded-t-md transition-opacity"
                       style={{
                         height: `${pct}%`,
                         minHeight: b.value > 0 ? 6 : 0,
-                        background: "linear-gradient(180deg, rgba(0,175,240,0.9) 0%, rgba(0,175,240,0.35) 100%)",
+                        background: isActive
+                          ? "linear-gradient(180deg, rgba(70,196,255,1) 0%, rgba(0,175,240,0.55) 100%)"
+                          : "linear-gradient(180deg, rgba(0,175,240,0.9) 0%, rgba(0,175,240,0.35) 100%)",
                         boxShadow: "0 -6px 20px -8px rgba(0,175,240,0.4)",
                       }}
-                      title={`${d.toLocaleDateString("en-US")}: ${b.value}`}
                     />
                   </div>
                 );
@@ -763,124 +791,121 @@ function DashboardTab() {
           <ConversationsStartedCard chartData={stats?.conversations7d ?? []} loading={!stats} />
         </div>
 
-        {/* v3: split the old single Creators breakdown row into two boxes:
-            Creators Breakdown on the left, Top Chatters on the right. */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-5 flex flex-col">
-            <h2 className="text-[16px] font-semibold text-white mb-4">Creators Breakdown 👥</h2>
-            <div className="flex-1 overflow-y-auto max-h-[300px] space-y-2 pr-2 custom-scrollbar">
-              {(stats?.models ?? []).length === 0 ? (
+        {/* Bottom row: LEFT (2 cols) Recent Sales spans the full stack;
+            RIGHT (1 col) three narrow boxes stacked — Creators Breakdown,
+            Top Chatters, Top Fans. Recent Sales' bottom aligns with Top
+            Fans' bottom because the left cell row-spans all three. */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Left: Recent Sales, sales amounts in the same blue as Top Fans. */}
+          <div className="md:col-span-2 md:row-span-3 bg-[#161a22] border border-[#2a2d35] rounded-lg p-5 flex flex-col min-h-[560px]">
+            <h2 className="text-[16px] font-semibold text-white mb-4">Recent Sales 💸</h2>
+            <div className="flex-1 overflow-y-auto space-y-1.5 pr-2 custom-scrollbar">
+              {(stats?.recentSales ?? []).length === 0 ? (
                 <div className="py-6 text-center text-[13px] text-[#6b7280]">
                   {stats ? "No sales yet." : "Loading…"}
                 </div>
               ) : (
-                stats!.models.map((m) => (
-                  <div key={m.id} className="flex items-center justify-between p-3 bg-[#1f2937]/30 rounded-lg hover:bg-[#1f2937]/50 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-full flex items-center justify-center text-white font-semibold text-[12px]">
-                        {initials(m.name) || "M"}
+                stats!.recentSales.map((s, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center justify-between gap-3 p-2.5 bg-[#1f2937]/30 rounded-lg hover:bg-[#1f2937]/50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-7 h-7 bg-gradient-to-br from-[#00AFF0]/20 to-[#00AFF0]/10 border border-[#00AFF0]/30 rounded-full flex items-center justify-center text-[12px]">
+                        💸
                       </div>
-                      <div>
-                        <div className="text-[13px] text-white font-medium">{m.name}</div>
-                        <div className="text-[11px] text-[#6b7280]">{m.sales} sales</div>
+                      <div className="min-w-0">
+                        <div className="text-[13px] text-white font-medium truncate">
+                          {s.fanName}
+                        </div>
+                        <div className="text-[11px] text-[#6b7280] truncate">
+                          {s.modelName} · {formatRelative(s.ts)}
+                        </div>
                       </div>
                     </div>
-                    <div className="text-[15px] font-bold text-[#00AFF0]">{fmtMoney(m.net)}</div>
+                    <div className="text-[14px] font-bold text-[#00AFF0] shrink-0">
+                      {/* Show what the agency actually receives (85%). */}
+                      {fmtMoney(s.amount * 0.85)}
+                    </div>
                   </div>
                 ))
               )}
             </div>
           </div>
+
+          {/* Right column: 3 compact boxes stacked. */}
+          {/* Creators Breakdown — 1 row visible, scrolls if more. */}
           <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-5 flex flex-col">
-            <h2 className="text-[16px] font-semibold text-white mb-4">Top Chatters ✍️</h2>
-            <div className="flex-1 overflow-y-auto max-h-[300px] space-y-2 pr-2 custom-scrollbar">
+            <h2 className="text-[15px] font-semibold text-white mb-3">Creators Breakdown 👥</h2>
+            <div className="overflow-y-auto space-y-2 pr-2 custom-scrollbar" style={{ maxHeight: 68 }}>
+              {(stats?.models ?? []).length === 0 ? (
+                <div className="py-3 text-center text-[12px] text-[#6b7280]">
+                  {stats ? "No sales yet." : "Loading…"}
+                </div>
+              ) : (
+                stats!.models.map((m) => (
+                  <div key={m.id} className="flex items-center justify-between p-2.5 bg-[#1f2937]/30 rounded-lg hover:bg-[#1f2937]/50 transition-colors">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-8 h-8 bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-full flex items-center justify-center text-white font-semibold text-[11px] shrink-0">
+                        {initials(m.name) || "M"}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-[12px] text-white font-medium truncate">{m.name}</div>
+                        <div className="text-[10px] text-[#6b7280]">{m.sales} sales</div>
+                      </div>
+                    </div>
+                    <div className="text-[13px] font-bold text-[#00AFF0] shrink-0">{fmtMoney(m.net)}</div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Top Chatters — 1 row visible, scrolls if more. */}
+          <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-5 flex flex-col">
+            <h2 className="text-[15px] font-semibold text-white mb-3">Top Chatters ✍️</h2>
+            <div className="overflow-y-auto space-y-2 pr-2 custom-scrollbar" style={{ maxHeight: 68 }}>
               {(stats?.chatters ?? []).length === 0 ? (
-                <div className="py-6 text-center text-[13px] text-[#6b7280]">
+                <div className="py-3 text-center text-[12px] text-[#6b7280]">
                   {stats ? "No chatter sales yet." : "Loading…"}
                 </div>
               ) : (
-                stats!.chatters.slice(0, 10).map((c) => (
-                  <div key={c.id} className="flex items-center justify-between p-3 bg-[#1f2937]/30 rounded-lg hover:bg-[#1f2937]/50 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-full flex items-center justify-center text-white font-semibold text-[12px]">
+                stats!.chatters.map((c) => (
+                  <div key={c.id} className="flex items-center justify-between p-2.5 bg-[#1f2937]/30 rounded-lg hover:bg-[#1f2937]/50 transition-colors">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-8 h-8 bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-full flex items-center justify-center text-white font-semibold text-[11px] shrink-0">
                         {initials(c.name) || "C"}
                       </div>
-                      <div>
-                        <div className="text-[13px] text-white font-medium">{c.name}</div>
-                        <div className="text-[11px] text-[#6b7280]">{c.sales} sales</div>
+                      <div className="min-w-0">
+                        <div className="text-[12px] text-white font-medium truncate">{c.name}</div>
+                        <div className="text-[10px] text-[#6b7280]">{c.sales} sales</div>
                       </div>
                     </div>
-                    <div className="text-[15px] font-bold text-[#00AFF0]">{fmtMoney(c.net)}</div>
+                    <div className="text-[13px] font-bold text-[#00AFF0] shrink-0">{fmtMoney(c.net)}</div>
                   </div>
                 ))
               )}
             </div>
           </div>
-        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Left column: Recent Sales */}
-          <div className="md:col-span-2 space-y-6">
-
-            {/* Recent Sales — last 10 paid/delivered. Lives in the left
-                column so the right column (Top Fans) stays full-height. */}
-            <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-5 flex flex-col">
-              <h2 className="text-[16px] font-semibold text-white mb-4">Recent Sales 💸</h2>
-              <div className="flex-1 overflow-y-auto max-h-[360px] space-y-1.5 pr-2 custom-scrollbar">
-                {(stats?.recentSales ?? []).length === 0 ? (
-                  <div className="py-6 text-center text-[13px] text-[#6b7280]">
-                    {stats ? "No sales yet." : "Loading…"}
-                  </div>
-                ) : (
-                  stats!.recentSales.map((s, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center justify-between gap-3 p-2.5 bg-[#1f2937]/30 rounded-lg hover:bg-[#1f2937]/50 transition-colors"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-7 h-7 bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border border-emerald-500/30 rounded-full flex items-center justify-center text-[12px]">
-                          💸
-                        </div>
-                        <div className="min-w-0">
-                          <div className="text-[13px] text-white font-medium truncate">
-                            {s.fanName}
-                          </div>
-                          <div className="text-[11px] text-[#6b7280] truncate">
-                            {s.modelName} · {formatRelative(s.ts)}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="text-[14px] font-bold text-emerald-400 shrink-0">
-                        {/* v3: show what the agency actually receives (85%). */}
-                        {fmtMoney(s.amount * 0.85)}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Top fans */}
+          {/* Top Fans — 5–6 highest paying. Username vert-centered with the
+              avatar (no secondary "Net to agency" line under it anymore). */}
           <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-5 flex flex-col">
-            <h2 className="text-[16px] font-semibold text-white mb-4">Top Fans 💸</h2>
-            <div className="flex-1 overflow-y-auto max-h-[300px] space-y-3 pr-2 custom-scrollbar">
+            <h2 className="text-[15px] font-semibold text-white mb-3">Top Fans 💸</h2>
+            <div className="flex-1 overflow-y-auto space-y-2 pr-2 custom-scrollbar" style={{ maxHeight: 380 }}>
               {(stats?.topFans ?? []).length === 0 ? (
-                <div className="py-6 text-center text-[13px] text-[#6b7280]">
+                <div className="py-3 text-center text-[12px] text-[#6b7280]">
                   {stats ? "No paying fans yet." : "Loading…"}
                 </div>
               ) : (
-                stats!.topFans.slice(0, 10).map((fan, idx) => (
-                  <div key={idx} className="flex items-center gap-3 p-3 bg-[#1f2937]/30 rounded-lg hover:bg-[#1f2937]/50 transition-colors">
-                    <div className="w-10 h-10 bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-full flex items-center justify-center text-white font-semibold text-[13px] relative">
+                stats!.topFans.slice(0, 6).map((fan, idx) => (
+                  <div key={idx} className="flex items-center gap-3 p-2.5 bg-[#1f2937]/30 rounded-lg hover:bg-[#1f2937]/50 transition-colors">
+                    <div className="w-9 h-9 bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-full flex items-center justify-center text-white font-semibold text-[12px] relative shrink-0">
                       {initials(fan.name) || "F"}
-                      <div className="absolute -top-1 -right-1 w-5 h-5 bg-[#f59e0b] rounded-full flex items-center justify-center text-[10px] font-bold">{idx + 1}</div>
+                      <div className="absolute -top-1 -right-1 w-4 h-4 bg-[#f59e0b] rounded-full flex items-center justify-center text-[9px] font-bold">{idx + 1}</div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[13px] font-medium text-white truncate">{fan.name}</div>
-                      <div className="text-[11px] text-[#6b7280]">Net to agency</div>
-                    </div>
-                    <div className="text-[15px] font-bold text-[#00AFF0]">{fmtMoney(fan.spent * 0.85)}</div>
+                    <div className="flex-1 min-w-0 text-[12px] font-medium text-white truncate">{fan.name}</div>
+                    <div className="text-[13px] font-bold text-[#00AFF0] shrink-0">{fmtMoney(fan.spent * 0.85)}</div>
                   </div>
                 ))
               )}

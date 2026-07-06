@@ -136,13 +136,45 @@ async function handleUpdate(u: TgUpdate): Promise<void> {
     }
     return;
   }
-  const code = m[1];
+  const rawCode = m[1];
 
   const admin = createAdminSupabaseClient();
+
+  // Platform-owner binding: codes prefixed with `admin_` bind to
+  // admin_sales_channels (see /api/admin/global-alerts). Fan-out from
+  // sales-alerts hits both admins and the sale's own agency independently.
+  if (rawCode.startsWith("admin_")) {
+    const code = rawCode.slice("admin_".length);
+    const { data: adminRow } = await admin
+      .from("admin_sales_channels")
+      .select("admin_email")
+      .eq("link_code", code)
+      .maybeSingle();
+    const adminEmail = (adminRow as { admin_email?: string } | null)?.admin_email;
+    if (!adminEmail) {
+      await sendBotMessage(String(chatId), "⚠️ This link expired. Generate a new one in Global Sales Alerts.");
+      return;
+    }
+    await admin
+      .from("admin_sales_channels")
+      .update({
+        bot_chat_id: String(chatId),
+        link_code: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("admin_email", adminEmail);
+    await sendBotMessage(
+      String(chatId),
+      "✅ Connected! You will receive a notification here for every sale of every agency on the platform 💰",
+    );
+    return;
+  }
+
+  // Per-agency binding (default).
   const { data: row } = await admin
     .from("agency_settings")
     .select("user_id")
-    .eq("alerts_bot_link_code", code)
+    .eq("alerts_bot_link_code", rawCode)
     .maybeSingle();
   const userId = (row as { user_id?: string } | null)?.user_id;
   if (!userId) {

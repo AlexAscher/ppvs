@@ -48,15 +48,16 @@ globalThis.__ppvs_auto_reply_lastout__ = lastOutgoing;
 type ModelConfig = {
   auto_reply_enabled: boolean | null;
   auto_reply_text: string | null;
-  auto_reply_media_url: string | null;
-  auto_reply_media_type: string | null;
   auto_reply_delay_sec: number | null;
+  auto_reply_stars: number | null;
+  auto_reply_ppv_ids: string[] | null;
+  tg_user_id: string | null;
 };
 
 async function loadModelConfig(modelId: string): Promise<ModelConfig | null> {
   const admin = createAdminSupabaseClient();
-  // select * so the optional auto_reply_delay_sec column comes through on
-  // newer schemas without breaking on older ones.
+  // select * so newly-added AR columns come through on migrated schemas
+  // without breaking on older ones.
   const { data } = await admin
     .from("models")
     .select("*")
@@ -91,36 +92,24 @@ async function markFanReplied(modelId: string, peerId: string): Promise<void> {
   );
 }
 
-/** Fetch the auto-reply media and wrap as a gramJS CustomFile.
- *
- *  ppvs bucket is private — a plain GET on the public URL returns 400 — so
- *  Supabase-storage URLs are downloaded via the service-role admin client.
- *  Other URLs go through plain fetch.
- */
-async function customFileFromUrl(url: string): Promise<CustomFile | null> {
+/** Download a Vault PPV media file straight from Supabase Storage via the
+ *  service-role admin client (the `ppvs` bucket is private). Non-Storage
+ *  URLs are refused — matches the SSRF hardening in business-bot.fetchBytes. */
+async function customFileFromStorage(url: string): Promise<CustomFile | null> {
   try {
     const path = ppvMediaPathFromUrl(url);
-    if (path) {
-      const admin = createAdminSupabaseClient();
-      const { data, error } = await admin.storage.from("ppvs").download(path);
-      if (error || !data) {
-        console.error("[auto-reply] storage download failed:", path, error?.message ?? "no data");
-        return null;
-      }
-      const buf = Buffer.from(await data.arrayBuffer());
-      const name = path.split("/").pop() ?? `auto_reply_${Date.now()}`;
-      return new CustomFile(name, buf.length, "", buf);
-    }
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 30_000);
-    const res = await fetch(url, { signal: controller.signal });
-    clearTimeout(timer);
-    if (!res.ok) {
-      console.error("[auto-reply] fetch failed:", url, `HTTP ${res.status}`);
+    if (!path) {
+      console.error("[auto-reply] refusing non-Storage media URL:", url);
       return null;
     }
-    const buf = Buffer.from(await res.arrayBuffer());
-    const name = url.split("/").pop()?.split("?")[0] ?? `auto_reply_${Date.now()}`;
+    const admin = createAdminSupabaseClient();
+    const { data, error } = await admin.storage.from("ppvs").download(path);
+    if (error || !data) {
+      console.error("[auto-reply] storage download failed:", path, error?.message ?? "no data");
+      return null;
+    }
+    const buf = Buffer.from(await data.arrayBuffer());
+    const name = path.split("/").pop() ?? `auto_reply_${Date.now()}`;
     return new CustomFile(name, buf.length, "", buf);
   } catch (e) {
     console.error("[auto-reply] customFile error:", e instanceof Error ? e.message : e);
@@ -128,31 +117,124 @@ async function customFileFromUrl(url: string): Promise<CustomFile | null> {
   }
 }
 
+async function loadPpvMedia(
+  ppvIds: string[],
+): Promise<{ id: string; mediaUrl: string }[]> {
+  if (ppvIds.length === 0) return [];
+  const admin = createAdminSupabaseClient();
+  const { data } = await admin
+    .from("ppvs")
+    .select("id, media_url")
+    .in("id", ppvIds);
+  const byId = new Map<string, string>();
+  for (const r of (data ?? []) as { id: string; media_url: string | null }[]) {
+    if (r.media_url) byId.set(r.id, r.media_url);
+  }
+  // Preserve the agency-picked order — .in() doesn't guarantee it.
+  return ppvIds
+    .map((id) => ({ id, mediaUrl: byId.get(id) ?? "" }))
+    .filter((x) => !!x.mediaUrl);
+}
+
 async function sendAutoReply(
   client: TelegramClient,
+  modelId: string,
   peerId: string,
   config: ModelConfig,
 ): Promise<void> {
   const text = (config.auto_reply_text ?? "").trim();
-  const mediaUrl = config.auto_reply_media_url ?? "";
+  const ppvIds = Array.isArray(config.auto_reply_ppv_ids)
+    ? config.auto_reply_ppv_ids.filter((x): x is string => typeof x === "string")
+    : [];
+  const stars = Math.max(0, Math.floor(Number(config.auto_reply_stars ?? 0)));
 
-  // Media + text → caption on the media. Text only → plain message. Media
-  // only → file with no caption. None → no-op.
-  if (mediaUrl) {
-    const file = await customFileFromUrl(mediaUrl);
-    if (file) {
-      await client.sendFile(peerId, {
-        file,
-        caption: text || "",
-      });
-      return;
+  // No media → text-only greeting (still auto-fires so the model looks
+  // responsive). No text either → no-op.
+  if (ppvIds.length === 0) {
+    if (text) await client.sendMessage(peerId, { message: text, linkPreview: false });
+    return;
+  }
+
+  const media = await loadPpvMedia(ppvIds);
+  if (media.length === 0) {
+    // All picked PPVs are missing media (deleted?). Fall back to text.
+    if (text) await client.sendMessage(peerId, { message: text, linkPreview: false });
+    return;
+  }
+
+  // Stars > 0 → native Paid Media via @ppvstarbot (business connection).
+  // Same code path as /api/ppv/send paid — the fan sees the blur + "Unlock
+  // for ⭐ N" overlay and the chatter view renders it as a PPV bubble.
+  if (stars > 0) {
+    const [{ findActiveBusinessConnection, sendPaidMediaAsBusiness }] = await Promise.all([
+      import("@/lib/business-bot"),
+    ]);
+    const admin = createAdminSupabaseClient();
+    let tgUserId = config.tg_user_id ?? null;
+    if (!tgUserId) {
+      try {
+        const me = await client.getMe();
+        tgUserId = me && "id" in me && me.id != null ? me.id.toString() : null;
+        if (tgUserId) {
+          await admin.from("models").update({ tg_user_id: tgUserId }).eq("id", modelId);
+        }
+      } catch {
+        tgUserId = null;
+      }
     }
-    // Media download failed — fall back to text-only if we have it.
+    if (!tgUserId) {
+      console.warn(`[auto-reply] no tg_user_id for model=${modelId} — falling back to free album`);
+    } else {
+      const conn = await findActiveBusinessConnection(admin, tgUserId);
+      if (!conn) {
+        console.warn(
+          `[auto-reply] no business connection for model=${modelId} — falling back to free album`,
+        );
+      } else {
+        const isVideo = (u: string) => /\.(mp4|mov|m4v|webm|mkv)(\?|$)/i.test(u);
+        try {
+          await sendPaidMediaAsBusiness({
+            connectionId: conn.connectionId,
+            chatId: peerId,
+            stars,
+            // Auto-replies have no ppv_sends row, so we don't have a code to
+            // pass back through the purchased_paid_media webhook. Use a
+            // stable synthetic payload so the webhook can tell "this was an
+            // auto-reply, no server-side fulfillment needed".
+            payload: `ar_${modelId.slice(0, 8)}_${Date.now().toString(36)}`,
+            caption: text,
+            media: media.map((m) => ({
+              kind: isVideo(m.mediaUrl) ? "video" : "photo",
+              url: m.mediaUrl,
+            })),
+          });
+          return;
+        } catch (e) {
+          console.error(
+            `[auto-reply] sendPaidMediaAsBusiness failed for model=${modelId}:`,
+            e instanceof Error ? e.message : e,
+          );
+          // Fall through to free album so the fan at least gets something.
+        }
+      }
+    }
   }
 
-  if (text) {
-    await client.sendMessage(peerId, { message: text, linkPreview: false });
+  // Free album path (stars = 0, or paid path failed): download each media
+  // as a CustomFile and send as an album with the caption on the first item.
+  const files: CustomFile[] = [];
+  for (const m of media) {
+    const cf = await customFileFromStorage(m.mediaUrl);
+    if (cf) files.push(cf);
   }
+  if (files.length === 0) {
+    if (text) await client.sendMessage(peerId, { message: text, linkPreview: false });
+    return;
+  }
+  await client.sendFile(peerId, {
+    file: files,
+    caption: text || "",
+  });
 }
 
 /**
@@ -207,7 +289,10 @@ export function subscribeAutoReplyEvents(modelId: string, client: TelegramClient
       try {
         const config = await loadModelConfig(modelId);
         if (!config || !config.auto_reply_enabled) return;
-        if (!config.auto_reply_text && !config.auto_reply_media_url) return;
+        const hasMedia =
+          Array.isArray(config.auto_reply_ppv_ids) &&
+          config.auto_reply_ppv_ids.length > 0;
+        if (!config.auto_reply_text && !hasMedia) return;
 
         const needs = await fanNeedsAutoReply(modelId, senderId);
         if (!needs) return;
@@ -233,7 +318,7 @@ export function subscribeAutoReplyEvents(modelId: string, client: TelegramClient
           );
           return;
         }
-        await sendAutoReply(client, senderId, config);
+        await sendAutoReply(client, modelId, senderId, config);
         // Reflect our own send in the outgoing-trace so a second fan message
         // arriving immediately after doesn't think the model is still idle.
         lastOutgoing.set(`${modelId}:${senderId}`, Math.floor(Date.now() / 1000));

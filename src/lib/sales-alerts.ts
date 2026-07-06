@@ -152,6 +152,29 @@ async function sendSalesAlertInner(event: SalesAlertEvent): Promise<void> {
 
   const text = buildMessage(event, chatterName);
 
+  // Fan-out to any connected platform-owner (admin) sales channels. Runs
+  // in parallel with the per-agency delivery below so admin alerts still
+  // fire even when the agency hasn't wired Sales Alerts yet. Fire-and-forget.
+  void (async () => {
+    try {
+      const { data: adminChans } = await admin
+        .from("admin_sales_channels")
+        .select("bot_chat_id, enabled")
+        .not("bot_chat_id", "is", null)
+        .eq("enabled", true);
+      const rows =
+        ((adminChans ?? []) as { bot_chat_id: string; enabled: boolean }[]) ?? [];
+      if (rows.length === 0) return;
+      const { sendBotMessage } = await import("@/lib/alert-bot");
+      await Promise.all(rows.map((r) => sendBotMessage(r.bot_chat_id, text)));
+    } catch (e) {
+      console.error(
+        "[sales-alerts] admin fan-out failed:",
+        e instanceof Error ? e.message : e,
+      );
+    }
+  })();
+
   // ── Primary path: bot DM (no userbot, no ban risk) ──────────────────
   if (settings.alerts_bot_chat_id) {
     markRecent(dupKey);

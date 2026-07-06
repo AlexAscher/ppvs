@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Upload, X, Image as ImageIcon, Film, Smile } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ChevronDown, Smile, X, Sparkles } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { EmojiPicker } from "@/components/chatter-page/EmojiPicker";
 
@@ -11,23 +11,36 @@ import { EmojiPicker } from "@/components/chatter-page/EmojiPicker";
  * - Model picker (one auto-reply per model). Defaults to first.
  * - Enable toggle.
  * - Message textarea (≤ 4 KB).
- * - Single attached photo/video (Supabase Storage, ppvs bucket).
+ * - Send delay preset (1 / 2 / 5 / 10 / 30 min).
+ * - Stars price (0 = free; > 0 = native paid media via @ppvstarbot).
+ * - Vault picker: multi-select PPVs to attach (up to 10).
  *
- * Saved fields are read/written through /api/auto-reply/[modelId].
- * Media upload goes browser → Supabase Storage directly (RLS-safe path
- * under the agency's user id, same convention as PpvMediaInput).
+ * Media comes from the Vault exclusively — the legacy per-AR upload path
+ * was retired in batch 93c. Saved fields are read/written through
+ * /api/auto-reply/[modelId].
  */
 
 type Model = { id: string; name: string };
 
+type VaultPpv = {
+  id: string;
+  name: string;
+  media_url: string | null;
+  preview_url: string | null;
+};
+
 type Config = {
   enabled: boolean;
   text: string;
-  mediaUrl: string | null;
-  mediaType: "photo" | "video" | null;
   /** Delay in seconds before the auto-reply fires after the fan's first
-   *  message. 0 = instant; presets are 0 / 60 / 300. */
+   *  message. Presets 60 / 120 / 300 / 600 / 1800. Default 60. */
   delaySec: number;
+  /** Telegram Stars price (0..10 000). 0 = free album; > 0 = native Paid
+   *  Media via @ppvstarbot (business connection required). */
+  stars: number;
+  /** Ordered list of Vault PPV ids to attach (max 10, mirroring native
+   *  sendPaidMedia's album cap). */
+  ppvIds: string[];
 };
 
 const DELAY_PRESETS = [
@@ -38,11 +51,8 @@ const DELAY_PRESETS = [
   { value: 1800, label: "30 min" },
 ] as const;
 
-function inferMediaType(file: File): "photo" | "video" | null {
-  if (file.type.startsWith("image/")) return "photo";
-  if (file.type.startsWith("video/")) return "video";
-  return null;
-}
+const MAX_STARS = 10_000;
+const MAX_PPVS_PER_AR = 10;
 
 export function AutoRepliesSection() {
   const supabase = createClient();
@@ -55,26 +65,19 @@ export function AutoRepliesSection() {
   const [config, setConfig] = useState<Config>({
     enabled: false,
     text: "",
-    mediaUrl: null,
-    mediaType: null,
-    // Default delay = 1 min. Agencies asked for a preset that mimics a
-    // human typing pause; instant delivery reads as clearly automated.
     delaySec: 60,
+    stars: 0,
+    ppvIds: [],
   });
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [msg, setMsg] = useState("");
   const [emojiOpen, setEmojiOpen] = useState(false);
-  const [mediaBroke, setMediaBroke] = useState(false);
 
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // Vault picker.
+  const [vaultPpvs, setVaultPpvs] = useState<VaultPpv[]>([]);
+  const [showPicker, setShowPicker] = useState(false);
 
-  // Clear the broken-preview flag whenever the attachment URL changes, so a
-  // fresh upload / model switch gets a clean attempt to render.
-  useEffect(() => { setMediaBroke(false); }, [config.mediaUrl]);
-
-  // Load agency user + models on mount.
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -90,27 +93,32 @@ export function AutoRepliesSection() {
     })();
   }, [supabase]);
 
-  // Reload config when the selected model changes.
+  // Reload config + vault PPVs when the selected model changes.
   useEffect(() => {
     if (!selectedModelId) return;
     let cancelled = false;
     (async () => {
       setLoading(true);
       try {
-        const res = await fetch(`/api/auto-reply/${selectedModelId}`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = (await res.json()) as Config;
+        const [cfgRes, ppvsRes] = await Promise.all([
+          fetch(`/api/auto-reply/${selectedModelId}`),
+          supabase
+            .from("ppvs")
+            .select("id, name, media_url, preview_url")
+            .eq("model_id", selectedModelId)
+            .order("created_at", { ascending: false }),
+        ]);
+        if (!cfgRes.ok) throw new Error(`HTTP ${cfgRes.status}`);
+        const data = (await cfgRes.json()) as Config;
         if (cancelled) return;
         setConfig({
           enabled: !!data.enabled,
           text: data.text ?? "",
-          mediaUrl: data.mediaUrl ?? null,
-          mediaType: data.mediaType ?? null,
-          // Fall back to the 1-minute default rather than 0 so a fresh
-          // model row (no delaySec persisted yet) still shows the preset
-          // the design mocks call for.
           delaySec: Number(data.delaySec ?? 60),
+          stars: Math.max(0, Math.floor(Number(data.stars ?? 0))),
+          ppvIds: Array.isArray(data.ppvIds) ? data.ppvIds : [],
         });
+        setVaultPpvs((ppvsRes.data ?? []) as VaultPpv[]);
         setMsg("");
       } catch (e: unknown) {
         if (!cancelled) setMsg(e instanceof Error ? `Error: ${e.message}` : "Error");
@@ -119,76 +127,23 @@ export function AutoRepliesSection() {
       }
     })();
     return () => { cancelled = true; };
-  }, [selectedModelId]);
+  }, [selectedModelId, supabase]);
 
-  async function handleFilePick(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file || !agencyUserId) return;
-    const kind = inferMediaType(file);
-    if (!kind) {
-      setMsg("Error: pick an image or video");
-      return;
-    }
-    setUploading(true);
-    setMsg("");
-    try {
-      // Path scheme includes a per-upload nonce so a new attachment always
-      // lands at a NEW Storage object — never at the same path as the old
-      // one. The old scheme (`auto_reply_{modelId}.{ext}`) meant that if the
-      // user swapped file types the DB still pointed at the old ext, and the
-      // auto-reply worker kept sending the previous image. Nonce path avoids
-      // both storage/CDN caching and stale DB pointers on ext changes.
-      // (The previous file is best-effort deleted below so orphans don't pile
-      // up in the bucket.)
-      const ext = (file.name.split(".").pop() ?? "bin").toLowerCase();
-      const nonce = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      const path = `${agencyUserId}/auto_reply_${selectedModelId}_${nonce}.${ext}`;
-      const { error: upErr } = await supabase.storage
-        .from("ppvs")
-        .upload(path, file, { upsert: false, contentType: file.type });
-      if (upErr) throw upErr;
-      const publicUrl = supabase.storage.from("ppvs").getPublicUrl(path).data.publicUrl;
-      // Cache-buster so the UI shows the new file immediately.
-      const url = `${publicUrl}?t=${Date.now()}`;
-      // Best-effort remove the previous attachment so it doesn't sit in
-      // Storage forever. Failure is silently ignored — the new file is
-      // already live and referenced.
-      const prev = config.mediaUrl;
-      if (prev) {
-        const m = prev.split("?")[0].match(/\/storage\/v1\/object\/public\/ppvs\/(.+)$/);
-        if (m) {
-          void supabase.storage.from("ppvs").remove([m[1]]);
-        }
-      }
-      setConfig((c) => ({ ...c, mediaUrl: url, mediaType: kind }));
-      setMsg("Uploaded ✓");
-    } catch (e: unknown) {
-      setMsg(e instanceof Error ? `Error: ${e.message}` : "Upload error");
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
-  }
-
-  function handleClearMedia() {
-    setConfig((c) => ({ ...c, mediaUrl: null, mediaType: null }));
-  }
-
-  async function handleSave() {
+  async function persist(patch: Partial<Config>): Promise<void> {
     if (!selectedModelId) return;
     setSaving(true);
     setMsg("");
     try {
+      const body: Record<string, unknown> = {};
+      if ("enabled" in patch) body.enabled = patch.enabled;
+      if ("text" in patch) body.text = patch.text;
+      if ("delaySec" in patch) body.delaySec = patch.delaySec;
+      if ("stars" in patch) body.stars = patch.stars;
+      if ("ppvIds" in patch) body.ppvIds = patch.ppvIds;
       const res = await fetch(`/api/auto-reply/${selectedModelId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          enabled: config.enabled,
-          text: config.text,
-          mediaUrl: config.mediaUrl,
-          mediaType: config.mediaType,
-          delaySec: config.delaySec,
-        }),
+        body: JSON.stringify(body),
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
@@ -200,31 +155,42 @@ export function AutoRepliesSection() {
     }
   }
 
-  /** Toggle Enable on/off and immediately persist — without this round-trip
-   *  the switch only flipped a local state and never saved, so the user could
-   *  flick "Enable" and nothing actually happened on the server. Errors fall
-   *  back to the previous value so the UI stays consistent. */
+  async function handleSaveAll() {
+    await persist({
+      enabled: config.enabled,
+      text: config.text,
+      delaySec: config.delaySec,
+      stars: config.stars,
+      ppvIds: config.ppvIds,
+    });
+  }
+
   async function toggleEnabled(next: boolean) {
     if (!selectedModelId || saving) return;
     const prev = config.enabled;
     setConfig((c) => ({ ...c, enabled: next })); // optimistic
-    setSaving(true);
-    setMsg("");
     try {
-      const res = await fetch(`/api/auto-reply/${selectedModelId}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled: next }),
-      });
-      const data = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+      await persist({ enabled: next });
       setMsg(next ? "Auto-replies enabled ✓" : "Auto-replies disabled");
-    } catch (e: unknown) {
+    } catch {
       setConfig((c) => ({ ...c, enabled: prev })); // rollback
-      setMsg(e instanceof Error ? `Error: ${e.message}` : "Save error");
-    } finally {
-      setSaving(false);
     }
+  }
+
+  function toggleSelPpv(id: string) {
+    setConfig((c) => {
+      const has = c.ppvIds.includes(id);
+      const next = has
+        ? c.ppvIds.filter((x) => x !== id)
+        : c.ppvIds.length >= MAX_PPVS_PER_AR
+          ? c.ppvIds
+          : [...c.ppvIds, id];
+      return { ...c, ppvIds: next };
+    });
+  }
+
+  function removePpv(id: string) {
+    setConfig((c) => ({ ...c, ppvIds: c.ppvIds.filter((x) => x !== id) }));
   }
 
   const card = "bg-[#161a22] border border-[#2a2d35] rounded-xl p-5 md:p-6";
@@ -237,6 +203,12 @@ export function AutoRepliesSection() {
     `text-[11px] ${m.startsWith("Error") ? "text-red-400" : "text-emerald-400"}`;
 
   const selectedModel = models.find((m) => m.id === selectedModelId);
+  const ppvById = new Map(vaultPpvs.map((p) => [p.id, p]));
+  const selectedPpvs = config.ppvIds
+    .map((id) => ppvById.get(id))
+    .filter((p): p is VaultPpv => !!p);
+
+  const overStarCap = config.stars > MAX_STARS;
 
   return (
     <div className={card}>
@@ -245,7 +217,7 @@ export function AutoRepliesSection() {
           <h2 className="text-[15px] font-semibold text-white">Auto Replies 🤖</h2>
           <p className="text-[12px] text-[#6b7280] mt-1">
             Auto-respond to a fan&apos;s very first message with a custom
-            greeting + optional photo/video. Sent once per fan, then your
+            greeting + PPVs from your Vault. Sent once per fan, then your
             chatters take over.
           </p>
           <p className="text-[11px] text-[#6b7280] mt-1.5 italic">
@@ -291,11 +263,7 @@ export function AutoRepliesSection() {
         <p className="text-[12px] text-[#6b7280] mt-4">Loading…</p>
       ) : (
         <div className="space-y-4 mt-4">
-          {/* Enable toggle — auto-saves on click. Plain <button> instead of
-              the old <label>+hidden-checkbox+peer-checked pattern, which was
-              fragile and didn't actually persist the toggle (had to press
-              "Save auto-reply" too). Now flipping the switch posts to the
-              API immediately. */}
+          {/* Enable toggle. */}
           <button
             type="button"
             role="switch"
@@ -322,8 +290,7 @@ export function AutoRepliesSection() {
             </div>
           </button>
 
-          {/* Send delay — how long to wait before firing the auto-reply
-              after the fan's first message. Mimics a human typing pause. */}
+          {/* Send delay */}
           <div>
             <label className={label}>Send delay</label>
             <div className="flex flex-wrap gap-2">
@@ -387,78 +354,204 @@ export function AutoRepliesSection() {
             </div>
           </div>
 
-          {/* Attached media */}
+          {/* Stars price */}
           <div>
-            <label className={label}>Attachment (optional)</label>
-            {config.mediaUrl ? (
-              <div className="relative rounded-lg overflow-hidden border border-[#374151] bg-[#1f2937] aspect-video flex items-center justify-center max-w-[360px]">
-                {config.mediaType === "video" ? (
-                  <video
-                    src={`/api/auto-reply/${selectedModelId}/media`}
-                    controls
-                    muted
-                    className="w-full h-full object-contain"
-                  />
-                ) : mediaBroke ? (
-                  <div className="flex flex-col items-center gap-1 text-[#9ca3af] text-[11px] px-4 text-center">
-                    <ImageIcon className="w-6 h-6" />
-                    <span>Image saved — preview couldn&apos;t load here, but the fan still receives it.</span>
-                  </div>
-                ) : (
-                  // Hit the signed-URL endpoint so the preview keeps working
-                  // regardless of whether the `ppvs` bucket is public or
-                  // private (default getPublicUrl 403s on private bucket).
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={`/api/auto-reply/${selectedModelId}/media`}
-                    alt="Auto-reply attachment"
-                    className="w-full h-full object-contain"
-                    onError={() => setMediaBroke(true)}
-                  />
-                )}
-                <button
-                  onClick={handleClearMedia}
-                  className="absolute top-2 right-2 w-7 h-7 bg-black/70 backdrop-blur rounded-full flex items-center justify-center text-white hover:bg-red-500 transition-colors"
-                  aria-label="Remove attachment"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-                <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/70 backdrop-blur rounded text-[10px] font-semibold text-white flex items-center gap-1">
-                  {config.mediaType === "video" ? <Film className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
-                  {config.mediaType === "video" ? "Video" : "Photo"}
-                </div>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
-                className="w-full max-w-[360px] aspect-video bg-[#1f2937]/40 border-2 border-dashed border-[#374151] hover:border-[#00AFF0]/50 rounded-lg flex flex-col items-center justify-center gap-2 text-[#6b7280] hover:text-white transition-colors disabled:opacity-50"
-              >
-                <Upload className="w-6 h-6" />
-                <div className="text-[12px] font-medium">
-                  {uploading ? "Uploading…" : "Click to upload photo or video"}
-                </div>
-                <div className="text-[10px]">JPG, PNG, WebP · MP4, MOV, WebM</div>
-              </button>
-            )}
+            <label className={label}>Price in Stars (0 = free)</label>
             <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*,video/*"
-              className="hidden"
-              onChange={handleFilePick}
+              type="number"
+              min={0}
+              max={MAX_STARS}
+              step={1}
+              value={config.stars}
+              onChange={(e) => {
+                const n = Math.max(0, Math.floor(Number(e.target.value) || 0));
+                setConfig((c) => ({ ...c, stars: n }));
+              }}
+              className={`${input} max-w-[220px]`}
             />
+            <p className="text-[11px] text-[#6b7280] mt-1.5">
+              When &gt; 0, the attached PPVs are sent as native Telegram Paid
+              Media with the ⭐ unlock overlay (requires @ppvstarbot connected
+              to the creator). Maximum is {MAX_STARS.toLocaleString()} stars per
+              PPV.
+            </p>
+            {overStarCap && (
+              <p className="text-[11px] text-red-400 mt-1">
+                Maximum total star price set by Telegram is {MAX_STARS.toLocaleString()} stars.
+              </p>
+            )}
+          </div>
+
+          {/* Vault attachments */}
+          <div>
+            <label className={label}>
+              Attached PPVs (from Vault) — {config.ppvIds.length} / {MAX_PPVS_PER_AR}
+            </label>
+            {selectedPpvs.length > 0 && (
+              <div className="grid grid-cols-3 md:grid-cols-5 gap-2 mb-2">
+                {selectedPpvs.map((p) => (
+                  <div
+                    key={p.id}
+                    className="relative aspect-square rounded-md overflow-hidden bg-[#1f2937] border border-[#374151]"
+                  >
+                    {p.media_url ? (
+                      /\.(mp4|mov|webm|m4v)(\?|$)/i.test(p.media_url) ? (
+                        <video src={`/api/ppv/file/${p.id}`} muted className="w-full h-full object-cover" />
+                      ) : (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={`/api/ppv/file/${p.id}`}
+                          alt={p.name}
+                          className="w-full h-full object-cover"
+                        />
+                      )
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-[10px] text-[#6b7280]">
+                        {p.name}
+                      </div>
+                    )}
+                    <button
+                      onClick={() => removePpv(p.id)}
+                      aria-label="Remove"
+                      className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/70 text-white flex items-center justify-center hover:bg-red-500 transition-colors"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => setShowPicker(true)}
+              disabled={vaultPpvs.length === 0}
+              className="px-4 py-2 bg-[#1f2937] border border-[#374151] rounded-lg text-[12px] font-medium text-white hover:bg-[#374151] transition-all flex items-center gap-2 disabled:opacity-50"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              {selectedPpvs.length > 0 ? "Change selection" : "Pick from Vault"}
+            </button>
+            {vaultPpvs.length === 0 && (
+              <p className="text-[11px] text-[#6b7280] mt-1.5">
+                This creator has no PPVs in the Vault yet. Upload some in the
+                Vault tab to attach them to auto-replies.
+              </p>
+            )}
           </div>
 
           <div className="flex items-center gap-3 pt-1">
-            <button className={btn} onClick={handleSave} disabled={saving || uploading}>
+            <button
+              className={btn}
+              onClick={handleSaveAll}
+              disabled={saving || overStarCap}
+            >
               {saving ? "Saving…" : "Save auto-reply"}
             </button>
             {msg && <span className={msgCls(msg)}>{msg}</span>}
           </div>
         </div>
       )}
+
+      {showPicker && agencyUserId && selectedModelId && (
+        <VaultPickerModal
+          vaultPpvs={vaultPpvs}
+          selectedIds={config.ppvIds}
+          onToggle={toggleSelPpv}
+          onClose={() => setShowPicker(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function VaultPickerModal({
+  vaultPpvs,
+  selectedIds,
+  onToggle,
+  onClose,
+}: {
+  vaultPpvs: VaultPpv[];
+  selectedIds: string[];
+  onToggle: (id: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-[#161a22] border border-[#2a2d35] rounded-xl shadow-2xl w-full max-w-[720px] p-5 max-h-[85vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-[15px] font-semibold text-white">Pick from Vault</h3>
+            <p className="text-[11px] text-[#9ca3af] mt-0.5">
+              {selectedIds.length} / {MAX_PPVS_PER_AR} selected · click a card to toggle
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-[#9ca3af] hover:text-white text-[22px] leading-none"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="grid grid-cols-3 md:grid-cols-4 gap-3">
+          {vaultPpvs.map((p) => {
+            const sel = selectedIds.includes(p.id);
+            const disabled = !sel && selectedIds.length >= MAX_PPVS_PER_AR;
+            return (
+              <button
+                key={p.id}
+                onClick={() => !disabled && onToggle(p.id)}
+                disabled={disabled}
+                className={`relative aspect-square rounded-lg overflow-hidden bg-[#1f2937] border-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                  sel ? "border-[#00AFF0]" : "border-[#374151] hover:border-[#00AFF0]/50"
+                }`}
+              >
+                {p.media_url ? (
+                  /\.(mp4|mov|webm|m4v)(\?|$)/i.test(p.media_url) ? (
+                    <video src={`/api/ppv/file/${p.id}`} muted className="absolute inset-0 w-full h-full object-cover" />
+                  ) : (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={`/api/ppv/file/${p.id}`}
+                      alt={p.name}
+                      className="absolute inset-0 w-full h-full object-cover"
+                    />
+                  )
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center text-[11px] text-[#6b7280] p-2 text-center">
+                    {p.name}
+                  </div>
+                )}
+                {sel && (
+                  <div className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-[#00AFF0] flex items-center justify-center shadow-lg">
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path d="M2 6L5 9L10 3" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </div>
+                )}
+                <div className="absolute bottom-0 inset-x-0 px-2 py-1 bg-gradient-to-t from-black/80 to-transparent">
+                  <div className="text-[10px] text-white truncate">{p.name}</div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="mt-4 flex justify-end">
+          <button
+            onClick={onClose}
+            className="px-5 py-2 bg-[#00AFF0] hover:bg-[#0098D4] text-white rounded-lg text-[12px] font-semibold"
+          >
+            Done
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

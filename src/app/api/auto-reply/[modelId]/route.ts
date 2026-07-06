@@ -6,17 +6,17 @@ import { createAdminSupabaseClient } from "@/lib/supabase-server";
  * Auto-reply config per model.
  *
  *   GET  /api/auto-reply/[modelId]
- *     Returns the model's current auto-reply settings.
+ *     Returns { enabled, text, delaySec, stars, ppvIds }.
  *
  *   POST /api/auto-reply/[modelId]
- *     Body: { enabled?, text?, mediaUrl?, mediaType?: 'photo'|'video'|null }
- *     Partial updates: fields not in the body are left untouched. Pass
- *     `mediaUrl: null` to clear the attached file.
- *
- * Media is uploaded by the browser straight to Supabase Storage (same
- * `ppvs` bucket as the vault) — we only persist the resulting public URL
- * here. Keeps the API stateless and dodges a multipart-parsing dependency.
+ *     Body: { enabled?, text?, delaySec?, stars?, ppvIds? }
+ *     Partial updates. Media now comes from the Vault (ppvIds) exclusively —
+ *     the legacy mediaUrl/mediaType upload path was retired in batch 93c.
  */
+
+const MAX_STARS = 10_000;
+const MAX_PPVS_PER_AR = 10;
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ modelId: string }> },
@@ -27,8 +27,6 @@ export async function GET(
     if ("errorResponse" in auth) return auth.errorResponse;
 
     const admin = createAdminSupabaseClient();
-    // Tolerate the delay column being missing on older schemas (migration
-    // 20260615 may not have been run yet) by selecting *, then defaulting.
     const { data, error } = await admin
       .from("models")
       .select("*")
@@ -39,16 +37,18 @@ export async function GET(
     const row = (data ?? {}) as {
       auto_reply_enabled?: boolean | null;
       auto_reply_text?: string | null;
-      auto_reply_media_url?: string | null;
-      auto_reply_media_type?: string | null;
       auto_reply_delay_sec?: number | null;
+      auto_reply_stars?: number | null;
+      auto_reply_ppv_ids?: string[] | null;
     };
     return Response.json({
       enabled: row.auto_reply_enabled ?? false,
       text: row.auto_reply_text ?? "",
-      mediaUrl: row.auto_reply_media_url ?? null,
-      mediaType: row.auto_reply_media_type ?? null,
-      delaySec: row.auto_reply_delay_sec ?? 0,
+      // 60 = 1 min default (see batch 93b — the design mock asks the switch
+      // to land pre-selected on "1 min", not "instant").
+      delaySec: row.auto_reply_delay_sec ?? 60,
+      stars: Number(row.auto_reply_stars ?? 0),
+      ppvIds: Array.isArray(row.auto_reply_ppv_ids) ? row.auto_reply_ppv_ids : [],
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : "Failed";
@@ -59,9 +59,9 @@ export async function GET(
 type UpsertBody = {
   enabled?: boolean;
   text?: string;
-  mediaUrl?: string | null;
-  mediaType?: "photo" | "video" | null;
   delaySec?: number;
+  stars?: number;
+  ppvIds?: string[];
 };
 
 export async function POST(
@@ -79,22 +79,17 @@ export async function POST(
     const patch: Record<string, unknown> = {};
     if (typeof body.enabled === "boolean") patch.auto_reply_enabled = body.enabled;
     if (typeof body.text === "string") patch.auto_reply_text = body.text.slice(0, 4096);
-    // mediaUrl undefined → leave alone. mediaUrl explicit null → clear it.
-    if (body.mediaUrl === null) {
-      patch.auto_reply_media_url = null;
-      patch.auto_reply_media_type = null;
-    } else if (typeof body.mediaUrl === "string") {
-      patch.auto_reply_media_url = body.mediaUrl;
-      patch.auto_reply_media_type =
-        body.mediaType === "photo" || body.mediaType === "video"
-          ? body.mediaType
-          : null;
-    }
     if (typeof body.delaySec === "number" && Number.isFinite(body.delaySec)) {
-      // Clamp delay to 0..3600 (1 hour). Anything past that is almost
-      // certainly a UI mistake — and the in-process setTimeout we use to
-      // honour it doesn't survive process restarts.
       patch.auto_reply_delay_sec = Math.max(0, Math.min(3600, Math.round(body.delaySec)));
+    }
+    if (typeof body.stars === "number" && Number.isFinite(body.stars)) {
+      patch.auto_reply_stars = Math.max(0, Math.min(MAX_STARS, Math.round(body.stars)));
+    }
+    if (Array.isArray(body.ppvIds)) {
+      const cleaned = body.ppvIds
+        .filter((x): x is string => typeof x === "string" && /^[0-9a-f-]{10,}$/i.test(x))
+        .slice(0, MAX_PPVS_PER_AR);
+      patch.auto_reply_ppv_ids = cleaned;
     }
 
     if (Object.keys(patch).length === 0) {

@@ -51,7 +51,8 @@ export function CreateGroupModal({ modelId, agencyUserId, allTags, onClose, onSa
   }
 
   function continueToStep2() {
-    if (!groupName.trim()) { setError("Group name is required"); return; }
+    // Empty group name is allowed — falls back to "Untitled" on save so the
+    // DB NOT NULL still holds and lists still render something searchable.
     setError("");
     setStep(2);
   }
@@ -68,9 +69,10 @@ export function CreateGroupModal({ modelId, agencyUserId, allTags, onClose, onSa
     setSaving(true);
     setError("");
     try {
+      const finalName = groupName.trim() || "Untitled";
       const { data: group, error: groupErr } = await supabase
         .from("ppv_groups")
-        .insert({ agency_user_id: agencyUserId, model_id: modelId, name: groupName.trim(), bundle_price: bundlePriceNum })
+        .insert({ agency_user_id: agencyUserId, model_id: modelId, name: finalName, bundle_price: bundlePriceNum })
         .select("id, model_id, name, bundle_price, created_at")
         .single();
       if (groupErr) throw new Error(groupErr.message);
@@ -158,7 +160,7 @@ export function CreateGroupModal({ modelId, agencyUserId, allTags, onClose, onSa
         {step === 1 && (
           <div className="space-y-4">
             <div>
-              <label className="text-[12px] text-[#9ca3af] font-medium mb-1.5 block">Group Name</label>
+              <label className="text-[12px] text-[#9ca3af] font-medium mb-1.5 block">Group Name (optional)</label>
               <input
                 value={groupName}
                 onChange={(e) => setGroupName(e.target.value)}
@@ -187,8 +189,7 @@ export function CreateGroupModal({ modelId, agencyUserId, allTags, onClose, onSa
             {error && <p className="text-[12px] text-red-400">{error}</p>}
             <button
               onClick={continueToStep2}
-              disabled={!groupName.trim()}
-              className="w-full py-3 bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] text-white rounded-lg font-semibold text-[14px] disabled:opacity-50 disabled:cursor-not-allowed hover:from-[#0098D4] hover:to-[#0098D4] transition-all"
+              className="w-full py-3 bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] text-white rounded-lg font-semibold text-[14px] hover:from-[#0098D4] hover:to-[#0098D4] transition-all"
             >
               Continue →
             </button>

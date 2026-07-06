@@ -120,7 +120,8 @@ export function SalesAlertsSection() {
           <h2 className="text-[15px] font-semibold text-white">Sales Alerts</h2>
           <p className="text-[12px] text-[#9ca3af] mt-0.5">
             Get a Telegram message the instant a PPV is paid — straight to
-            your personal account, private from your chatters.
+            your personal account, private from your chatters. Alerts come
+            from all of your creators.
           </p>
         </div>
         <Toggle

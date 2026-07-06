@@ -12,9 +12,19 @@ export type UploadResult = {
 // as a "file" the fan must download, or doesn't preview at all (e.g. .jfif,
 // .heic). We refuse those at upload time so the vault only ever holds content
 // that delivers cleanly to a fan's chat.
-export const PPV_IMAGE_EXT = ["jpg", "jpeg", "png", "webp", "gif"] as const;
+export const PPV_IMAGE_EXT = ["jpg", "jpeg", "png", "webp", "gif", "heic", "heif"] as const;
 export const PPV_VIDEO_EXT = ["mp4", "mov", "m4v", "webm"] as const;
 export const PPV_AUDIO_EXT = ["mp3", "m4a", "aac", "ogg", "oga", "opus", "wav", "flac"] as const;
+
+/** HEIC / HEIF — accepted by the vault, but the vault never STORES raw HEIC:
+ *  Telegram doesn't render it inline, so we re-encode to JPEG at upload time.
+ *  The re-encode uses createImageBitmap, which decodes HEIC natively on iOS
+ *  Safari 17+ and modern iPad WebKit; on desktop Chrome/Firefox it fails and
+ *  the upload is REJECTED with a clear "please convert to JPG" message so
+ *  the fan never receives a broken .heic file. */
+function isHeicExt(ext: string): boolean {
+  return ext === "heic" || ext === "heif";
+}
 
 export type PpvMediaKind = "image" | "video" | "audio";
 
@@ -255,9 +265,19 @@ async function processImage(
   try {
     bitmap = await createImageBitmap(file);
   } catch {
-    // createImageBitmap fails on HEIC / TIFF / corrupt files. Fall back to
-    // shipping the original as-is and skipping the preview — the send path
-    // will detect the missing preview_url and use the original (slow path).
+    // createImageBitmap fails on HEIC (desktop browsers) and corrupt files.
+    // HEIC is special: Telegram won't render raw .heic inline, so we can
+    // NOT fall through to "ship original as-is". Reject loudly instead so
+    // the model converts to JPG before uploading.
+    const ext = file.name.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] ?? "";
+    if (isHeicExt(ext)) {
+      throw new Error(
+        "This browser can't decode HEIC — please convert the photo to JPG " +
+          "before uploading (iPhone: Settings → Camera → Formats → Most Compatible).",
+      );
+    }
+    // Non-HEIC fallback: ship the original as-is and skip the preview — the
+    // send path will detect the missing preview_url and use the original.
     return { original: file, preview: null };
   }
 

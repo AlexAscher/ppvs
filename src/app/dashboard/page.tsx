@@ -1007,6 +1007,32 @@ function ModelsTab() {
     })();
   }, []);
 
+  // Fast connection detection: while the "Connect @ppvstarbot" instructions
+  // modal is open, poll every 3s so the creator sees the badge flip to
+  // Connected within seconds of tapping Save in Chat Automation on their
+  // end. The @ppvstarbot webhook writes to business_connections
+  // immediately; only the client was slow.
+  useEffect(() => {
+    if (!showBotInstructions || models.length === 0) return;
+    const ids = models.map((m) => m.id).join(",");
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const r = await fetch(`/api/creators/connection-status?modelIds=${ids}`);
+        if (r.ok && !cancelled) {
+          const j = (await r.json()) as { statuses?: Record<string, { connected: boolean }> };
+          if (j.statuses) setConnStatus(j.statuses);
+        }
+      } catch { /* best-effort */ }
+    };
+    void poll();
+    const iv = setInterval(() => { void poll(); }, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(iv);
+    };
+  }, [showBotInstructions, models]);
+
   function openModal(reconnectModelId?: string) {
     setStep(1);
     setApiId(""); setApiHash(""); setPhone(""); setCode(""); setTwoFaPassword(""); setError("");
@@ -1137,22 +1163,7 @@ function ModelsTab() {
             <div className="bg-[#f59e0b]/10 border border-[#f59e0b]/30 rounded-lg px-3 py-2 mb-4 text-[12px] text-[#fbbf24]">
               ⚠ Important: Telegram only lets the bot push native PPVs into chats where the fan has sent the model a message <span className="font-semibold">after</span> the bot was connected. New fans must reply at least once before the first PPV goes through natively. Older sends keep using the blur + Stars link fallback.
             </div>
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={async () => {
-                  try {
-                    const ids = models.map((m) => m.id).join(",");
-                    const r = await fetch(`/api/creators/connection-status?modelIds=${ids}`);
-                    if (r.ok) {
-                      const j = (await r.json()) as { statuses?: Record<string, { connected: boolean }> };
-                      if (j.statuses) setConnStatus(j.statuses);
-                    }
-                  } catch { /* best-effort */ }
-                }}
-                className="px-4 py-2 bg-[#1f2937] hover:bg-[#2a2d35] text-white rounded-lg text-[13px] font-semibold"
-              >
-                I&apos;ve connected — refresh
-              </button>
+            <div className="flex justify-end">
               <button
                 onClick={() => setShowBotInstructions(false)}
                 className="px-4 py-2 bg-[#00AFF0] hover:bg-[#0098D4] text-white rounded-lg text-[13px] font-semibold"
@@ -1195,7 +1206,7 @@ function ModelsTab() {
                     className="w-full px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#4b5563] focus:border-[#00AFF0] transition-colors" />
                 </div>
                 <div>
-                  <label className="text-[12px] text-[#9ca3af] font-medium mb-1.5 block">Phone Number</label>
+                  <label className="text-[12px] text-[#9ca3af] font-medium mb-1.5 block">Telegram Account Phone Number</label>
                   <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1234567890"
                     className="w-full px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[14px] text-white placeholder:text-[#4b5563] focus:border-[#00AFF0] transition-colors" />
                 </div>

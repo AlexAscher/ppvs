@@ -53,6 +53,10 @@ export function PpvFormModal({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
+  // Delete confirmation shows as a centered Yes/No modal instead of the
+  // native window.confirm() dialog, which the design mocks call out
+  // specifically as ugly on desktop Chrome.
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   function toggleTag(tagId: string) {
     setSelectedTags((prev) =>
@@ -161,7 +165,7 @@ export function PpvFormModal({
 
   async function handleDelete() {
     if (!existing || !onDelete) return;
-    if (!confirm("Delete this PPV?")) return;
+    setShowDeleteConfirm(false);
     setDeleting(true);
     setError("");
     try {
@@ -270,7 +274,7 @@ export function PpvFormModal({
           <div className="flex gap-3 pt-2">
             {mode === "edit" && onDelete && (
               <button
-                onClick={handleDelete}
+                onClick={() => setShowDeleteConfirm(true)}
                 disabled={saving || deleting}
                 className="px-4 py-2.5 bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg font-medium text-[13px] hover:bg-red-500/20 transition-all disabled:opacity-50 flex items-center gap-2"
               >
@@ -288,6 +292,39 @@ export function PpvFormModal({
           </div>
         </div>
       </div>
+
+      {showDeleteConfirm && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+          onClick={() => setShowDeleteConfirm(false)}
+        >
+          <div
+            className="bg-[#161a22] border border-[#2a2d35] rounded-xl shadow-2xl w-full max-w-[360px] p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-[16px] font-semibold text-white text-center mb-2">
+              Are you sure?
+            </h3>
+            <p className="text-[12px] text-[#9ca3af] text-center mb-5">
+              This PPV will be permanently deleted from your vault.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="flex-1 py-2.5 bg-[#1f2937] border border-[#374151] text-white rounded-lg font-medium text-[13px] hover:bg-[#252b36] transition-all"
+              >
+                No
+              </button>
+              <button
+                onClick={handleDelete}
+                className="flex-1 py-2.5 bg-red-500/20 border border-red-500/40 text-red-300 rounded-lg font-medium text-[13px] hover:bg-red-500/30 transition-all"
+              >
+                Yes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

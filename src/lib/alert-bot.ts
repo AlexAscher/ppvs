@@ -162,6 +162,6 @@ async function handleUpdate(u: TgUpdate): Promise<void> {
 
   await sendBotMessage(
     String(chatId),
-    "✅ Connected! You'll get a message here for every PPV and tip sale. 💰",
+    "✅ Connected! You will receive a notification here for every sale of all of your creators 💰",
   );
 }

@@ -101,6 +101,14 @@ export async function GET(
         const items: DialogItem[] = [];
         const bumps: BumpInfo[] = [];
         for (const d of dialogs) {
+          // Hide dialogs the model has archived on their Telegram account.
+          // gramJS exposes the archived state via dialog.folderId === 1
+          // (Telegram's "Archive" folder). The chatter workspace treats
+          // archived as "put away, do not touch" — matching the fact that
+          // the model themselves already hid it.
+          const dInfo = d as { dialog?: { folderId?: number }; archived?: boolean };
+          const isArchived = dInfo.dialog?.folderId === 1 || dInfo.archived === true;
+          if (isArchived) continue;
           const entity = d.entity;
           let type: DialogItem["type"];
           let title: string;

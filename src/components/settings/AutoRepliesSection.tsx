@@ -57,7 +57,9 @@ export function AutoRepliesSection() {
     text: "",
     mediaUrl: null,
     mediaType: null,
-    delaySec: 0,
+    // Default delay = 1 min. Agencies asked for a preset that mimics a
+    // human typing pause; instant delivery reads as clearly automated.
+    delaySec: 60,
   });
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -104,7 +106,10 @@ export function AutoRepliesSection() {
           text: data.text ?? "",
           mediaUrl: data.mediaUrl ?? null,
           mediaType: data.mediaType ?? null,
-          delaySec: Number(data.delaySec ?? 0),
+          // Fall back to the 1-minute default rather than 0 so a fresh
+          // model row (no delaySec persisted yet) still shows the preset
+          // the design mocks call for.
+          delaySec: Number(data.delaySec ?? 60),
         });
         setMsg("");
       } catch (e: unknown) {

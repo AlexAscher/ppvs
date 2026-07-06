@@ -25,14 +25,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const admin = createAdminSupabaseClient();
   const { data: reqRow, error: fetchErr } = await admin
     .from("signup_requests")
-    .select("id, email, password, display_name, role, agency_name, status")
+    .select("id, email, password, display_name, role, agency_name, agency_telegram, status")
     .eq("id", id)
     .maybeSingle();
   if (fetchErr) return Response.json({ error: fetchErr.message }, { status: 500 });
   if (!reqRow) return Response.json({ error: "Request not found" }, { status: 404 });
   const r = reqRow as {
     email: string; password: string | null; display_name: string | null;
-    role: string; agency_name: string | null; status: string;
+    role: string; agency_name: string | null; agency_telegram: string | null; status: string;
   };
 
   if (action === "reject") {
@@ -59,6 +59,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       display_name: r.display_name ?? undefined,
       role: r.role,
       agency_name: r.role === "agency" ? (r.agency_name ?? undefined) : undefined,
+      // Optional handle captured at signup so operations can DM the agency
+      // owner even before they set up Sales Alerts. Copied verbatim into
+      // metadata; not surfaced to chatters.
+      agency_telegram:
+        r.role === "agency" ? (r.agency_telegram ?? undefined) : undefined,
     },
   });
   if (createErr) {

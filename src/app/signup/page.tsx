@@ -42,6 +42,7 @@ function RoleCard({ selected, onClick, icon, title, desc }: {
 export default function SignupPage() {
   const [role, setRole] = useState<Role>("agency");
   const [agencyName, setAgencyName] = useState("");
+  const [agencyTelegram, setAgencyTelegram] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -75,6 +76,7 @@ export default function SignupPage() {
         displayName,
         role,
         agencyName: role === "agency" ? agencyName : null,
+        agencyTelegram: role === "agency" ? agencyTelegram : null,
       }),
     });
     const body = (await res.json().catch(() => ({}))) as { error?: string };
@@ -164,18 +166,33 @@ export default function SignupPage() {
             </div>
 
             {role === "agency" && (
-              <div>
-                <label className="block text-[12px] text-[var(--text-2)] mb-[7px] font-medium">Agency name</label>
-                <input
-                  type="text"
-                  value={agencyName}
-                  onChange={(e) => setAgencyName(e.target.value)}
-                  placeholder="My Agency"
-                  required
-                  className="w-full bg-[var(--bg)] rounded-[8px] px-3.5 py-[10px] text-[14px] text-[var(--text)] placeholder-[var(--text-3)] transition-colors outline-none"
-                  style={{ border: "1px solid var(--border)" }}
-                />
-              </div>
+              <>
+                <div>
+                  <label className="block text-[12px] text-[var(--text-2)] mb-[7px] font-medium">Agency name</label>
+                  <input
+                    type="text"
+                    value={agencyName}
+                    onChange={(e) => setAgencyName(e.target.value)}
+                    placeholder="My Agency"
+                    required
+                    className="w-full bg-[var(--bg)] rounded-[8px] px-3.5 py-[10px] text-[14px] text-[var(--text)] placeholder-[var(--text-3)] transition-colors outline-none"
+                    style={{ border: "1px solid var(--border)" }}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[12px] text-[var(--text-2)] mb-[7px] font-medium">
+                    Agency Telegram <span className="text-[var(--text-3)] font-normal">(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={agencyTelegram}
+                    onChange={(e) => setAgencyTelegram(e.target.value)}
+                    placeholder="@myagency"
+                    className="w-full bg-[var(--bg)] rounded-[8px] px-3.5 py-[10px] text-[14px] text-[var(--text)] placeholder-[var(--text-3)] transition-colors outline-none"
+                    style={{ border: "1px solid var(--border)" }}
+                  />
+                </div>
+              </>
             )}
 
             <div>

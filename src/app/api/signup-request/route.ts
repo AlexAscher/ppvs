@@ -30,6 +30,7 @@ export async function POST(req: NextRequest) {
     displayName?: string;
     role?: string;
     agencyName?: string | null;
+    agencyTelegram?: string | null;
   } | null;
   const email = (body?.email ?? "").trim().toLowerCase();
   if (!email || !/^[^@]+@[^@]+\.[^@]+$/.test(email)) {
@@ -49,6 +50,11 @@ export async function POST(req: NextRequest) {
   const displayName = (body?.displayName ?? "").trim() || null;
   const role = body?.role === "chatter" ? "chatter" : "agency";
   const agencyName = role === "agency" ? (body?.agencyName ?? "").trim() || null : null;
+  // Optional agency Telegram handle. Normalise to "@handle" for a consistent
+  // shape in the DB; drop if just "@" or a stray character.
+  const rawTg = role === "agency" ? (body?.agencyTelegram ?? "").trim() : "";
+  const normalizedTg = rawTg.replace(/^@+/, "").trim();
+  const agencyTelegram = normalizedTg ? `@${normalizedTg}` : null;
 
   const admin = createAdminSupabaseClient();
   const { data, error } = await admin
@@ -59,6 +65,7 @@ export async function POST(req: NextRequest) {
       display_name: displayName,
       role,
       agency_name: agencyName,
+      agency_telegram: agencyTelegram,
       status: "pending",
     })
     .select("id")

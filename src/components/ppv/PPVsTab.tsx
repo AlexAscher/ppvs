@@ -33,9 +33,11 @@ export function PPVsTab() {
 
   const [loading, setLoading] = useState(false);
 
-  // Bulk operations on standalone PPVs.
-  const [selectMode, setSelectMode] = useState(false);
+  // Bulk operations on standalone PPVs. `selectMode` is derived — the moment
+  // the agency taps a select circle on any PPV, the floating bar appears.
+  // No global toggle button, matching iOS Photos.
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const selectMode = selectedIds.size > 0;
   const [bulkModal, setBulkModal] = useState<"delete" | "caption" | "group" | null>(null);
   const [captionDraft, setCaptionDraft] = useState("");
   // Selected target group id for the "Move to group" bulk action — null
@@ -260,7 +262,6 @@ export function PPVsTab() {
       prev.map((g) => ({ ...g, items: g.items.filter((it) => !selectedIds.has(it.id)) })),
     );
     setSelectedIds(new Set());
-    setSelectMode(false);
     setBulkModal(null);
   }
 
@@ -302,7 +303,6 @@ export function PPVsTab() {
       }),
     );
     setSelectedIds(new Set());
-    setSelectMode(false);
     setBulkModal(null);
     setBulkGroupChoice(null);
   }
@@ -315,7 +315,6 @@ export function PPVsTab() {
     setStandalonePpvs((prev) => prev.map(patch));
     setGroups((prev) => prev.map((g) => ({ ...g, items: g.items.map(patch) })));
     setSelectedIds(new Set());
-    setSelectMode(false);
     setBulkModal(null);
   }
 
@@ -396,17 +395,6 @@ export function PPVsTab() {
               className="px-4 py-2.5 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] font-medium text-white hover:bg-[#374151] transition-all flex items-center gap-2 disabled:opacity-50"
             >
               <FolderPlus className="w-4 h-4" />Create Group
-            </button>
-            <button
-              onClick={() => { setSelectMode((v) => !v); setSelectedIds(new Set()); }}
-              disabled={!selectedModelId}
-              className={`px-4 py-2.5 rounded-lg text-[13px] font-medium transition-all flex items-center gap-2 disabled:opacity-50 border ${
-                selectMode
-                  ? "bg-[#00AFF0] border-[#00AFF0] text-white"
-                  : "bg-[#1f2937] border-[#374151] text-white hover:bg-[#374151]"
-              }`}
-            >
-              {selectMode ? "Done" : "Select"}
             </button>
             <button
               onClick={() => bulkInputRef.current?.click()}
@@ -549,7 +537,6 @@ export function PPVsTab() {
                       bulkInputRef.current?.click();
                     }}
                     onItemClick={(item) => setPpvForm({ kind: "edit", ppv: item })}
-                    selectMode={selectMode}
                     selectedIds={selectedIds}
                     onToggleSel={toggleSel}
                   />
@@ -561,33 +548,36 @@ export function PPVsTab() {
               <div className="space-y-4">
                 <h2 className="text-[14px] font-semibold text-[#9ca3af] uppercase tracking-wider">Individual PPVs</h2>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {filteredStandalone.map((p) => (
-                    <div
-                      key={p.id}
-                      className={`relative h-full rounded-lg ${
-                        selectMode && selectedIds.has(p.id) ? "ring-2 ring-[#00AFF0]" : ""
-                      }`}
-                    >
-                      {selectMode && (
+                  {filteredStandalone.map((p) => {
+                    const sel = selectedIds.has(p.id);
+                    return (
+                      <div
+                        key={p.id}
+                        className={`relative h-full rounded-lg ${sel ? "ring-2 ring-[#00AFF0]" : ""}`}
+                      >
+                        {/* Per-PPV select circle — always rendered. Clicking it
+                            toggles selection without opening the edit modal;
+                            the card behind it stays a simple click-to-edit. */}
                         <button
-                          onClick={() => toggleSel(p.id)}
-                          className={`absolute top-2 left-2 z-10 w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all ${
-                            selectedIds.has(p.id)
+                          onClick={(e) => { e.stopPropagation(); toggleSel(p.id); }}
+                          aria-label={sel ? "Deselect" : "Select"}
+                          className={`absolute top-2 right-2 z-10 w-6 h-6 rounded-full border flex items-center justify-center transition-all shadow ${
+                            sel
                               ? "bg-[#00AFF0] border-[#00AFF0] text-white"
-                              : "bg-black/50 border-white/70"
+                              : "bg-black/45 border-white/70 text-transparent hover:text-white"
                           }`}
                         >
-                          {selectedIds.has(p.id) && "✓"}
+                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                            <path d="M2 6L5 9L10 3" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
                         </button>
-                      )}
-                      <PpvCard
-                        ppv={p}
-                        onClick={() =>
-                          selectMode ? toggleSel(p.id) : setPpvForm({ kind: "edit", ppv: p })
-                        }
-                      />
-                    </div>
-                  ))}
+                        <PpvCard
+                          ppv={p}
+                          onClick={() => setPpvForm({ kind: "edit", ppv: p })}
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -842,7 +832,6 @@ function GroupCard({
   onAddItem,
   onBulkUpload,
   onItemClick,
-  selectMode = false,
   selectedIds,
   onToggleSel,
 }: {
@@ -853,7 +842,6 @@ function GroupCard({
    *  files at once straight into this group (group_id pre-set). */
   onBulkUpload?: () => void;
   onItemClick: (item: PpvItem) => void;
-  selectMode?: boolean;
   selectedIds?: Set<string>;
   onToggleSel?: (id: string) => void;
 }) {
@@ -922,18 +910,21 @@ function GroupCard({
           {group.items.map((it) => {
             const sel = !!selectedIds?.has(it.id);
             return (
-              <div key={it.id} className={`relative h-full rounded-lg ${selectMode && sel ? "ring-2 ring-[#00AFF0]" : ""}`}>
-                {selectMode && (
-                  <button
-                    onClick={() => onToggleSel?.(it.id)}
-                    className={`absolute top-2 left-2 z-10 w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all ${
-                      sel ? "bg-[#00AFF0] border-[#00AFF0] text-white" : "bg-black/50 border-white/70"
-                    }`}
-                  >
-                    {sel && "✓"}
-                  </button>
-                )}
-                <PpvCard ppv={it} onClick={() => (selectMode ? onToggleSel?.(it.id) : onItemClick(it))} />
+              <div key={it.id} className={`relative h-full rounded-lg ${sel ? "ring-2 ring-[#00AFF0]" : ""}`}>
+                <button
+                  onClick={(e) => { e.stopPropagation(); onToggleSel?.(it.id); }}
+                  aria-label={sel ? "Deselect" : "Select"}
+                  className={`absolute top-2 right-2 z-10 w-6 h-6 rounded-full border flex items-center justify-center transition-all shadow ${
+                    sel
+                      ? "bg-[#00AFF0] border-[#00AFF0] text-white"
+                      : "bg-black/45 border-white/70 text-transparent hover:text-white"
+                  }`}
+                >
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                    <path d="M2 6L5 9L10 3" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+                <PpvCard ppv={it} onClick={() => onItemClick(it)} />
               </div>
             );
           })}

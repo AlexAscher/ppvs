@@ -194,6 +194,13 @@ export async function withTelegramClient<T>(
   apiHash: string,
   fn: (client: TelegramClient) => Promise<T>,
   timeoutMs: number = DEFAULT_OPERATION_TIMEOUT_MS,
+  // Transparent one-shot reconnect on a dead-connection error. ONLY pass true
+  // for idempotent READ ops (getMessages, getDialogs, downloadMedia). A stale
+  // pooled socket throws exactly once, gets evicted, and a fresh reconnect
+  // almost always succeeds — so retrying inside the same request turns a
+  // user-visible 500 ("No messages yet" on a real chat) into a silent
+  // recovery. NEVER pass true for sends (retrying could double-send).
+  retryOnDeadConnection: boolean = false,
 ): Promise<T> {
   // Known-dead session (already flagged expired): don't reconnect or invoke.
   // Hammering a dead key just spams Telegram with AUTH_KEY_* errors (and can
@@ -206,29 +213,47 @@ export async function withTelegramClient<T>(
     throw new Error("SESSION_EXPIRED: reconnect this creator");
   }
 
-  let client: TelegramClient;
-  try {
-    client = await connectOrGetClient(modelId, sessionString, apiId, apiHash);
-  } catch (e) {
-    // Connect itself can fail with a dead-session error.
-    noteSessionError(modelId, e instanceof Error ? e.message : String(e));
-    throw e;
-  }
+  // A single attempt: connect (or reuse) then run the op under the timeout.
+  // On a dead-connection failure it evicts the broken client so a retry (or
+  // the next caller) reconnects fresh.
+  const attempt = async (): Promise<T> => {
+    let client: TelegramClient;
+    try {
+      client = await connectOrGetClient(modelId, sessionString, apiId, apiHash);
+    } catch (e) {
+      // Connect itself can fail with a dead-session error.
+      noteSessionError(modelId, e instanceof Error ? e.message : String(e));
+      throw e;
+    }
+    try {
+      const result = await runWithTimeout(fn(client), timeoutMs, "operation");
+      const entry = pool.get(modelId);
+      if (entry) entry.lastUsedAt = Date.now();
+      return result;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      // Flag a dead session for reconnect (DB), independent of eviction.
+      noteSessionError(modelId, msg);
+      if (DEAD_CONNECTION_RE.test(msg)) {
+        const entry = pool.get(modelId);
+        if (entry) evictBroken(modelId, entry);
+      }
+      throw e;
+    }
+  };
 
   try {
-    const result = await runWithTimeout(fn(client), timeoutMs, "operation");
-    const entry = pool.get(modelId);
-    if (entry) entry.lastUsedAt = Date.now();
-    return result;
+    return await attempt();
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    // Flag a dead session for reconnect (DB), independent of eviction.
-    noteSessionError(modelId, msg);
-    if (DEAD_CONNECTION_RE.test(msg)) {
-      const entry = pool.get(modelId);
-      if (entry) evictBroken(modelId, entry);
-    }
-    throw e;
+    const recoverable =
+      retryOnDeadConnection &&
+      DEAD_CONNECTION_RE.test(msg) &&
+      !EXPIRED_SESSION_RE.test(msg) &&
+      !expiredMarked.has(modelId);
+    if (!recoverable) throw e;
+    // The broken socket was just evicted — reconnect fresh and try once more.
+    return await attempt();
   }
 }
 

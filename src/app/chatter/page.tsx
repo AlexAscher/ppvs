@@ -336,6 +336,11 @@ export default function ChatterPage() {
   // Flips to true once fetchMessages returns for the current dialog. Reset on
   // dialog switch so the spinner reappears briefly for the new peer.
   const [messagesLoaded, setMessagesLoaded] = useState(false);
+  // True when the LAST message fetch threw (e.g. a transient 500 from a
+  // dead pooled Telegram socket). Drives a "Reconnecting…" placeholder
+  // instead of a misleading "No messages yet" on a real conversation. The
+  // 5/20s message poll clears it on the next successful fetch.
+  const [messagesFailed, setMessagesFailed] = useState(false);
   // While a POST (send / PPV / tip) is in-flight, pause all polling so the
   // POST doesn't get queued behind a freshly-fired GET in the server pool.
   const sendInFlightRef = useRef(false);
@@ -910,8 +915,13 @@ export default function ChatterPage() {
         return merged;
       });
       setError("");
+      setMessagesFailed(false);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load messages");
+      // Mark the fetch as failed so the empty-state renders "Reconnecting…"
+      // rather than "No messages yet". Don't blank any messages we already
+      // have — a transient poll failure must not wipe a populated chat.
+      setMessagesFailed(true);
     } finally {
       messagesInFlight.current = false;
       setMessagesLoaded(true);
@@ -1128,6 +1138,7 @@ export default function ChatterPage() {
     setSystemEvents([]);
     setPpvVirtuals([]);
     setMessagesLoaded(false);
+    setMessagesFailed(false);
     setSelectedModelId(id);
   }
 
@@ -1140,6 +1151,7 @@ export default function ChatterPage() {
     setSystemEvents([]);
     setPpvVirtuals([]);
     setMessagesLoaded(false);
+    setMessagesFailed(false);
     // On mobile, opening a chat swaps the single visible panel to the
     // conversation view (desktop shows everything at once anyway).
     setMobileView("chat");
@@ -2162,6 +2174,18 @@ export default function ChatterPage() {
         displayName={displayName}
         sales="$0"
         onLogout={handleLogout}
+        // Agency users reach the chat workspace FROM their dashboard, so give
+        // them a back arrow to return. Chatters live entirely in the
+        // workspace and have no dashboard to go back to → no arrow.
+        onBack={
+          role === "agency"
+            ? () => {
+                const t = dashboardUrl("agency");
+                if (/^https?:/i.test(t)) window.location.href = t;
+                else router.push(t);
+              }
+            : undefined
+        }
         ecoOn={eco}
         onToggleEco={() => { void setEcoMode(!eco); }}
         reloading={reloading}
@@ -2216,6 +2240,7 @@ export default function ChatterPage() {
       <div className="flex-1 flex overflow-hidden">
         <TelegramChat
           messagesLoaded={messagesLoaded}
+          loadError={messagesFailed}
           chatList={filteredDialogs}
           selectedChat={selectedDialog?.id ?? ""}
           onSelectChat={handleDialogSelect}

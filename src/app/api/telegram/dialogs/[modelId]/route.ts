@@ -207,6 +207,10 @@ export async function GET(
         }
         return { result: items, bumpInfos: bumps };
       },
+      // Read-only op — transparently reconnect+retry once on a dead pooled
+      // socket so the dialog list doesn't blank out on a transient 500.
+      20_000,
+      true,
     );
 
     // Walk the per-dialog bump info and update fans.last_response_at /

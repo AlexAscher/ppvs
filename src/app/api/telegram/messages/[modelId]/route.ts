@@ -172,6 +172,11 @@ export async function GET(
           }))
           .reverse();
       },
+      // Read-only op — safe to transparently reconnect+retry once if the
+      // pooled socket died. This is the fix for chats intermittently
+      // rendering "No messages yet" (a stale socket 500 was shown as empty).
+      20_000,
+      true,
     );
 
     return Response.json({ messages });

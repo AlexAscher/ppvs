@@ -3,6 +3,26 @@ import bigInt from "big-integer";
 import { createSupabaseServerClient, createAdminSupabaseClient } from "@/lib/supabase-server";
 import { withTelegramClient } from "@/lib/telegram-pool";
 
+// Negative cache: fans with NO Telegram avatar. Without it, every dialog-list
+// render re-attempts an MTProto getInputEntity + downloadProfilePhoto for
+// each avatar-less fan (the browser 404-caches per session, but a fresh
+// session / another chatter re-hits). Remember "no photo" for a while so we
+// answer 404 instantly and skip the MTProto round-trip. Keyed model:peer.
+declare global {
+  var __ppvs_fan_no_avatar__: Map<string, number> | undefined;
+}
+const noAvatar: Map<string, number> =
+  globalThis.__ppvs_fan_no_avatar__ ?? new Map();
+globalThis.__ppvs_fan_no_avatar__ = noAvatar;
+const NO_AVATAR_TTL_MS = 6 * 60 * 60 * 1000; // 6h
+
+function noPhotoResponse(): Response {
+  return new Response("No photo", {
+    status: 404,
+    headers: { "Cache-Control": "public, max-age=86400" },
+  });
+}
+
 /**
  * GET /api/telegram/fan-avatar/[modelId]?peerId=<id>
  *
@@ -24,6 +44,14 @@ export async function GET(
     if (!peerId || !/^-?\d+$/.test(peerId)) {
       return new Response("bad peerId", { status: 400 });
     }
+    // Groups / channels (negative peerId) have no fan avatar — never do the
+    // MTProto dance for them.
+    if (peerId.startsWith("-")) return noPhotoResponse();
+
+    // Known avatar-less fan within the TTL → answer instantly, no MTProto.
+    const noKey = `${modelId}:${peerId}`;
+    const noHit = noAvatar.get(noKey);
+    if (noHit && Date.now() - noHit < NO_AVATAR_TTL_MS) return noPhotoResponse();
 
     const ssr = await createSupabaseServerClient();
     const { data: { user } } = await ssr.auth.getUser();
@@ -68,6 +96,9 @@ export async function GET(
     }
 
     if (!m.session_string || !m.api_id || !m.api_hash || m.session_status === "expired") {
+      // Don't negative-cache a session problem — it's transient (reconnect
+      // fixes it). Just answer 404 without the day-long browser cache so the
+      // avatar reappears once the session is healthy again.
       return new Response("No session", { status: 404 });
     }
 
@@ -91,11 +122,10 @@ export async function GET(
     }
 
     if (!photo || photo.length === 0) {
-      // No avatar — tell the browser to not re-ask for a while.
-      return new Response("No photo", {
-        status: 404,
-        headers: { "Cache-Control": "public, max-age=86400" },
-      });
+      // No avatar — remember it server-side (skip MTProto next time) and tell
+      // the browser not to re-ask for a day.
+      noAvatar.set(noKey, Date.now());
+      return noPhotoResponse();
     }
 
     await admin.storage

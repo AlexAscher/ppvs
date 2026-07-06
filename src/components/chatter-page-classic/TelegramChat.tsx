@@ -141,6 +141,10 @@ interface TelegramChatProps {
    *  after — otherwise a session that legitimately returns [] leaves the
    *  reader staring at a spinner forever. */
   messagesLoaded?: boolean;
+  /** True when the last message fetch failed (transient 500). Renders a
+   *  "Reconnecting…" placeholder instead of the misleading "No messages yet"
+   *  on a real conversation. */
+  loadError?: boolean;
   search: string;
   onSearch: (v: string) => void;
   sending: boolean;
@@ -457,7 +461,11 @@ function FanAvatar({
 }) {
   const [failed, setFailed] = useState(false);
   const px = `${size}px`;
-  if (!modelId || failed) {
+  // Group / channel dialogs (peerId starts with "-") don't have a fan
+  // avatar — requesting one 404s AND burns a pointless MTProto call. Render
+  // initials straight away for those.
+  const isGroup = peerId.startsWith("-");
+  if (!modelId || failed || isGroup) {
     return (
       <div
         className="bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-full flex items-center justify-center text-white font-semibold flex-shrink-0"
@@ -523,6 +531,7 @@ export function TelegramChat({
   inputText,
   onInputChange,
   messagesLoaded = false,
+  loadError = false,
   onSend,
   search,
   onSearch,
@@ -911,7 +920,17 @@ export function TelegramChat({
         {/* Messages Area — p-5 space-y-3 from design */}
         <div ref={messagesRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-3 md:p-5 space-y-3">
           {selected && chunks.length === 0 && (
-            messagesLoaded ? (
+            loadError ? (
+              // Last fetch threw (transient dead-socket 500). Never show
+              // "No messages yet" here — the chat may well be full; the
+              // 5/20s poll (+ the server's transparent reconnect) recovers.
+              <div className="h-full w-full flex items-center justify-center text-[12px] text-[#6b7280]">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full border-2 border-[#374151] border-t-[#9ca3af] animate-spin" />
+                  Reconnecting…
+                </div>
+              </div>
+            ) : messagesLoaded ? (
               <div className="h-full w-full flex items-center justify-center text-[12px] text-[#6b7280]">
                 No messages yet.
               </div>

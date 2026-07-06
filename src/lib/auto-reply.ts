@@ -3,6 +3,8 @@ import { CustomFile } from "telegram/client/uploads";
 import type { TelegramClient } from "telegram";
 import { createAdminSupabaseClient } from "@/lib/supabase-server";
 import { ppvMediaPathFromUrl } from "@/lib/ppv-storage";
+import { generatePpvCode } from "@/lib/ppv-code";
+import { starsToUsd } from "@/lib/stars";
 
 /**
  * Auto-reply on first-fan-message.
@@ -136,6 +138,71 @@ async function loadPpvMedia(
     .filter((x) => !!x.mediaUrl);
 }
 
+/**
+ * Materialize a ppv_sends row + junction rows for an auto-reply so the
+ * chatter workspace picks it up as a virtual PPV bubble (same code path
+ * as chatter-composed sends). chatter_id is left null — the AR was fired
+ * by the model's session, not a human chatter. total_price is 0 for free
+ * ARs; for stars > 0 ARs it's the USD equivalent, so the purchased_paid_media
+ * webhook can fulfill it (mark paid, bump fan.total_spent) using our code
+ * as the payload.
+ */
+async function insertArPpvSend(
+  modelId: string,
+  peerId: string,
+  ppvIds: string[],
+  caption: string,
+  totalPriceUsd: number,
+  isPaidMedia: boolean,
+): Promise<{ code: string; sendId: string } | null> {
+  const admin = createAdminSupabaseClient();
+  let code = "";
+  let sendId = "";
+  for (let attempt = 0; attempt < 5; attempt++) {
+    code = generatePpvCode();
+    const nowIso = new Date().toISOString();
+    const { data, error } = await admin
+      .from("ppv_sends")
+      .insert({
+        code,
+        model_id: modelId,
+        chatter_id: null,
+        peer_id: peerId,
+        peer_access_hash: null,
+        peer_username: null,
+        caption: caption || null,
+        total_price: totalPriceUsd,
+        // Free AR is delivered on send; native paid-media AR flips to
+        // 'delivered' only when purchased_paid_media webhook lands.
+        status: isPaidMedia ? "sent" : "delivered",
+        delivered_at: isPaidMedia ? null : nowIso,
+      })
+      .select("id")
+      .single();
+    if (!error && data) {
+      sendId = (data as { id: string }).id;
+      break;
+    }
+    if (error && (error as { code?: string }).code !== "23505") {
+      console.error("[auto-reply] ppv_sends insert failed:", error.message);
+      return null;
+    }
+  }
+  if (!sendId) return null;
+  const itemRows = ppvIds.map((id, idx) => ({
+    send_id: sendId,
+    ppv_id: id,
+    ordinal: idx,
+  }));
+  const { error: linkErr } = await admin.from("ppv_send_items").insert(itemRows);
+  if (linkErr) {
+    console.error("[auto-reply] ppv_send_items insert failed:", linkErr.message);
+    await admin.from("ppv_sends").delete().eq("id", sendId);
+    return null;
+  }
+  return { code, sendId };
+}
+
 async function sendAutoReply(
   client: TelegramClient,
   modelId: string,
@@ -162,9 +229,25 @@ async function sendAutoReply(
     return;
   }
 
+  // Materialize a ppv_sends row (+ ppv_send_items) up-front so the chatter
+  // workspace renders this auto-reply as a virtual PPV bubble regardless of
+  // whether it's free or Stars-priced. Without this row, native paid-media
+  // messages are hidden by the chatter UI (see isPaidMedia in
+  // /api/telegram/messages), and free-album AR shows as a plain photo.
+  const totalPriceUsd = stars > 0 ? starsToUsd(stars) : 0;
+  const send = await insertArPpvSend(
+    modelId,
+    peerId,
+    media.map((m) => m.id),
+    text,
+    totalPriceUsd,
+    stars > 0,
+  );
+  const arCode = send?.code ?? null;
+
   // Stars > 0 → native Paid Media via @ppvstarbot (business connection).
-  // Same code path as /api/ppv/send paid — the fan sees the blur + "Unlock
-  // for ⭐ N" overlay and the chatter view renders it as a PPV bubble.
+  // The code doubles as the invoice payload so the purchased_paid_media
+  // webhook can find the row and fulfill it (mark paid, bump fan.total_spent).
   if (stars > 0) {
     const [{ findActiveBusinessConnection, sendPaidMediaAsBusiness }] = await Promise.all([
       import("@/lib/business-bot"),
@@ -197,11 +280,7 @@ async function sendAutoReply(
             connectionId: conn.connectionId,
             chatId: peerId,
             stars,
-            // Auto-replies have no ppv_sends row, so we don't have a code to
-            // pass back through the purchased_paid_media webhook. Use a
-            // stable synthetic payload so the webhook can tell "this was an
-            // auto-reply, no server-side fulfillment needed".
-            payload: `ar_${modelId.slice(0, 8)}_${Date.now().toString(36)}`,
+            payload: arCode ?? generatePpvCode(),
             caption: text,
             media: media.map((m) => ({
               kind: isVideo(m.mediaUrl) ? "video" : "photo",
@@ -215,6 +294,17 @@ async function sendAutoReply(
             e instanceof Error ? e.message : e,
           );
           // Fall through to free album so the fan at least gets something.
+          // The ppv_sends row already exists — flip it to 'failed' so the
+          // chatter view doesn't render a virtual PPV that never landed.
+          if (send) {
+            try {
+              const admin2 = createAdminSupabaseClient();
+              await admin2
+                .from("ppv_sends")
+                .update({ status: "failed", error: e instanceof Error ? e.message : "sendPaidMedia failed" })
+                .eq("id", send.sendId);
+            } catch { /* best-effort */ }
+          }
         }
       }
     }

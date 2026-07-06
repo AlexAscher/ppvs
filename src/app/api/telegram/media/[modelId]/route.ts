@@ -68,11 +68,12 @@ function respondWithMaybeRange(
   data: Buffer,
   mime: string,
   rangeHeader: string | null,
+  cacheSeconds: number,
 ): Response {
   const total = data.length;
   const baseHeaders: Record<string, string> = {
     "Content-Type": mime,
-    "Cache-Control": "private, max-age=300",
+    "Cache-Control": `private, max-age=${cacheSeconds}, immutable`,
     "Accept-Ranges": "bytes",
   };
 
@@ -171,10 +172,17 @@ export async function GET(
 
     const rangeHeader = req.headers.get("range");
 
+    // Telegram media is immutable per (peerId, messageId) — the same message
+    // never changes bytes — so thumbs are safe to cache aggressively in the
+    // browser (they're per-fan and per-message). Full-quality bytes cache
+    // shorter because users occasionally re-view large videos and we want
+    // any bucket policy tweaks to take effect on next open.
+    const cacheSeconds = quality === "thumb" ? 30 * 24 * 60 * 60 : 300;
+
     const k = cacheKey(modelId, peerId, messageId, quality);
     const hit = cache.get(k);
     if (hit && Date.now() - hit.ts < CACHE_TTL_MS) {
-      return respondWithMaybeRange(hit.data, hit.mime, rangeHeader);
+      return respondWithMaybeRange(hit.data, hit.mime, rangeHeader, cacheSeconds);
     }
 
     // Deferred Response: the streaming path resolves this as soon as the
@@ -235,7 +243,7 @@ export async function GET(
           }
           const mime = mimeFor(msg, true);
           cachePut(k, buf as Buffer, mime);
-          settle(respondWithMaybeRange(buf as Buffer, mime, rangeHeader));
+          settle(respondWithMaybeRange(buf as Buffer, mime, rangeHeader, cacheSeconds));
           return;
         }
 
@@ -302,7 +310,7 @@ export async function GET(
           const headers: Record<string, string> = {
             "Content-Type": mime,
             "Accept-Ranges": "bytes",
-            "Cache-Control": "private, max-age=300",
+            "Cache-Control": `private, max-age=${cacheSeconds}`,
             "Content-Length": String(total),
           };
           let status = 200;
@@ -325,7 +333,7 @@ export async function GET(
         }
         const mime = mimeFor(msg, false);
         cachePut(k, buf as Buffer, mime);
-        settle(respondWithMaybeRange(buf as Buffer, mime, rangeHeader));
+        settle(respondWithMaybeRange(buf as Buffer, mime, rangeHeader, cacheSeconds));
       },
       300_000,
     );

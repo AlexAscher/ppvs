@@ -1004,23 +1004,29 @@ export function TelegramChat({
                 readOutboxMaxId !== undefined &&
                 (ppv.readMaxId ?? 0) > 0 &&
                 (ppv.readMaxId ?? 0) <= readOutboxMaxId;
+              // Single-item PPVs get the full photo-message look: media is
+              // 260×340 (aspect kept via object-cover) instead of the 100×100
+              // thumbnail slot used for albums. Multi-item albums stay in the
+              // 2-column 100px grid so the "1 photo per tile" layout is
+              // preserved for 2–4-item bubbles.
+              const singleTileW = 260;
+              const singleTileH = 340;
+              const single = items.length === 1;
               return (
                 <div key={m.id} className="flex justify-end">
                   <div className="flex flex-col gap-1 items-end">
                     <div
                       className="p-1 rounded-2xl inline-block bg-gradient-to-br from-[#00AFF0] to-[#0098D4] rounded-br-sm"
-                      // Multi-item albums cap at cols*100 (grid width) so photos
-                      // stay square; single-item bubble lets the label pill
-                      // decide the width — otherwise "1 item · ⭐ 100 (Unpaid)"
-                      // word-wraps into a broken vertical column at 108px.
-                      style={items.length > 1
-                        ? { maxWidth: cols * 100 + (cols - 1) * 2 + 8 }
-                        : { maxWidth: 340 }}
+                      style={single
+                        ? { width: singleTileW + 8 }
+                        : { maxWidth: cols * 100 + (cols - 1) * 2 + 8 }}
                     >
                       {items.length > 0 && (
                         <div
                           className="grid gap-0.5 overflow-hidden rounded-xl"
-                          style={{ gridTemplateColumns: `repeat(${cols}, 100px)` }}
+                          style={single
+                            ? { gridTemplateColumns: `${singleTileW}px` }
+                            : { gridTemplateColumns: `repeat(${cols}, 100px)` }}
                         >
                           {items.slice(0, 4).map((item, idx) => (
                             <button
@@ -1034,7 +1040,9 @@ export function TelegramChat({
                                 )
                               }
                               className="relative overflow-hidden bg-[#374151]"
-                              style={{ width: 100, height: 100 }}
+                              style={single
+                                ? { width: singleTileW, height: singleTileH }
+                                : { width: 100, height: 100 }}
                             >
                               {item.kind === "video" ? (
                                 <>
@@ -1046,8 +1054,8 @@ export function TelegramChat({
                                     className="w-full h-full object-cover"
                                   />
                                   <div className="absolute inset-0 flex items-center justify-center">
-                                    <div className="w-7 h-7 rounded-full bg-black/55 flex items-center justify-center">
-                                      <svg width="12" height="12" viewBox="0 0 12 12" fill="white"><path d="M2 1.5 L10 6 L2 10.5 Z" /></svg>
+                                    <div className={`${single ? "w-14 h-14" : "w-7 h-7"} rounded-full bg-black/55 flex items-center justify-center`}>
+                                      <svg width={single ? 22 : 12} height={single ? 22 : 12} viewBox="0 0 12 12" fill="white"><path d="M2 1.5 L10 6 L2 10.5 Z" /></svg>
                                     </div>
                                   </div>
                                 </>

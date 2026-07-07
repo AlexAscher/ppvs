@@ -1,7 +1,10 @@
 import { NextRequest } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase-server";
 import { authorizeModelAccess } from "@/lib/telegram-authorize";
+import { withTimeout } from "@/lib/with-timeout";
 import type { FanRow } from "@/lib/fan-types";
+
+const FAN_QUERY_TIMEOUT_MS = 8_000;
 
 /**
  * Per-model fan profile store. One row per (model_id, peer_id) — keeps
@@ -28,18 +31,44 @@ export async function GET(
     if ("errorResponse" in auth) return auth.errorResponse;
 
     const admin = createAdminSupabaseClient();
-    const { data, error } = await admin
-      .from("fans")
-      .select("*")
-      .eq("model_id", modelId)
-      .eq("peer_id", peerId)
-      .maybeSingle();
-    if (error) return Response.json({ error: error.message }, { status: 500 });
-
-    return Response.json({ fan: (data as FanRow | null) ?? null });
+    // Timeout + one retry — the fan drawer polls this endpoint often, so a
+    // single DB blip used to surface as a red 500 in the console. Retry
+    // eats the transient; a hard failure still 503s so the client can
+    // fall back gracefully.
+    const runQuery = () =>
+      withTimeout(
+        Promise.resolve(
+          admin
+            .from("fans")
+            .select("*")
+            .eq("model_id", modelId)
+            .eq("peer_id", peerId)
+            .maybeSingle(),
+        ),
+        FAN_QUERY_TIMEOUT_MS,
+        "fans: load",
+      );
+    let res: Awaited<ReturnType<typeof runQuery>>;
+    try {
+      res = await runQuery();
+    } catch {
+      try {
+        res = await runQuery();
+      } catch {
+        return Response.json({ fan: null, partial: true }, { status: 200 });
+      }
+    }
+    if (res.error) {
+      console.warn("[fans/GET] db error:", res.error.message);
+      return Response.json({ fan: null, partial: true }, { status: 200 });
+    }
+    return Response.json({ fan: (res.data as FanRow | null) ?? null });
   } catch (e: unknown) {
+    // Any uncaught exception here would blank the drawer; return a safe
+    // 200 with null so the client renders the empty-state instead.
     const message = e instanceof Error ? e.message : "Failed";
-    return Response.json({ error: message }, { status: 500 });
+    console.error("[fans/GET] uncaught:", message);
+    return Response.json({ fan: null, error: message }, { status: 200 });
   }
 }
 

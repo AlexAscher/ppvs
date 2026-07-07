@@ -104,6 +104,11 @@ export async function GET(
           const kind: "photo" | "video" =
             mediaUrl && VIDEO_EXT_RE.test(mediaUrl) ? "video" : "photo";
           if (raw.ppv_id) {
+            // If the JOIN returned no ppvs row, the referenced PPV was
+            // deleted from the vault after the send was recorded. Skip it
+            // so the chatter view doesn't hit /api/ppv/file/{id} with a
+            // dead id (404/403 in the console).
+            if (!ppv) return null;
             return {
               orig: `/api/ppv/file/${raw.ppv_id}?kind=original`,
               poster: `/api/ppv/file/${raw.ppv_id}?kind=preview`,

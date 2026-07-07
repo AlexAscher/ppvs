@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import { useEcoMode, setEcoMode, ECO_INTERVAL_MULTIPLIER } from "@/lib/use-eco";
+import { readCachedDialogs, writeCachedDialogs } from "@/lib/dialogs-cache";
 // Both roles (agency + chatter) render the single indigo design from
 // Create_prompt_design — the chatter-page-classic/* components are the
 // pixel-match of that design. The older medium-sized chatter-page/* design
@@ -673,6 +674,11 @@ export default function ChatterPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
       let list: Dialog[] = data.dialogs ?? [];
+      // Persist a copy of the successful list to IndexedDB. Next chat-open
+      // (even after a full page reload) reads it back BEFORE the server
+      // answers, so the sidebar shows the last-known dialogs instead of
+      // blinking to empty during a transient 500.
+      void writeCachedDialogs<Dialog[]>(modelId, list);
 
       // Auto-zero unread for the currently open dialog so the badge doesn't
       // reappear after a poll when the chatter is actively reading messages.
@@ -707,6 +713,19 @@ export default function ChatterPage() {
       setError("");
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load dialogs");
+      // Fetch failed. If we have a cached last-known-good list AND the
+      // state currently has nothing for this model, populate from cache
+      // so the sidebar isn't empty. Never overwrite a FRESH state with a
+      // stale cache — that would move ticks / unread counts backward.
+      try {
+        const cached = await readCachedDialogs<Dialog[]>(modelId);
+        if (cached && Array.isArray(cached.data) && cached.data.length > 0) {
+          setDialogsByModel((prev) => {
+            if ((prev[modelId] ?? []).length > 0) return prev;
+            return { ...prev, [modelId]: cached.data };
+          });
+        }
+      } catch { /* IDB unavailable — swallow, best-effort */ }
     } finally {
       dialogsInFlight.current.delete(modelId);
     }
@@ -714,6 +733,23 @@ export default function ChatterPage() {
 
   useEffect(() => {
     if (!selectedModelId) return;
+    // On first selection of a model, hydrate the sidebar from the last-known
+    // IndexedDB snapshot BEFORE the server responds. This turns a cold start
+    // (or the moment right after a deploy) from "empty sidebar for 2-3s"
+    // into "instant last-known list, refreshed silently once fetch lands".
+    // Never overwrites a fresher in-memory list.
+    const modelId = selectedModelId;
+    void (async () => {
+      try {
+        const cached = await readCachedDialogs<Dialog[]>(modelId);
+        if (cached && Array.isArray(cached.data) && cached.data.length > 0) {
+          setDialogsByModel((prev) => {
+            if ((prev[modelId] ?? []).length > 0) return prev;
+            return { ...prev, [modelId]: cached.data };
+          });
+        }
+      } catch { /* IDB unavailable */ }
+    })();
     const tid = setTimeout(() => {
       void fetchDialogs(selectedModelId, true);
     }, 0);

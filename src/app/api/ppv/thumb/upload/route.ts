@@ -80,8 +80,16 @@ export async function POST(req: NextRequest) {
       .update({ thumb_url: publicUrl })
       .eq("id", ppvId);
     if (updErr) {
-      console.error("[ppv/thumb/upload] DB update failed:", updErr.message);
-      return Response.json({ error: "Save failed" }, { status: 500 });
+      // If the migration adding thumb_url hasn't been run on this DB yet
+      // the UPDATE will error out on the missing column. Clean up the
+      // just-uploaded file so we don't orphan Storage objects, and tell
+      // the client not to keep retrying.
+      await admin.storage.from("ppvs").remove([path]).catch(() => {});
+      console.warn(
+        "[ppv/thumb/upload] DB update failed (missing column?):",
+        updErr.message,
+      );
+      return Response.json({ ok: false, needsMigration: true });
     }
     return Response.json({ ok: true, thumbUrl: publicUrl });
   } catch (e) {

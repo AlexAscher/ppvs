@@ -176,10 +176,20 @@ async function loadPpvMedia(
   const admin = createAdminSupabaseClient();
   const { data } = await admin
     .from("ppvs")
-    .select("id, media_url")
+    .select("id, media_url, review_status")
     .in("id", ppvIds);
   const byId = new Map<string, string>();
-  for (const r of (data ?? []) as { id: string; media_url: string | null }[]) {
+  for (const r of (data ?? []) as {
+    id: string;
+    media_url: string | null;
+    review_status?: string | null;
+  }[]) {
+    // Skip anything not approved. This defends against a race where
+    // config was saved with an approved id, then admin rejected the
+    // item before the fan sent their first message. Pre-moderation rows
+    // (review_status null) are treated as approved — that column
+    // shipped in batch 96, older PPVs predate it.
+    if (r.review_status && r.review_status !== "approved") continue;
     if (r.media_url) byId.set(r.id, r.media_url);
   }
   // Preserve the agency-picked order — .in() doesn't guarantee it.

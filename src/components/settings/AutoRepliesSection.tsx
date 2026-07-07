@@ -27,6 +27,10 @@ type VaultPpv = {
   name: string;
   media_url: string | null;
   preview_url: string | null;
+  /** null = pre-moderation (older upload), "approved" = ready to send,
+   *  "pending" / "rejected" = HIDDEN from the AR picker — automatic
+   *  replies must never ship un-vetted content to a fan. */
+  review_status?: "pending" | "approved" | "rejected" | null;
 };
 
 type Config = {
@@ -104,7 +108,7 @@ export function AutoRepliesSection() {
           fetch(`/api/auto-reply/${selectedModelId}`),
           supabase
             .from("ppvs")
-            .select("id, name, media_url, preview_url, thumb_url")
+            .select("id, name, media_url, preview_url, thumb_url, review_status")
             .eq("model_id", selectedModelId)
             .order("created_at", { ascending: false }),
         ]);
@@ -118,7 +122,15 @@ export function AutoRepliesSection() {
           stars: Math.max(0, Math.floor(Number(data.stars ?? 0))),
           ppvIds: Array.isArray(data.ppvIds) ? data.ppvIds : [],
         });
-        setVaultPpvs((ppvsRes.data ?? []) as VaultPpv[]);
+        // Hide non-approved items from the AR picker entirely. Batch 96
+        // added review_status; pre-batch rows are null and treated as
+        // approved (moderation didn't exist yet). Server also filters and
+        // auto-cleans stored ppvIds so a stale rejection never fires.
+        setVaultPpvs(
+          ((ppvsRes.data ?? []) as VaultPpv[]).filter(
+            (p) => !p.review_status || p.review_status === "approved",
+          ),
+        );
         setMsg("");
       } catch (e: unknown) {
         if (!cancelled) setMsg(e instanceof Error ? `Error: ${e.message}` : "Error");

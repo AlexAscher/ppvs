@@ -73,9 +73,20 @@ type TgUpdate = {
   message?: {
     text?: string;
     chat?: { id: number };
-    from?: { first_name?: string; username?: string };
+    from?: { first_name?: string; last_name?: string; username?: string };
   };
 };
+
+/** Build a display label for a connected admin channel from the /start
+ *  message's `from` metadata — Telegram username preferred, then
+ *  first+last name, then a fallback of "Admin". Stored on
+ *  admin_sales_channels.label so the panel can show WHO connected. */
+function labelFromFrom(from: TgUpdate["message"] extends infer M ? M extends { from?: infer F } ? F : undefined : undefined): string {
+  const f = from as { first_name?: string; last_name?: string; username?: string } | undefined;
+  if (f?.username) return `@${f.username}`;
+  const name = [f?.first_name, f?.last_name].filter(Boolean).join(" ").trim();
+  return name || "Admin";
+}
 
 /**
  * Start the getUpdates poller. Idempotent — guarded by a global flag so
@@ -140,32 +151,35 @@ async function handleUpdate(u: TgUpdate): Promise<void> {
 
   const admin = createAdminSupabaseClient();
 
-  // Platform-owner binding: codes prefixed with `admin_` bind to
-  // admin_sales_channels (see /api/admin/global-alerts). Fan-out from
-  // sales-alerts hits both admins and the sale's own agency independently.
+  // Platform-owner binding: codes prefixed with `admin_` bind to a row in
+  // admin_sales_channels (see /api/admin/global-alerts). Multi-channel:
+  // each Connect click creates a NEW row with a fresh link_code, so we
+  // look up by link_code and update THAT specific row.
   if (rawCode.startsWith("admin_")) {
     const code = rawCode.slice("admin_".length);
     const { data: adminRow } = await admin
       .from("admin_sales_channels")
-      .select("admin_email")
+      .select("id")
       .eq("link_code", code)
       .maybeSingle();
-    const adminEmail = (adminRow as { admin_email?: string } | null)?.admin_email;
-    if (!adminEmail) {
+    const rowId = (adminRow as { id?: string } | null)?.id;
+    if (!rowId) {
       await sendBotMessage(String(chatId), "⚠️ This link expired. Generate a new one in Global Sales Alerts.");
       return;
     }
+    const label = labelFromFrom(u.message?.from);
     await admin
       .from("admin_sales_channels")
       .update({
         bot_chat_id: String(chatId),
+        label,
         link_code: null,
         updated_at: new Date().toISOString(),
       })
-      .eq("admin_email", adminEmail);
+      .eq("id", rowId);
     await sendBotMessage(
       String(chatId),
-      "✅ Connected! You will receive a notification here for every sale of every agency on the platform 💰",
+      "✅ Connected! You will receive alerts here for every sale, new signup, and new Vault upload across the platform 💰",
     );
     return;
   }

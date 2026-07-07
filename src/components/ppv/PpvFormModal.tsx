@@ -156,6 +156,15 @@ export function PpvFormModal({
         tags: tagsForResult,
         review_status: mode === "add" ? "pending" : (existing?.review_status ?? "pending"),
       });
+      // Fire the admin vault-review alert when a new PPV is added (edits
+      // don't need a fresh alert — moderator sees the same pending item).
+      if (mode === "add") {
+        void fetch("/api/vault/notify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ modelId, count: 1 }),
+        }).catch(() => { /* alert failure never blocks save */ });
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Save failed");
     } finally {

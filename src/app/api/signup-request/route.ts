@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase-server";
 import { consume, getClientIp, tooManyRequests } from "@/lib/rate-limit";
+import { sendAdminSignupAlert } from "@/lib/sales-alerts";
 import { encrypt } from "@/lib/crypto";
 
 /**
@@ -79,5 +80,13 @@ export async function POST(req: NextRequest) {
     console.error("[signup-request] insert failed:", error.message);
     return Response.json({ error: error.message }, { status: 500 });
   }
+  // Fire a Telegram DM to every connected admin channel so the platform
+  // owner sees the pending request without polling /admin → Signups.
+  // Fire-and-forget: alert failure never blocks the applicant.
+  sendAdminSignupAlert({
+    email,
+    role: role as "agency" | "chatter",
+    agencyName,
+  });
   return Response.json({ ok: true, id: data.id });
 }

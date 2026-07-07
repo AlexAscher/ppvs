@@ -403,14 +403,33 @@ function ReplyPreviewCard({
   );
 }
 
-function Lightbox({ media, onClose }: { media: MessageMediaInfo; onClose: () => void }) {
+function Lightbox({
+  items,
+  index,
+  onIndexChange,
+  onClose,
+}: {
+  items: MessageMediaInfo[];
+  index: number;
+  onIndexChange: (i: number) => void;
+  onClose: () => void;
+}) {
+  const total = items.length;
+  const media = items[index];
+  const hasPrev = index > 0;
+  const hasNext = index < total - 1;
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
+      else if (e.key === "ArrowLeft" && hasPrev) onIndexChange(index - 1);
+      else if (e.key === "ArrowRight" && hasNext) onIndexChange(index + 1);
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, onIndexChange, index, hasPrev, hasNext]);
+
+  if (!media) return null;
 
   return (
     <div
@@ -419,21 +438,60 @@ function Lightbox({ media, onClose }: { media: MessageMediaInfo; onClose: () => 
     >
       <button
         type="button"
-        className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white"
+        className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white z-10"
         onClick={onClose}
         aria-label="Close"
       >
         <X className="w-5 h-5" />
       </button>
+
+      {total > 1 && (
+        <div
+          className="absolute top-4 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-white/10 text-white text-[12px] font-medium z-10"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {index + 1} / {total}
+        </div>
+      )}
+
+      {total > 1 && hasPrev && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onIndexChange(index - 1); }}
+          aria-label="Previous"
+          className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white z-10"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+        </button>
+      )}
+
+      {total > 1 && hasNext && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onIndexChange(index + 1); }}
+          aria-label="Next"
+          className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white z-10"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 18l6-6-6-6" />
+          </svg>
+        </button>
+      )}
+
       <div
         className="max-w-[92vw] max-h-[92vh] flex items-center justify-center"
         onClick={(e) => e.stopPropagation()}
       >
         {media.type === "video" ? (
-          <video src={media.fullUrl} controls autoPlay className="max-w-[92vw] max-h-[92vh] rounded-md" />
+          // `key` on the element forces React to remount when the index
+          // changes — otherwise the browser keeps the previous <video>
+          // element and plays the wrong URL on next arrow click.
+          <video key={media.fullUrl} src={media.fullUrl} controls autoPlay className="max-w-[92vw] max-h-[92vh] rounded-md" />
         ) : media.type === "photo" || media.type === "sticker" ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={media.fullUrl} alt="" className="max-w-[92vw] max-h-[92vh] object-contain rounded-md" />
+          <img key={media.fullUrl} src={media.fullUrl} alt="" className="max-w-[92vw] max-h-[92vh] object-contain rounded-md" />
         ) : (
           <a
             href={media.fullUrl}
@@ -577,7 +635,11 @@ export function TelegramChat({
   // Scheduled-send popover. Closes when the user picks a preset or hits
   // outside; null state = bubble closed.
   const [scheduleOpen, setScheduleOpen] = useState(false);
-  const [openMedia, setOpenMedia] = useState<MessageMediaInfo | null>(null);
+  // Lightbox now supports albums — when a PPV bubble is opened we pass ALL
+  // its items and the click index so the user can arrow through them. Single
+  // messages (regular photo/video bubbles) wrap into a 1-element album.
+  const [openMedia, setOpenMedia] = useState<{ items: MessageMediaInfo[]; index: number } | null>(null);
+  const openOne = (m: MessageMediaInfo) => setOpenMedia({ items: [m], index: 0 });
 
   // Group-filter management: inline "add category" input + right-click
   // delete context menu (anchored to the chip).
@@ -1032,13 +1094,19 @@ export function TelegramChat({
                             <button
                               key={idx}
                               type="button"
-                              onClick={() =>
-                                setOpenMedia(
-                                  item.kind === "video"
-                                    ? { type: "video", thumbDataUrl: null, fullUrl: item.orig, width: 400, height: 600, durationSec: null }
-                                    : { type: "photo", thumbDataUrl: null, fullUrl: item.orig, width: 400, height: 600 },
-                                )
-                              }
+                              onClick={() => {
+                                // Build the full album so the Lightbox's arrows
+                                // can walk every item, not just the one that
+                                // was clicked. Ordinal is the click index —
+                                // the viewer opens on this item and lets the
+                                // user arrow ← / → through the rest.
+                                const album: MessageMediaInfo[] = items.map((it) =>
+                                  it.kind === "video"
+                                    ? { type: "video" as const, thumbDataUrl: null, fullUrl: it.orig, width: 400, height: 600, durationSec: null }
+                                    : { type: "photo" as const, thumbDataUrl: null, fullUrl: it.orig, width: 400, height: 600 },
+                                );
+                                setOpenMedia({ items: album, index: idx });
+                              }}
                               className="relative overflow-hidden bg-[#374151]"
                               style={single
                                 ? { width: singleTileW, height: singleTileH }
@@ -1135,7 +1203,7 @@ export function TelegramChat({
                           <button
                             key={m.id}
                             type="button"
-                            onClick={() => m.media && setOpenMedia(m.media)}
+                            onClick={() => m.media && openOne(m.media)}
                             className="relative overflow-hidden bg-[#374151]"
                             style={{ width: 100, height: 100 }}
                           >
@@ -1236,7 +1304,7 @@ export function TelegramChat({
                     <MediaBubble
                       media={message.media}
                       isChatter={message.isChatter}
-                      onOpen={() => message.media && setOpenMedia(message.media)}
+                      onOpen={() => message.media && openOne(message.media)}
                     />
                   ) : (
                     <div
@@ -1257,7 +1325,7 @@ export function TelegramChat({
                       <MediaBubble
                         media={message.media}
                         isChatter={message.isChatter}
-                        onOpen={() => message.media && setOpenMedia(message.media)}
+                        onOpen={() => message.media && openOne(message.media)}
                       />
                       {message.text && message.text !== "—" ? (
                         <div
@@ -1513,7 +1581,14 @@ export function TelegramChat({
         </div>
       </div>
 
-      {openMedia && <Lightbox media={openMedia} onClose={() => setOpenMedia(null)} />}
+      {openMedia && (
+        <Lightbox
+          items={openMedia.items}
+          index={openMedia.index}
+          onIndexChange={(i) => setOpenMedia((cur) => (cur ? { ...cur, index: i } : cur))}
+          onClose={() => setOpenMedia(null)}
+        />
+      )}
 
       {menu && selected && (
         <MessageContextMenu

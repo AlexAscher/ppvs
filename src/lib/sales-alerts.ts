@@ -4,6 +4,78 @@ import { createAdminSupabaseClient } from "@/lib/supabase-server";
 import { withTelegramClient } from "@/lib/telegram-pool";
 
 /**
+ * Fan-out helper for the admin Global Sales Alerts multi-channel table.
+ *
+ * `kind` decides which per-channel flag gates delivery:
+ *   - "ppv-or-tip"  → alerts_ppv column
+ *   - "signup"      → alerts_signups column
+ *   - "vault"       → alerts_vault column
+ *
+ * Fire-and-forget. Errors are logged and swallowed so a bot outage never
+ * blocks the caller (sale, signup insert, vault upload).
+ */
+export async function broadcastToAdminChannels(
+  kind: "ppv-or-tip" | "signup" | "vault",
+  text: string,
+): Promise<void> {
+  try {
+    const admin = createAdminSupabaseClient();
+    const { data } = await admin
+      .from("admin_sales_channels")
+      .select("bot_chat_id, enabled, alerts_ppv, alerts_signups, alerts_vault")
+      .not("bot_chat_id", "is", null)
+      .eq("enabled", true);
+    type Row = {
+      bot_chat_id: string;
+      alerts_ppv?: boolean | null;
+      alerts_signups?: boolean | null;
+      alerts_vault?: boolean | null;
+    };
+    const rows = (data ?? []) as Row[];
+    const applicable = rows.filter((r) => {
+      if (kind === "ppv-or-tip") return r.alerts_ppv !== false;
+      if (kind === "signup") return r.alerts_signups !== false;
+      if (kind === "vault") return r.alerts_vault !== false;
+      return true;
+    });
+    if (applicable.length === 0) return;
+    const { sendBotMessage } = await import("@/lib/alert-bot");
+    await Promise.all(applicable.map((r) => sendBotMessage(r.bot_chat_id, text)));
+  } catch (e) {
+    console.error(
+      "[admin-alerts] fan-out failed:",
+      e instanceof Error ? e.message : e,
+    );
+  }
+}
+
+/** New pending signup alert — fires from /api/signup-request. */
+export function sendAdminSignupAlert(params: {
+  email: string;
+  role: "agency" | "chatter";
+  agencyName?: string | null;
+}): void {
+  const roleLabel = params.role === "agency" ? "Agency" : "Chatter";
+  const agencyLine = params.agencyName ? `\n🏢 ${params.agencyName}` : "";
+  const text = `📬 New signup pending review\n${roleLabel} · ${params.email}${agencyLine}\nOpen /admin → Signups`;
+  void broadcastToAdminChannels("signup", text);
+}
+
+/** New pending PPV upload alert — fires from PPVsTab upload path via the
+ *  chat-side ppvs insert (rows land with review_status='pending'). */
+export function sendAdminVaultAlert(params: {
+  agencyName?: string | null;
+  modelName?: string | null;
+  count: number;
+}): void {
+  const who = params.agencyName ?? "An agency";
+  const model = params.modelName ? ` (creator ${params.modelName})` : "";
+  const items = params.count === 1 ? "1 item" : `${params.count} items`;
+  const text = `🔒 Vault: ${who}${model} uploaded ${items} for review\nOpen /admin → Vault`;
+  void broadcastToAdminChannels("vault", text);
+}
+
+/**
  * Send a Sales Alert to the agency's configured private TG channel.
  *
  * The alert is sent via one of the agency's connected MTProto sessions
@@ -152,51 +224,10 @@ async function sendSalesAlertInner(event: SalesAlertEvent): Promise<void> {
 
   const text = buildMessage(event, chatterName);
 
-  // Fan-out to any connected platform-owner (admin) sales channels. Runs
+  // Fan-out to every connected platform-owner (admin) sales channel. Runs
   // in parallel with the per-agency delivery below so admin alerts still
-  // fire even when the agency hasn't wired Sales Alerts yet. Fire-and-forget.
-  void (async () => {
-    try {
-      // Per-event toggles let the admin dial down which sale types actually
-      // ping. Tolerate the column being absent on older schemas so this
-      // survives the migration rollout window without 500-ing sale flow.
-      const withFlags = await admin
-        .from("admin_sales_channels")
-        .select("bot_chat_id, enabled, alerts_ppv, alerts_tips")
-        .not("bot_chat_id", "is", null)
-        .eq("enabled", true);
-      type ChanRow = {
-        bot_chat_id: string;
-        enabled: boolean;
-        alerts_ppv?: boolean | null;
-        alerts_tips?: boolean | null;
-      };
-      let rows: ChanRow[] = [];
-      if (withFlags.error && /alerts_ppv|alerts_tips/.test(withFlags.error.message)) {
-        const fb = await admin
-          .from("admin_sales_channels")
-          .select("bot_chat_id, enabled")
-          .not("bot_chat_id", "is", null)
-          .eq("enabled", true);
-        rows = (fb.data ?? []) as ChanRow[];
-      } else {
-        rows = (withFlags.data ?? []) as ChanRow[];
-      }
-      const applicable = rows.filter((r) => {
-        if (event.type === "ppv") return r.alerts_ppv !== false;
-        if (event.type === "tip") return r.alerts_tips !== false;
-        return true;
-      });
-      if (applicable.length === 0) return;
-      const { sendBotMessage } = await import("@/lib/alert-bot");
-      await Promise.all(applicable.map((r) => sendBotMessage(r.bot_chat_id, text)));
-    } catch (e) {
-      console.error(
-        "[sales-alerts] admin fan-out failed:",
-        e instanceof Error ? e.message : e,
-      );
-    }
-  })();
+  // fire even when the agency hasn't wired Sales Alerts yet.
+  void broadcastToAdminChannels("ppv-or-tip", text);
 
   // ── Primary path: bot DM (no userbot, no ban risk) ──────────────────
   if (settings.alerts_bot_chat_id) {

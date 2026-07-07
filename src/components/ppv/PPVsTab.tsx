@@ -110,6 +110,16 @@ export function PPVsTab() {
     if (skipped > 0) {
       setBulkNotice(`Uploaded ${files.length}. Skipped ${skipped} unsupported file${skipped > 1 ? "s" : ""} (won't display in Telegram).`);
     }
+    // Fire one grouped alert to every connected admin channel — the vault
+    // moderators see "agency X uploaded N items for review" instead of a
+    // stream of individual notifications. Fire-and-forget.
+    if (files.length > 0) {
+      void fetch("/api/vault/notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modelId: selectedModelId, count: files.length }),
+      }).catch(() => { /* alert failure never blocks upload */ });
+    }
   }
   const toggleSel = useCallback((id: string) => {
     setSelectedIds((cur) => {
@@ -549,28 +559,34 @@ export function PPVsTab() {
                 <h2 className="text-[14px] font-semibold text-[#9ca3af] uppercase tracking-wider">Individual PPVs</h2>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                   {filteredStandalone.map((p) => {
-                    const sel = selectedIds.has(p.id);
+                    // Only APPROVED PPVs can be selected (bulk-deleted, moved
+                    // to a group, or have their caption set). Pending / declined
+                    // items are still visible so the agency can see them under
+                    // review, but the select-circle is hidden — otherwise the
+                    // bulk actions would silently operate on items the vault
+                    // moderator hasn't cleared yet.
+                    const selectable = p.review_status == null || p.review_status === "approved";
+                    const sel = selectable && selectedIds.has(p.id);
                     return (
                       <div
                         key={p.id}
                         className={`relative h-full rounded-lg ${sel ? "ring-2 ring-[#00AFF0]" : ""}`}
                       >
-                        {/* Per-PPV select circle — always rendered. Clicking it
-                            toggles selection without opening the edit modal;
-                            the card behind it stays a simple click-to-edit. */}
-                        <button
-                          onClick={(e) => { e.stopPropagation(); toggleSel(p.id); }}
-                          aria-label={sel ? "Deselect" : "Select"}
-                          className={`absolute top-2 right-2 z-10 w-6 h-6 rounded-full border flex items-center justify-center transition-all shadow ${
-                            sel
-                              ? "bg-[#00AFF0] border-[#00AFF0] text-white"
-                              : "bg-black/45 border-white/70 text-transparent hover:text-white"
-                          }`}
-                        >
-                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                            <path d="M2 6L5 9L10 3" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                        </button>
+                        {selectable && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); toggleSel(p.id); }}
+                            aria-label={sel ? "Deselect" : "Select"}
+                            className={`absolute top-2 right-2 z-10 w-6 h-6 rounded-full border flex items-center justify-center transition-all shadow ${
+                              sel
+                                ? "bg-[#00AFF0] border-[#00AFF0] text-white"
+                                : "bg-black/45 border-white/70 text-transparent hover:text-white"
+                            }`}
+                          >
+                            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                              <path d="M2 6L5 9L10 3" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          </button>
+                        )}
                         <PpvCard
                           ppv={p}
                           onClick={() => setPpvForm({ kind: "edit", ppv: p })}
@@ -908,22 +924,25 @@ function GroupCard({
       ) : (
         <div className="p-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
           {group.items.map((it) => {
-            const sel = !!selectedIds?.has(it.id);
+            const selectable = it.review_status == null || it.review_status === "approved";
+            const sel = selectable && !!selectedIds?.has(it.id);
             return (
               <div key={it.id} className={`relative h-full rounded-lg ${sel ? "ring-2 ring-[#00AFF0]" : ""}`}>
-                <button
-                  onClick={(e) => { e.stopPropagation(); onToggleSel?.(it.id); }}
-                  aria-label={sel ? "Deselect" : "Select"}
-                  className={`absolute top-2 right-2 z-10 w-6 h-6 rounded-full border flex items-center justify-center transition-all shadow ${
-                    sel
-                      ? "bg-[#00AFF0] border-[#00AFF0] text-white"
-                      : "bg-black/45 border-white/70 text-transparent hover:text-white"
-                  }`}
-                >
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                    <path d="M2 6L5 9L10 3" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </button>
+                {selectable && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onToggleSel?.(it.id); }}
+                    aria-label={sel ? "Deselect" : "Select"}
+                    className={`absolute top-2 right-2 z-10 w-6 h-6 rounded-full border flex items-center justify-center transition-all shadow ${
+                      sel
+                        ? "bg-[#00AFF0] border-[#00AFF0] text-white"
+                        : "bg-black/45 border-white/70 text-transparent hover:text-white"
+                    }`}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path d="M2 6L5 9L10 3" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                )}
                 <PpvCard ppv={it} onClick={() => onItemClick(it)} />
               </div>
             );

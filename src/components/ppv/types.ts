@@ -20,6 +20,11 @@ export type PpvItem = {
    *  so legacy callers that build a PpvItem locally don't have to fake
    *  the field. */
   preview_url?: string | null;
+  /** Small crisp (unblurred) 400px JPEG used by Vault grid tiles instead
+   *  of loading the full-res original. Optional so legacy callers that
+   *  build a PpvItem locally don't have to fake it; the /api/ppv/thumb
+   *  endpoint falls back to preview_url when null. */
+  thumb_url?: string | null;
   /** Moderation state. Falls back to "approved" when the column is missing
    *  on older schemas (pre-20260616_ppv_moderation). New uploads default
    *  to "pending" — the platform admin flips it to "approved" before

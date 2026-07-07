@@ -1,0 +1,15 @@
+-- Batch 99 (scale hardening): add a small crisp thumbnail per PPV so the
+-- Vault grid stops loading the full-resolution original for every tile.
+--
+-- Old behaviour: PpvCard rendered <img src="/api/ppv/file/{id}"> which 302'd
+-- to a signed URL of the 2400px q88 original (≈1–2 MB). Playing that at
+-- 200-item grids across 100 agencies burned Supabase egress quota within
+-- days (see 2026-07-07 outage: hit 104% of the 5 GB Free-tier ceiling).
+--
+-- New behaviour: uploads generate a 3rd artifact `_thumb.jpg` (400px q70,
+-- ≈15–30 KB, unblurred). PpvCard renders /api/ppv/thumb/{id}, which 302s to
+-- the thumb — falling back to preview_url (fan-side blurred small JPEG) for
+-- pre-existing rows until the client-side lazy backfill fills them in.
+--
+-- Idempotent — safe to re-run.
+ALTER TABLE ppvs ADD COLUMN IF NOT EXISTS thumb_url TEXT;

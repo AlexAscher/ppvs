@@ -363,20 +363,16 @@ export function ActionPanel({
                       <div className="w-full h-full flex items-center justify-center">
                         <Music className="w-8 h-8 text-[#00AFF0]" />
                       </div>
-                    ) : isVid ? (
-                      <video
-                        src={`/api/ppv/file/${item.id}`}
-                        muted
-                        loop
-                        playsInline
-                        autoPlay
-                        className="w-full h-full object-cover"
-                      />
                     ) : (
+                      // Batch 99: was `<video autoPlay>` on the full original,
+                      // which quietly streamed every video in the picker on
+                      // every open — one of the top drivers of the Supabase
+                      // egress blowup. Now a static thumb via /api/ppv/thumb.
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
-                        src={`/api/ppv/file/${item.id}`}
+                        src={`/api/ppv/thumb/${item.id}`}
                         alt={item.name}
+                        loading="lazy"
                         className="w-full h-full object-cover"
                         onError={(e) => {
                           (e.currentTarget as HTMLImageElement).style.display = "none";

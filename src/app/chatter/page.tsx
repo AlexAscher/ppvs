@@ -513,7 +513,7 @@ export default function ChatterPage() {
             .eq("model_id", selectedModelId),
           supabase
             .from("ppvs")
-            .select("id, model_id, group_id, name, price, media_url, preview_url, review_status, created_at")
+            .select("id, model_id, group_id, name, price, media_url, preview_url, thumb_url, review_status, created_at")
             .eq("model_id", selectedModelId)
             .order("created_at", { ascending: false }),
           supabase.from("ppv_item_tags").select("ppv_id, tag_id"),
@@ -753,11 +753,13 @@ export default function ChatterPage() {
     const tid = setTimeout(() => {
       void fetchDialogs(selectedModelId, true);
     }, 0);
-    // When a dialog is OPEN, poll fast (2s eco-independent) so read-receipt
-    // ticks (✓ → ✓✓) flip within a couple of seconds. When no dialog is
-    // open, fall back to the slow eco-scaled cadence so background models
-    // don't pound Telegram.
-    const intervalMs = selectedDialog ? 2000 : DIALOGS_POLL_MS * ecoMul;
+    // Uniform 10s (eco-scaled) backstop. Batch 92 used to fast-poll at 2s
+    // while a dialog was open so ✓ → ✓✓ ticks flipped in real time — but at
+    // 50 active chatters × 300 models that's ~25 getDialogs/s hammering
+    // both MTProto and the Postgres side. Batch 99 replaces the fast-poll
+    // with SSE read events (Api.UpdateReadHistoryOutbox → StreamEvent
+    // 'read'), so the tick updates instantly WITHOUT the pounding.
+    const intervalMs = DIALOGS_POLL_MS * ecoMul;
     const iv = setInterval(() => {
       void fetchDialogs(selectedModelId, false);
     }, intervalMs);
@@ -765,7 +767,7 @@ export default function ChatterPage() {
       clearTimeout(tid);
       clearInterval(iv);
     };
-  }, [selectedModelId, selectedDialog, fetchDialogs, ecoMul]);
+  }, [selectedModelId, fetchDialogs, ecoMul]);
 
   useEffect(() => {
     if (role !== "agency") return;
@@ -1047,12 +1049,38 @@ export default function ChatterPage() {
     };
     es.onmessage = (e) => {
       try {
-        const ev = JSON.parse(e.data) as {
-          kind: "typing" | "message";
-          peerId: string;
-        };
-        // Only refresh for the currently-open dialog — other dialogs'
-        // updates surface on the next dialogs poll.
+        const ev = JSON.parse(e.data) as
+          | { kind: "typing" | "message"; peerId: string }
+          | { kind: "read"; peerId: string; maxId: number };
+        // 'read' events update the dialog's readOutboxMaxId — even for
+        // dialogs the chatter isn't currently viewing, so the sidebar
+        // ticks stay in sync. Merges into the existing dialogs list
+        // instead of triggering a full re-fetch.
+        if (ev.kind === "read") {
+          setDialogsByModel((prev) => {
+            const list = prev[modelId];
+            if (!list) return prev;
+            let changed = false;
+            const next = list.map((d) => {
+              if (d.id !== ev.peerId) return d;
+              if ((d.readOutboxMaxId ?? 0) >= ev.maxId) return d;
+              changed = true;
+              return { ...d, readOutboxMaxId: ev.maxId };
+            });
+            if (!changed) return prev;
+            return { ...prev, [modelId]: next };
+          });
+          // Also nudge the currently-open dialog reference so <TelegramChat>
+          // receives the new readOutboxMaxId prop and flips ticks instantly.
+          setSelectedDialog((cur) =>
+            cur && cur.id === ev.peerId && (cur.readOutboxMaxId ?? 0) < ev.maxId
+              ? { ...cur, readOutboxMaxId: ev.maxId }
+              : cur,
+          );
+          return;
+        }
+        // Only refresh the open thread on typing/message — other dialogs
+        // surface on the next dialogs poll (10s backstop).
         if (!selectedDialog || ev.peerId !== selectedDialog.id) return;
         if (ev.kind === "message") {
           void fetchMessages(modelId, selectedDialog);

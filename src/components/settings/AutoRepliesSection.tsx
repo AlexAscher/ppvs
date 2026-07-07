@@ -104,7 +104,7 @@ export function AutoRepliesSection() {
           fetch(`/api/auto-reply/${selectedModelId}`),
           supabase
             .from("ppvs")
-            .select("id, name, media_url, preview_url")
+            .select("id, name, media_url, preview_url, thumb_url")
             .eq("model_id", selectedModelId)
             .order("created_at", { ascending: false }),
         ]);
@@ -395,16 +395,16 @@ export function AutoRepliesSection() {
                     className="relative aspect-square rounded-md overflow-hidden bg-[#1f2937] border border-[#374151]"
                   >
                     {p.media_url ? (
-                      /\.(mp4|mov|webm|m4v)(\?|$)/i.test(p.media_url) ? (
-                        <video src={`/api/ppv/file/${p.id}`} muted className="w-full h-full object-cover" />
-                      ) : (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={`/api/ppv/file/${p.id}`}
-                          alt={p.name}
-                          className="w-full h-full object-cover"
-                        />
-                      )
+                      // Batch 99: thumb endpoint (~20 KB) instead of the
+                      // multi-MB original. Video tiles no longer autoplay —
+                      // showing a static poster is enough here.
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={`/api/ppv/thumb/${p.id}`}
+                        alt={p.name}
+                        loading="lazy"
+                        className="w-full h-full object-cover"
+                      />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-[10px] text-[#6b7280]">
                         {p.name}
@@ -513,16 +513,14 @@ function VaultPickerModal({
                 }`}
               >
                 {p.media_url ? (
-                  /\.(mp4|mov|webm|m4v)(\?|$)/i.test(p.media_url) ? (
-                    <video src={`/api/ppv/file/${p.id}`} muted className="absolute inset-0 w-full h-full object-cover" />
-                  ) : (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={`/api/ppv/file/${p.id}`}
-                      alt={p.name}
-                      className="absolute inset-0 w-full h-full object-cover"
-                    />
-                  )
+                  // Batch 99 — see comment above.
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={`/api/ppv/thumb/${p.id}`}
+                    alt={p.name}
+                    loading="lazy"
+                    className="absolute inset-0 w-full h-full object-cover"
+                  />
                 ) : (
                   <div className="absolute inset-0 flex items-center justify-center text-[11px] text-[#6b7280] p-2 text-center">
                     {p.name}

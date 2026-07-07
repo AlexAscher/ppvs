@@ -5,6 +5,10 @@ export type UploadResult = {
   mediaUrl: string;
   /** Public URL of a pre-blurred preview JPEG (images only), or null for videos. */
   previewUrl: string | null;
+  /** Small crisp (unblurred) 400px JPEG for Vault grid tiles. Null on
+   *  older browsers that can't decode the source (rare) or when the file
+   *  is a raw audio/gif that has no useful poster frame. */
+  thumbUrl: string | null;
 };
 
 // ─── Allowed media types ──────────────────────────────────────────────────
@@ -113,6 +117,11 @@ const PREVIEW_MAX_DIM = 720;
 const PREVIEW_BLUR_PX = 40;
 const PREVIEW_BRIGHTNESS = 0.85;
 const PREVIEW_QUALITY = 0.6;
+// Vault grid tile size — displayed at ~180–260 CSS px so 400px physical is
+// crisp on Retina and still ≈15–30 KB @ q70. Explicitly UNBLURRED (agency
+// view, not fan-facing) so images look sharp in the grid.
+const THUMB_MAX_DIM = 400;
+const THUMB_QUALITY = 0.7;
 
 /**
  * Browser-side canvas helper. Uses OffscreenCanvas when available for a
@@ -165,14 +174,19 @@ function fittedSize(srcW: number, srcH: number, maxDim: number) {
 }
 
 /**
- * Capture a single frame from a video and return a blurred JPEG preview.
- * Pure browser — loads the file into a <video>, seeks a little past the
- * start (first frames are often black), draws it to a canvas with a blur
- * filter, and exports a small JPEG. No FFmpeg / server transcode needed.
- * Returns null if the browser can't decode the video or capture a frame.
+ * Capture a single frame from a video and return TWO JPEGs from it:
+ *   • preview — blurred + slightly darkened, used on the fan-facing pay
+ *     page (existing behaviour).
+ *   • thumb   — crisp + unblurred + smaller, used in the agency Vault
+ *     grid so tiles don't drag down the full-size video.
+ *
+ * Loading the file into a <video> is the expensive step; we do it once
+ * and produce both artefacts from the same seeked frame.
  */
-async function processVideoPreview(file: File): Promise<Blob | null> {
-  return new Promise<Blob | null>((resolve) => {
+async function processVideoPreview(
+  file: File,
+): Promise<{ preview: Blob | null; thumb: Blob | null }> {
+  return new Promise((resolve) => {
     let settled = false;
     const url = URL.createObjectURL(file);
     const video = document.createElement("video");
@@ -181,15 +195,15 @@ async function processVideoPreview(file: File): Promise<Blob | null> {
     video.preload = "auto";
     video.src = url;
 
-    const finish = (blob: Blob | null) => {
+    const finish = (out: { preview: Blob | null; thumb: Blob | null }) => {
       if (settled) return;
       settled = true;
       URL.revokeObjectURL(url);
-      resolve(blob);
+      resolve(out);
     };
 
     // Hard cap — some codecs never fire `seeked`; don't hang the upload.
-    const timeout = setTimeout(() => finish(null), 12_000);
+    const timeout = setTimeout(() => finish({ preview: null, thumb: null }), 12_000);
 
     video.addEventListener("loadeddata", () => {
       // Seek ~10 % in (capped at 1s) to skip black intro frames.
@@ -202,7 +216,7 @@ async function processVideoPreview(file: File): Promise<Blob | null> {
           try {
             video.currentTime = t;
           } catch {
-            finish(null);
+            finish({ preview: null, thumb: null });
           }
         }, 100);
       }
@@ -214,53 +228,65 @@ async function processVideoPreview(file: File): Promise<Blob | null> {
         const vh = video.videoHeight;
         if (!vw || !vh) {
           clearTimeout(timeout);
-          finish(null);
+          finish({ preview: null, thumb: null });
           return;
         }
-        const fit = fittedSize(vw, vh, PREVIEW_MAX_DIM);
-        const canvas =
-          typeof OffscreenCanvas !== "undefined"
-            ? new OffscreenCanvas(fit.w, fit.h)
-            : Object.assign(document.createElement("canvas"), { width: fit.w, height: fit.h });
-        const ctx = (canvas as OffscreenCanvas | HTMLCanvasElement).getContext("2d") as
-          | OffscreenCanvasRenderingContext2D
-          | CanvasRenderingContext2D
-          | null;
-        if (!ctx) {
-          clearTimeout(timeout);
-          finish(null);
-          return;
-        }
-        (ctx as CanvasRenderingContext2D).filter = `blur(${PREVIEW_BLUR_PX}px) brightness(${PREVIEW_BRIGHTNESS})`;
-        ctx.drawImage(video, 0, 0, fit.w, fit.h);
-        const blob =
-          "convertToBlob" in canvas
-            ? await canvas.convertToBlob({ type: "image/jpeg", quality: PREVIEW_QUALITY })
-            : await new Promise<Blob | null>((res) =>
-                (canvas as HTMLCanvasElement).toBlob(
-                  (b) => res(b),
-                  "image/jpeg",
-                  PREVIEW_QUALITY,
-                ),
-              );
+
+        const draw = async (
+          maxDim: number,
+          options: { blurPx?: number; brightness?: number; quality: number },
+        ): Promise<Blob | null> => {
+          const fit = fittedSize(vw, vh, maxDim);
+          const canvas =
+            typeof OffscreenCanvas !== "undefined"
+              ? new OffscreenCanvas(fit.w, fit.h)
+              : Object.assign(document.createElement("canvas"), { width: fit.w, height: fit.h });
+          const ctx = (canvas as OffscreenCanvas | HTMLCanvasElement).getContext("2d") as
+            | OffscreenCanvasRenderingContext2D
+            | CanvasRenderingContext2D
+            | null;
+          if (!ctx) return null;
+          const filter = [
+            options.blurPx ? `blur(${options.blurPx}px)` : null,
+            options.brightness != null ? `brightness(${options.brightness})` : null,
+          ]
+            .filter(Boolean)
+            .join(" ");
+          if (filter) (ctx as CanvasRenderingContext2D).filter = filter;
+          ctx.drawImage(video, 0, 0, fit.w, fit.h);
+          if ("convertToBlob" in canvas) {
+            return canvas.convertToBlob({ type: "image/jpeg", quality: options.quality });
+          }
+          return new Promise<Blob | null>((res) =>
+            (canvas as HTMLCanvasElement).toBlob((b) => res(b), "image/jpeg", options.quality),
+          );
+        };
+
+        const preview = await draw(PREVIEW_MAX_DIM, {
+          blurPx: PREVIEW_BLUR_PX,
+          brightness: PREVIEW_BRIGHTNESS,
+          quality: PREVIEW_QUALITY,
+        });
+        const thumb = await draw(THUMB_MAX_DIM, { quality: THUMB_QUALITY });
+
         clearTimeout(timeout);
-        finish(blob);
+        finish({ preview, thumb });
       } catch {
         clearTimeout(timeout);
-        finish(null);
+        finish({ preview: null, thumb: null });
       }
     });
 
     video.addEventListener("error", () => {
       clearTimeout(timeout);
-      finish(null);
+      finish({ preview: null, thumb: null });
     });
   });
 }
 
 async function processImage(
   file: File,
-): Promise<{ original: Blob; preview: Blob | null }> {
+): Promise<{ original: Blob; preview: Blob | null; thumb: Blob | null }> {
   let bitmap: ImageBitmap;
   try {
     bitmap = await createImageBitmap(file);
@@ -278,7 +304,7 @@ async function processImage(
     }
     // Non-HEIC fallback: ship the original as-is and skip the preview — the
     // send path will detect the missing preview_url and use the original.
-    return { original: file, preview: null };
+    return { original: file, preview: null, thumb: null };
   }
 
   try {
@@ -296,7 +322,15 @@ async function processImage(
       quality: PREVIEW_QUALITY,
     });
 
-    return { original, preview };
+    // Thumb: same source bitmap, but small + crisp + unblurred so the Vault
+    // grid can render sharp tiles at ~30 KB each instead of pulling the
+    // multi-MB original for every card.
+    const thumbFit = fittedSize(bitmap.width, bitmap.height, THUMB_MAX_DIM);
+    const thumb = await renderToBlob(bitmap, thumbFit.w, thumbFit.h, {
+      quality: THUMB_QUALITY,
+    });
+
+    return { original, preview, thumb };
   } finally {
     bitmap.close?.();
   }
@@ -318,15 +352,17 @@ export async function uploadPpvMedia(
 
   let originalBlob: Blob = file;
   let previewBlob: Blob | null = null;
+  let thumbBlob: Blob | null = null;
   let originalExt = file.name.split(".").pop()?.toLowerCase() || "bin";
 
   const isGif = originalExt === "gif" || file.type === "image/gif";
 
   if (isImage && !isGif) {
     try {
-      const { original, preview } = await processImage(file);
+      const { original, preview, thumb } = await processImage(file);
       originalBlob = original;
       previewBlob = preview;
+      thumbBlob = thumb;
       // If we re-encoded as JPEG, lock the extension to .jpg so the
       // content-type matches what we upload.
       if (originalBlob !== file) originalExt = "jpg";
@@ -336,20 +372,23 @@ export async function uploadPpvMedia(
     }
   } else if (isGif) {
     // Keep the animated GIF verbatim (re-encoding to JPEG would freeze it to
-    // one frame). Best-effort blurred poster from the first frame for the
-    // teaser tile; if it fails the tile just shows a lock.
+    // one frame). Best-effort blurred poster + crisp thumb from the first
+    // frame; if either fails the tile falls back to preview_url / lock.
     try {
-      const { preview } = await processImage(file);
+      const { preview, thumb } = await processImage(file);
       previewBlob = preview;
+      thumbBlob = thumb;
     } catch (e) {
       console.warn("[uploadPpvMedia] gif preview capture failed:", e);
     }
   } else if (isVideo) {
-    // Keep the original video verbatim, but capture a blurred poster frame
-    // as the preview so the PPV teaser shows real (blurred) content instead
-    // of a generic lock tile.
+    // Keep the original video verbatim, but capture BOTH a blurred poster
+    // (for fan-facing preview) and a crisp poster (for the agency Vault
+    // grid tile) from the same seeked frame.
     try {
-      previewBlob = await processVideoPreview(file);
+      const { preview, thumb } = await processVideoPreview(file);
+      previewBlob = preview;
+      thumbBlob = thumb;
     } catch (e) {
       console.warn("[uploadPpvMedia] video preview capture failed:", e);
     }
@@ -383,8 +422,24 @@ export async function uploadPpvMedia(
     }
   }
 
+  let thumbUrl: string | null = null;
+  if (thumbBlob) {
+    const thumbPath = `${userId}/${id}_thumb.jpg`;
+    const { error: e3 } = await supabase.storage
+      .from("ppvs")
+      .upload(thumbPath, thumbBlob, {
+        contentType: "image/jpeg",
+        upsert: false,
+      });
+    if (!e3) {
+      thumbUrl = supabase.storage.from("ppvs").getPublicUrl(thumbPath).data.publicUrl;
+    } else {
+      console.warn("[uploadPpvMedia] thumb upload failed, continuing without:", e3);
+    }
+  }
+
   const mediaUrl = supabase.storage.from("ppvs").getPublicUrl(originalPath).data.publicUrl;
-  return { mediaUrl, previewUrl };
+  return { mediaUrl, previewUrl, thumbUrl };
 }
 
 export function ppvMediaPathFromUrl(url: string): string | null {
@@ -396,6 +451,7 @@ export async function deletePpvMedia(
   supabase: SupabaseClient,
   mediaUrl: string,
   previewUrl?: string | null,
+  thumbUrl?: string | null,
 ): Promise<void> {
   const paths: string[] = [];
   const main = ppvMediaPathFromUrl(mediaUrl);
@@ -403,6 +459,10 @@ export async function deletePpvMedia(
   if (previewUrl) {
     const pp = ppvMediaPathFromUrl(previewUrl);
     if (pp) paths.push(pp);
+  }
+  if (thumbUrl) {
+    const tp = ppvMediaPathFromUrl(thumbUrl);
+    if (tp) paths.push(tp);
   }
   if (paths.length === 0) return;
   await supabase.storage.from("ppvs").remove(paths);

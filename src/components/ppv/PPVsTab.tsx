@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Plus, FolderPlus, Tag, ChevronDown, Pencil, Folder, Upload, Music } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { uploadPpvMedia, validatePpvFile, ppvMediaKind, PPV_ACCEPT } from "@/lib/ppv-storage";
+import { queueThumbBackfill } from "@/lib/ppv-thumb-backfill";
 import { PpvGroup, PpvItem, PpvModel, PpvTag } from "./types";
 import { TagManagerModal } from "./TagManagerModal";
 import { PpvFormModal } from "./PpvFormModal";
@@ -85,8 +86,9 @@ export function PPVsTab() {
             price: 0,
             media_url: uploaded.mediaUrl,
             preview_url: uploaded.previewUrl,
+            thumb_url: uploaded.thumbUrl,
           })
-          .select("id, model_id, group_id, name, description, price, media_url, preview_url, review_status, review_notes, created_at")
+          .select("id, model_id, group_id, name, description, price, media_url, preview_url, thumb_url, review_status, review_notes, created_at")
           .single();
         if (data) {
           const item = { ...(data as PpvItem), tags: [] };
@@ -151,7 +153,7 @@ export function PPVsTab() {
       const [tagsRes, groupsRes, ppvsRes, itemTagsRes, groupTagsRes] = await Promise.all([
         supabase.from("ppv_tags").select("id, model_id, name, color, emoji").eq("model_id", modelId).order("created_at"),
         supabase.from("ppv_groups").select("id, model_id, name, bundle_price, created_at").eq("model_id", modelId).order("created_at", { ascending: false }),
-        supabase.from("ppvs").select("id, model_id, group_id, name, description, price, media_url, preview_url, review_status, review_notes, created_at").eq("model_id", modelId).order("created_at", { ascending: false }),
+        supabase.from("ppvs").select("id, model_id, group_id, name, description, price, media_url, preview_url, thumb_url, review_status, review_notes, created_at").eq("model_id", modelId).order("created_at", { ascending: false }),
         supabase.from("ppv_item_tags").select("ppv_id, tag_id"),
         supabase.from("ppv_group_tags").select("group_id, tag_id"),
       ]);
@@ -755,14 +757,28 @@ export function PPVsTab() {
 }
 
 function PpvCard({ ppv, onClick }: { ppv: PpvItem; onClick: () => void }) {
-  // Vault shows the real unblurred content — this is the agency's own view,
-  // not the fan-facing pay page. For images: original media_url. For videos:
-  // render an actual <video> element (autoplay/muted for thumbnail feel).
+  // Vault grid tile — was previously loading the FULL original for every
+  // card (multi-MB × N tiles × N Vault opens), which pushed us past the
+  // Supabase Free-tier egress ceiling. Batch 99 swaps to the /api/ppv/thumb
+  // endpoint (~20 KB) and, for rows uploaded before thumb_url existed,
+  // kicks off a client-side backfill in the background.
   const isVideo = !!ppv.media_url && /\.(mp4|mov|webm|m4v|mkv)(\?|$)/i.test(ppv.media_url);
   const isAudio = !!ppv.media_url && /\.(mp3|m4a|aac|ogg|oga|opus|wav|flac)(\?|$)/i.test(ppv.media_url);
-  // Render the original through the authorized signed-url endpoint rather
-  // than the raw storage url, so it keeps working once the bucket is private.
-  const src = `/api/ppv/file/${ppv.id}`;
+  // Cache-buster nonce — bumped when the lazy backfill uploads a fresh
+  // thumb so the <img> re-requests once the endpoint starts returning the
+  // crisp version instead of the preview_url fallback.
+  const [refreshTick, setRefreshTick] = useState(0);
+  useEffect(() => {
+    if (isAudio) return;
+    if (isVideo) return; // video backfill skipped (too expensive in-browser)
+    if (ppv.thumb_url) return;
+    if (!ppv.media_url) return;
+    queueThumbBackfill(ppv.id, ppv.media_url, "image", () => {
+      setRefreshTick((n) => n + 1);
+    });
+  }, [ppv.id, ppv.media_url, ppv.thumb_url, isAudio, isVideo]);
+
+  const src = `/api/ppv/thumb/${ppv.id}${refreshTick ? `?v=${refreshTick}` : ""}`;
   return (
     <button
       onClick={onClick}
@@ -774,20 +790,16 @@ function PpvCard({ ppv, onClick }: { ppv: PpvItem; onClick: () => void }) {
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-[#1f2937] to-[#111827]">
               <Music className="w-10 h-10 text-[#00AFF0]" />
             </div>
-          ) : isVideo ? (
-            <video
-              src={src}
-              muted
-              loop
-              playsInline
-              autoPlay
-              className="absolute inset-0 w-full h-full object-cover"
-            />
           ) : (
+            // Both image and video tiles render as static <img>. For videos
+            // the thumb endpoint 302s to the crisp poster (new uploads) or
+            // the blurred preview_url (old uploads); the ▶ badge below tells
+            // the agency it's playable and click opens the lightbox.
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={src}
               alt={ppv.name}
+              loading="lazy"
               className="absolute inset-0 w-full h-full object-cover"
               onError={(e) => {
                 (e.currentTarget as HTMLImageElement).style.display = "none";

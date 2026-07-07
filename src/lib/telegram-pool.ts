@@ -37,6 +37,13 @@ const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 min
 // Per-call override is supported (see withTelegramClient's `timeoutMs` param) —
 // heavier ops like PPV send (download+blur+upload N files) need 2–3 minutes.
 const DEFAULT_OPERATION_TIMEOUT_MS = 20_000;
+// Max simultaneously-connected TelegramClient entries. When a new connect
+// pushes the pool over the cap we evict the LEAST-recently-used entry so the
+// process doesn't grow unbounded on a busy agency (300+ models). Each entry
+// costs ~5 MB RAM + one live socket; 150 caps us at ~750 MB from the pool.
+// The evicted client reconnects on its next use — costs one round-trip but
+// keeps the box healthy under wide fan-in.
+const POOL_MAX = 150;
 
 function scheduleCleanup() {
   if (globalThis.__ppvs_tg_cleanup__) return;
@@ -130,6 +137,24 @@ function evictBroken(modelId: string, entry: Entry) {
   entry.client.disconnect().catch(() => {});
 }
 
+/**
+ * Evict the least-recently-used pool entries until we're under POOL_MAX.
+ * Called right before we add a new entry so peak resident count never
+ * exceeds the cap. LRU is picked by `lastUsedAt` — same field the idle
+ * cleanup uses. An evicted model reconnects transparently on its next use.
+ */
+function enforcePoolCap() {
+  if (pool.size < POOL_MAX) return;
+  const sorted = Array.from(pool.entries()).sort(
+    (a, b) => a[1].lastUsedAt - b[1].lastUsedAt,
+  );
+  const toEvict = pool.size - POOL_MAX + 1;
+  for (let i = 0; i < toEvict && i < sorted.length; i++) {
+    const [key, entry] = sorted[i];
+    evictBroken(key, entry);
+  }
+}
+
 async function connectOrGetClient(
   modelId: string,
   sessionString: string,
@@ -155,6 +180,10 @@ async function connectOrGetClient(
       try { await client.disconnect(); } catch {}
       throw e;
     }
+    // Cap peak resident connections so a wave of new activity doesn't grow
+    // the pool without bound. Evict LRU BEFORE inserting so we never
+    // temporarily overshoot.
+    enforcePoolCap();
     pool.set(modelId, { client, lastUsedAt: Date.now() });
     scheduleCleanup();
     // Attach event listeners for typing / new-message activity — used

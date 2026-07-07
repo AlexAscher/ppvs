@@ -1953,7 +1953,6 @@ function AgencyVaultPanel({ agencyId }: { agencyId?: string | null }) {
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
           {visibleItems.map((p) => {
-            const isVideo = !!p.media_url && /\.(mp4|mov|webm|m4v|mkv)(\?|$)/i.test(p.media_url);
             return (
               <button
                 key={p.id}
@@ -1961,12 +1960,17 @@ function AgencyVaultPanel({ agencyId }: { agencyId?: string | null }) {
                 className="relative aspect-square rounded-lg overflow-hidden border border-[#2a2d35] hover:border-[#00AFF0]/60 transition-colors bg-[#1f2937] text-left"
               >
                 {p.media_url ? (
-                  isVideo ? (
-                    <video src={`/api/ppv/file/${p.id}`} muted className="absolute inset-0 w-full h-full object-cover" />
-                  ) : (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={`/api/ppv/file/${p.id}`} alt={p.name} className="absolute inset-0 w-full h-full object-cover" />
-                  )
+                  // Batch 99: admin Vault grid — swap to thumb endpoint so
+                  // moderators scrolling 100s of pending items don't drag
+                  // the full-res original per tile. Full media only in
+                  // the lightbox (below), where the moderator needs it.
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={`/api/ppv/thumb/${p.id}`}
+                    alt={p.name}
+                    loading="lazy"
+                    className="absolute inset-0 w-full h-full object-cover"
+                  />
                 ) : (
                   <div className="absolute inset-0 flex items-center justify-center text-[#374151] text-[24px]">📦</div>
                 )}

@@ -75,18 +75,22 @@ export function PpvFormModal({
     try {
       let mediaUrl = existing?.media_url ?? null;
       let previewUrl: string | null = null;
+      let thumbUrl: string | null = null;
       if (file) {
         if (existing?.media_url) {
-          // Delete both the old original and any stale preview alongside it.
+          // Delete the old original, blurred preview AND crisp thumb so we
+          // don't orphan storage objects on file replacement.
           await deletePpvMedia(
             supabase,
             existing.media_url,
             (existing as { preview_url?: string | null }).preview_url ?? null,
+            (existing as { thumb_url?: string | null }).thumb_url ?? null,
           ).catch(() => {});
         }
         const uploaded = await uploadPpvMedia(supabase, agencyUserId, file);
         mediaUrl = uploaded.mediaUrl;
         previewUrl = uploaded.previewUrl;
+        thumbUrl = uploaded.thumbUrl;
       }
 
       let savedId: string;
@@ -104,6 +108,7 @@ export function PpvFormModal({
             price: priceNum,
             media_url: mediaUrl,
             preview_url: previewUrl,
+            thumb_url: thumbUrl,
           })
           .select("id, created_at")
           .single();
@@ -125,6 +130,7 @@ export function PpvFormModal({
         if (file) {
           updatePayload.media_url = mediaUrl;
           updatePayload.preview_url = previewUrl;
+          updatePayload.thumb_url = thumbUrl;
         }
         const { error: dbError } = await supabase
           .from("ppvs")
@@ -152,6 +158,8 @@ export function PpvFormModal({
         description: description.trim() || null,
         price: priceNum,
         media_url: mediaUrl,
+        preview_url: previewUrl,
+        thumb_url: thumbUrl,
         created_at: createdAt,
         tags: tagsForResult,
         review_status: mode === "add" ? "pending" : (existing?.review_status ?? "pending"),
@@ -218,7 +226,7 @@ export function PpvFormModal({
 
         <div className="space-y-4">
           <PpvMediaInput
-            initialUrl={existing ? `/api/ppv/file/${existing.id}` : null}
+            initialUrl={existing ? `/api/ppv/thumb/${existing.id}` : null}
             onFileChange={setFile}
           />
 

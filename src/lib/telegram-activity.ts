@@ -56,7 +56,11 @@ function emitterFor(modelId: string): EventEmitter {
 
 export type StreamEvent =
   | { kind: "typing"; peerId: string; ts: number }
-  | { kind: "message"; peerId: string; ts: number };
+  | { kind: "message"; peerId: string; ts: number }
+  // Fan read some of OUR outgoing messages. `maxId` is the highest id in
+  // their outbox they've seen (Telegram's own semantic). Client uses it to
+  // flip ✓ → ✓✓ instantly instead of waiting for the next dialogs poll.
+  | { kind: "read"; peerId: string; maxId: number; ts: number };
 
 export function onStreamEvent(
   modelId: string,
@@ -118,6 +122,8 @@ export function subscribeActivityEvents(modelId: string, client: TelegramClient)
   //    (UpdateUserTyping for private chats, UpdateChatUserTyping for groups,
   //    UpdateChannelUserTyping for channels). The Raw subscription delivers
   //    any TL update so we accept `unknown` and narrow via instanceof.
+  //    Also handles UpdateReadHistoryOutbox → emits a `read` StreamEvent
+  //    so the chatter UI can flip ✓ → ✓✓ without waiting for the next poll.
   client.addEventHandler((rawUpdate: unknown) => {
     try {
       const update = rawUpdate as Api.TypeUpdate | Api.UpdateShortMessage;
@@ -133,6 +139,40 @@ export function subscribeActivityEvents(modelId: string, client: TelegramClient)
       if (update instanceof Api.UpdateChannelUserTyping) {
         const fromId = (update.fromId as Api.PeerUser).userId?.toString();
         if (fromId) bump(modelId, fromId, "typing");
+        return;
+      }
+      // Fan just read (some of) our outgoing messages in a private chat.
+      // Telegram TL: UpdateReadHistoryOutbox { peer, maxId }. Batch 99
+      // — SSE-driven ticks replace the 2s dialogs poll we used before.
+      if (update instanceof Api.UpdateReadHistoryOutbox) {
+        const peer = update.peer;
+        const peerId =
+          peer instanceof Api.PeerUser
+            ? peer.userId.toString()
+            : peer instanceof Api.PeerChat
+              ? `-${peer.chatId.toString()}`
+              : peer instanceof Api.PeerChannel
+                ? `-100${peer.channelId.toString()}`
+                : null;
+        if (peerId) {
+          emitEvent(modelId, {
+            kind: "read",
+            peerId,
+            maxId: Number(update.maxId),
+            ts: Date.now(),
+          });
+        }
+        return;
+      }
+      // Channel variant (business bot / channel-typed 1:1 in some accounts).
+      if (update instanceof Api.UpdateReadChannelOutbox) {
+        const peerId = `-100${update.channelId.toString()}`;
+        emitEvent(modelId, {
+          kind: "read",
+          peerId,
+          maxId: Number(update.maxId),
+          ts: Date.now(),
+        });
         return;
       }
       // Compact updates for new direct messages — fire before NewMessage

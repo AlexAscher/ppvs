@@ -50,6 +50,10 @@ type Dialog = {
   username: string | null;
   lastMessage: string;
   lastMessageDate: number;
+  /** Telegram message id of the last message in the dialog. */
+  lastMessageId?: number;
+  /** True if the last message was sent by us — drives ✓/✓✓ in the chat list. */
+  lastMessageOutgoing?: boolean;
   unreadCount: number;
   accessHash: string | null;
   status: string | null;
@@ -1800,6 +1804,9 @@ export default function ChatterPage() {
       status: d.status,
       tags: fanTagsByPeer[d.id] ?? [],
       spent: fanSpentByPeer[d.id] ?? 0,
+      lastMessageOutgoing: d.lastMessageOutgoing ?? false,
+      lastMessageId: d.lastMessageId ?? 0,
+      readOutboxMaxId: d.readOutboxMaxId ?? 0,
     }));
   }, [currentDialogs, search, fanTagsByPeer, fanSpentByPeer, activeGroupId, groupIdsByPeer, role]);
 

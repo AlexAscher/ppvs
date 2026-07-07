@@ -157,16 +157,39 @@ async function sendSalesAlertInner(event: SalesAlertEvent): Promise<void> {
   // fire even when the agency hasn't wired Sales Alerts yet. Fire-and-forget.
   void (async () => {
     try {
-      const { data: adminChans } = await admin
+      // Per-event toggles let the admin dial down which sale types actually
+      // ping. Tolerate the column being absent on older schemas so this
+      // survives the migration rollout window without 500-ing sale flow.
+      const withFlags = await admin
         .from("admin_sales_channels")
-        .select("bot_chat_id, enabled")
+        .select("bot_chat_id, enabled, alerts_ppv, alerts_tips")
         .not("bot_chat_id", "is", null)
         .eq("enabled", true);
-      const rows =
-        ((adminChans ?? []) as { bot_chat_id: string; enabled: boolean }[]) ?? [];
-      if (rows.length === 0) return;
+      type ChanRow = {
+        bot_chat_id: string;
+        enabled: boolean;
+        alerts_ppv?: boolean | null;
+        alerts_tips?: boolean | null;
+      };
+      let rows: ChanRow[] = [];
+      if (withFlags.error && /alerts_ppv|alerts_tips/.test(withFlags.error.message)) {
+        const fb = await admin
+          .from("admin_sales_channels")
+          .select("bot_chat_id, enabled")
+          .not("bot_chat_id", "is", null)
+          .eq("enabled", true);
+        rows = (fb.data ?? []) as ChanRow[];
+      } else {
+        rows = (withFlags.data ?? []) as ChanRow[];
+      }
+      const applicable = rows.filter((r) => {
+        if (event.type === "ppv") return r.alerts_ppv !== false;
+        if (event.type === "tip") return r.alerts_tips !== false;
+        return true;
+      });
+      if (applicable.length === 0) return;
       const { sendBotMessage } = await import("@/lib/alert-bot");
-      await Promise.all(rows.map((r) => sendBotMessage(r.bot_chat_id, text)));
+      await Promise.all(applicable.map((r) => sendBotMessage(r.bot_chat_id, text)));
     } catch (e) {
       console.error(
         "[sales-alerts] admin fan-out failed:",

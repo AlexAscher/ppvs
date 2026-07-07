@@ -68,30 +68,80 @@ async function loadModelConfig(modelId: string): Promise<ModelConfig | null> {
   return (data as ModelConfig | null) ?? null;
 }
 
-async function fanNeedsAutoReply(modelId: string, peerId: string): Promise<boolean> {
+/**
+ * Atomically CLAIM the "auto-reply slot" for a (model, peer) pair.
+ * Returns true iff THIS caller is the one that should fire the auto-reply.
+ *
+ * The batch-88 flow used check-then-act (fanNeedsAutoReply + upsert), which
+ * held only inside one process (via the `inflight` set). Between processes
+ * — or between the same process's polls if two fan messages land in the
+ * same second — both callers could pass the check and both fire. This
+ * function collapses read-and-write into a single row update so at most
+ * ONE caller wins.
+ *
+ * Semantics:
+ *   - If no fans row exists yet: create it with auto_replied_at = now(),
+ *     return true. UNIQUE(model_id, peer_id) turns the concurrent duplicate
+ *     insert into a 23505 that we recover from by re-running the CAS UPDATE.
+ *   - If a row exists AND auto_replied_at IS NULL: UPDATE flips it to now();
+ *     the RETURNING count is 1 → caller wins. If a concurrent caller already
+ *     flipped it, the WHERE fails, RETURNING is empty → this caller loses.
+ *   - If the row already has auto_replied_at set: no rows updated → false.
+ */
+async function claimAutoReplySlot(modelId: string, peerId: string): Promise<boolean> {
   const admin = createAdminSupabaseClient();
-  const { data } = await admin
+  const nowIso = new Date().toISOString();
+  // First try to compare-and-swap: only flip if still null. Works whether
+  // or not a row already exists.
+  const { data: updated } = await admin
     .from("fans")
-    .select("auto_replied_at")
+    .update({ auto_replied_at: nowIso })
+    .eq("model_id", modelId)
+    .eq("peer_id", peerId)
+    .is("auto_replied_at", null)
+    .select("id");
+  if (updated && updated.length > 0) return true;
+
+  // No matching row to update — either the row exists with a non-null flag
+  // (already replied), or the row doesn't exist yet. Check which case we're in.
+  const { data: existing } = await admin
+    .from("fans")
+    .select("id, auto_replied_at")
     .eq("model_id", modelId)
     .eq("peer_id", peerId)
     .maybeSingle();
-  // No row → never been seen, definitely needs auto-reply.
-  if (!data) return true;
-  // Row exists but auto_replied_at is null → still a candidate.
-  return !(data as { auto_replied_at: string | null }).auto_replied_at;
-}
+  if (existing) {
+    // Row exists, auto_replied_at is non-null → someone else already fired.
+    return !(existing as { auto_replied_at: string | null }).auto_replied_at;
+  }
 
-async function markFanReplied(modelId: string, peerId: string): Promise<void> {
-  const admin = createAdminSupabaseClient();
-  await admin.from("fans").upsert(
-    {
-      model_id: modelId,
-      peer_id: peerId,
-      auto_replied_at: new Date().toISOString(),
-    },
-    { onConflict: "model_id,peer_id" },
+  // No row yet — try to create with the flag pre-set. Concurrent inserts
+  // race here; UNIQUE(model_id, peer_id) turns the loser into a 23505.
+  const { error: insErr } = await admin.from("fans").insert({
+    model_id: modelId,
+    peer_id: peerId,
+    auto_replied_at: nowIso,
+  });
+  if (!insErr) return true;
+  if ((insErr as { code?: string }).code === "23505") {
+    // A concurrent caller inserted first. If ITS auto_replied_at is null
+    // (rare — it'd have to have inserted then not flipped), retry the CAS.
+    // Otherwise we lost the race — return false so we don't double-send.
+    const { data: after } = await admin
+      .from("fans")
+      .select("auto_replied_at")
+      .eq("model_id", modelId)
+      .eq("peer_id", peerId)
+      .maybeSingle();
+    return !((after as { auto_replied_at: string | null } | null)?.auto_replied_at);
+  }
+  // Unexpected insert error — log and treat as "already replied" so we don't
+  // fire a duplicate if a second attempt happens to succeed.
+  console.error(
+    "[auto-reply] fan-insert failed:",
+    (insErr as { message?: string }).message ?? String(insErr),
   );
+  return false;
 }
 
 /** Download a Vault PPV media file straight from Supabase Storage via the
@@ -384,12 +434,13 @@ export function subscribeAutoReplyEvents(modelId: string, client: TelegramClient
           config.auto_reply_ppv_ids.length > 0;
         if (!config.auto_reply_text && !hasMedia) return;
 
-        const needs = await fanNeedsAutoReply(modelId, senderId);
-        if (!needs) return;
-
-        // Mark FIRST so a second incoming from the same fan during our
-        // gramJS send doesn't trigger a duplicate auto-reply.
-        await markFanReplied(modelId, senderId);
+        // Atomically CLAIM the slot: this compare-and-swaps
+        // fans.auto_replied_at NULL → now() in a single UPDATE, so at most
+        // ONE caller ever wins for a given (model, peer). Any concurrent
+        // caller (another poll, another process instance, a fan double-message
+        // in the same second) sees the flag already set and bails out here.
+        const claimed = await claimAutoReplySlot(modelId, senderId);
+        if (!claimed) return;
         // Optional delay (1/2/5/10/30 min, agency-configurable). Lives
         // in-process via setTimeout — won't survive a process restart, which
         // is acceptable for a "human typing" delay.

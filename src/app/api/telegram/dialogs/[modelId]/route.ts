@@ -37,6 +37,13 @@ export type DialogItem = {
   username: string | null;
   lastMessage: string;
   lastMessageDate: number; // unix seconds
+  /** Telegram message id of the last message in the dialog. Used together
+   *  with readOutboxMaxId to render ✓ / ✓✓ next to the timestamp in the
+   *  dialog list when the last message is ours. */
+  lastMessageId: number;
+  /** True if the last message is one WE sent (drives whether the dialog
+   *  list shows a checkmark next to the time). */
+  lastMessageOutgoing: boolean;
   unreadCount: number;
   accessHash: string | null;
   status: string | null;   // "online" | "last seen recently" | "last seen DD.MM HH:MM" | null
@@ -169,6 +176,16 @@ export async function GET(
             (d as { dialog?: { readOutboxMaxId?: number } }).dialog?.readOutboxMaxId ?? 0,
           );
 
+          // Direction of the last message in the dialog. gramJS surfaces `out`
+          // on the raw message object, but for a stripped Api.MessageService
+          // it may be undefined; treat undefined as inbound (safer default —
+          // means "no ✓ next to the time", never a false-positive tick).
+          const lastMessageOutgoing =
+            !!msg && typeof (msg as { out?: boolean }).out === "boolean"
+              ? !!(msg as { out?: boolean }).out
+              : false;
+          const lastMessageId = Number(msg?.id ?? 0);
+
           items.push({
             id,
             type,
@@ -176,6 +193,8 @@ export async function GET(
             username,
             lastMessage,
             lastMessageDate: msg?.date ?? 0,
+            lastMessageId,
+            lastMessageOutgoing,
             unreadCount: d.unreadCount ?? 0,
             accessHash,
             status,

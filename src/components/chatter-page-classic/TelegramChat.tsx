@@ -107,6 +107,14 @@ export interface ChatListItem {
   /** Total spent by this fan ($). Renders as a little badge under the
    *  avatar in the dialog list (0 = no badge). */
   spent?: number;
+  /** True if the last message in this dialog was sent by us (model / chatter).
+   *  When true, the list renders a ✓ or ✓✓ next to the timestamp based on
+   *  whether the fan has read up to `lastMessageId`. */
+  lastMessageOutgoing?: boolean;
+  /** Telegram message id of the last message. */
+  lastMessageId?: number;
+  /** Per-dialog max outgoing id the fan has read. `lastMessageId ≤ this` = ✓✓. */
+  readOutboxMaxId?: number;
 }
 
 interface TelegramChatProps {
@@ -814,6 +822,28 @@ export function TelegramChat({
                       <span key={i} className="text-[11px] leading-none">{t}</span>
                     ))}
                     <span className="text-[10px] text-[#6b7280] ml-1">{chat.time}</span>
+                    {/* ✓ / ✓✓ next to the timestamp — only when the LAST
+                        message in this dialog is ours. White single = sent
+                        but unread; blue double = fan has read up to that
+                        message id. Hidden when the last message is the fan's. */}
+                    {chat.lastMessageOutgoing && (chat.lastMessageId ?? 0) > 0 && (() => {
+                      const readMax = chat.readOutboxMaxId ?? 0;
+                      const isRead = readMax > 0 && (chat.lastMessageId ?? 0) <= readMax;
+                      return (
+                        <span className="ml-0.5 inline-flex items-center" aria-label={isRead ? "read" : "sent"}>
+                          {isRead ? (
+                            <svg width="14" height="10" viewBox="0 0 14 10" fill="none">
+                              <path d="M1 5.5 L4 8 L9 3" stroke="#00AFF0" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                              <path d="M5 5.5 L8 8 L13 3" stroke="#00AFF0" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          ) : (
+                            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                              <path d="M1 5.5 L4 8 L9 3" stroke="#ffffff" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          )}
+                        </span>
+                      );
+                    })()}
                   </div>
                 </div>
                 <div className="flex items-center justify-between">
@@ -979,7 +1009,13 @@ export function TelegramChat({
                   <div className="flex flex-col gap-1 items-end">
                     <div
                       className="p-1 rounded-2xl inline-block bg-gradient-to-br from-[#00AFF0] to-[#0098D4] rounded-br-sm"
-                      style={{ maxWidth: cols * 100 + (cols - 1) * 2 + 8 }}
+                      // Multi-item albums cap at cols*100 (grid width) so photos
+                      // stay square; single-item bubble lets the label pill
+                      // decide the width — otherwise "1 item · ⭐ 100 (Unpaid)"
+                      // word-wraps into a broken vertical column at 108px.
+                      style={items.length > 1
+                        ? { maxWidth: cols * 100 + (cols - 1) * 2 + 8 }
+                        : { maxWidth: 340 }}
                     >
                       {items.length > 0 && (
                         <div
@@ -1034,7 +1070,7 @@ export function TelegramChat({
                             {twemoji(ppv.caption, `ppv-cap-${m.id}`)}
                           </div>
                         )}
-                        <div className="inline-flex items-center bg-black/25 rounded-2xl px-3 py-1 text-[12px] text-white font-normal">
+                        <div className="inline-flex items-center bg-black/25 rounded-2xl px-3 py-1 text-[12px] text-white font-normal whitespace-nowrap">
                           {ppv.label}
                         </div>
                       </div>

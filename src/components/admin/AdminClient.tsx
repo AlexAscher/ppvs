@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import type {
@@ -943,6 +943,234 @@ function AgencyDetail({ agencyId, onBack }: { agencyId: string; onBack: () => vo
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
+function AdminSalesAlertsView() {
+  type State = {
+    connected: boolean;
+    enabled: boolean;
+    alertsPpv: boolean;
+    alertsTips: boolean;
+    botUsername: string | null;
+  };
+  const [state, setState] = useState<State | null>(null);
+  const [connecting, setConnecting] = useState(false);
+  const [testMsg, setTestMsg] = useState("");
+  const [savingMsg, setSavingMsg] = useState("");
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    void refresh();
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
+
+  async function refresh(): Promise<State | null> {
+    const r = await fetch("/api/admin/global-alerts");
+    if (!r.ok) return null;
+    const j = (await r.json()) as State;
+    setState(j);
+    return j;
+  }
+
+  async function patch(p: Partial<State>): Promise<void> {
+    if (!state) return;
+    setState({ ...state, ...p });
+    setSavingMsg("");
+    const r = await fetch("/api/admin/global-alerts", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(p),
+    });
+    if (!r.ok) {
+      const j = (await r.json().catch(() => ({}))) as { error?: string };
+      setSavingMsg(`Error: ${j.error ?? "save failed"}`);
+    } else {
+      setSavingMsg("Saved ✓");
+    }
+  }
+
+  async function connect() {
+    setConnecting(true);
+    setSavingMsg("");
+    try {
+      const r = await fetch("/api/admin/global-alerts", { method: "POST" });
+      const j = (await r.json().catch(() => ({}))) as { link?: string; error?: string };
+      if (!r.ok || !j.link) {
+        setSavingMsg(`Error: ${j.error ?? "could not start"}`);
+        setConnecting(false);
+        return;
+      }
+      window.open(j.link, "_blank");
+      let ticks = 0;
+      pollRef.current = setInterval(async () => {
+        ticks += 1;
+        const s = await refresh();
+        if (s?.connected || ticks > 40) {
+          if (pollRef.current) clearInterval(pollRef.current);
+          pollRef.current = null;
+          setConnecting(false);
+        }
+      }, 3000);
+    } catch {
+      setSavingMsg("Error: network");
+      setConnecting(false);
+    }
+  }
+
+  async function disconnect() {
+    await fetch("/api/admin/global-alerts", { method: "DELETE" });
+    await refresh();
+  }
+
+  async function sendTest() {
+    setTestMsg("Sending…");
+    const r = await fetch("/api/admin/global-alerts", { method: "PUT" });
+    const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    setTestMsg(r.ok ? "Sent ✓ — check your Telegram" : `Error: ${j.error ?? "failed"}`);
+  }
+
+  if (!state) return <div className="p-6 text-[#9ca3af] text-[13px]">Loading…</div>;
+
+  const btn =
+    "px-5 py-2.5 bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] text-white rounded-lg font-semibold text-[12px] hover:from-[#0098D4] hover:to-[#0098D4] transition-all disabled:opacity-50 disabled:cursor-not-allowed";
+  const btnGhost =
+    "px-4 py-2 bg-[#1f2937] border border-[#374151] text-white rounded-lg text-[12px] hover:bg-[#252b36] transition-all";
+
+  return (
+    <div className="p-4 md:p-6">
+      <div className="max-w-[720px] mx-auto">
+        <h1 className="text-[24px] font-bold text-white mb-1">Sales Alerts 🔔</h1>
+        <p className="text-[13px] text-[#9ca3af] mb-4">
+          Get a Telegram DM every time <span className="text-white">any</span>{" "}
+          agency on the platform records a PPV or tip sale.
+        </p>
+
+        <div className="bg-[#161a22] border border-[#2a2d35] rounded-xl p-5 md:p-6">
+          <div className="flex items-start justify-between gap-3 mb-4">
+            <div>
+              <h2 className="text-[15px] font-semibold text-white">Global Sales Alerts</h2>
+              <p className="text-[12px] text-[#9ca3af] mt-0.5">
+                Notifications fire on every PPV / tip sale from every agency&apos;s
+                every creator, independent of per-agency Sales Alerts.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={state.enabled}
+              onClick={() => patch({ enabled: !state.enabled })}
+              className={`shrink-0 relative w-11 h-6 rounded-full transition-colors ${
+                state.enabled ? "bg-[#00AFF0]" : "bg-[#374151]"
+              }`}
+            >
+              <span
+                className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-transform"
+                style={{ transform: state.enabled ? "translateX(20px)" : "translateX(0)" }}
+              />
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            <div className="bg-[#0f131a] border border-[#2a2d35] rounded-lg p-3">
+              {state.connected ? (
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-[13px] text-emerald-400 font-medium flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                    Connected — alerts go to your Telegram
+                  </div>
+                  <button className={btnGhost} onClick={disconnect}>
+                    Disconnect
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="text-[13px] text-[#9ca3af]">
+                    {connecting
+                      ? "Waiting — tap Start in the Telegram chat that just opened…"
+                      : state.botUsername
+                        ? `Link @${state.botUsername} to this admin account so it can DM you every sale.`
+                        : "Notifications bot is not configured — set TELEGRAM_BOT_TOKEN."}
+                  </div>
+                  <button
+                    className={btn}
+                    onClick={connect}
+                    disabled={connecting || !state.botUsername}
+                  >
+                    {connecting ? "Waiting…" : "Connect"}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <AdminCheckbox
+                label="PPV payments"
+                checked={state.alertsPpv}
+                onChange={(v) => patch({ alertsPpv: v })}
+              />
+              <AdminCheckbox
+                label="Tips"
+                checked={state.alertsTips}
+                onChange={(v) => patch({ alertsTips: v })}
+              />
+            </div>
+
+            <div className="flex items-center gap-3 pt-1">
+              <button
+                className={btn}
+                onClick={sendTest}
+                disabled={!state.enabled || !state.connected}
+              >
+                Send test
+              </button>
+              {(testMsg || savingMsg) && (
+                <span
+                  className={`text-[11px] ${
+                    (testMsg || savingMsg).startsWith("Error") ? "text-red-400" : "text-emerald-400"
+                  }`}
+                >
+                  {testMsg || savingMsg}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AdminCheckbox({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <label className="flex items-center gap-2 cursor-pointer">
+      <button
+        type="button"
+        role="checkbox"
+        aria-checked={checked}
+        onClick={() => onChange(!checked)}
+        className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${
+          checked ? "bg-[#00AFF0] border-[#00AFF0]" : "bg-[#1f2937] border-[#374151]"
+        }`}
+      >
+        {checked && (
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M2 6L5 9L10 3" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </button>
+      <span className="text-[13px] text-white">{label}</span>
+    </label>
+  );
+}
+
 function SettingsView() {
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
@@ -1375,13 +1603,14 @@ function SignupsView() {
 
 // ─── Shell ──────────────────────────────────────────────────────────────────
 // Wallet tab will be rebuilt for TON in batch 56 (after Stars pay-in lands).
-type Tab = "overview" | "agencies" | "vault" | "payouts" | "signups" | "settings";
+type Tab = "overview" | "agencies" | "vault" | "payouts" | "signups" | "alerts" | "settings";
 const NAV: { id: Tab; label: string; emoji: string }[] = [
   { id: "overview", label: "Overview", emoji: "📊" },
   { id: "agencies", label: "Agencies", emoji: "🏢" },
   { id: "vault", label: "Vault", emoji: "🔒" },
   { id: "payouts", label: "Payouts", emoji: "💸" },
   { id: "signups", label: "Signups", emoji: "📨" },
+  { id: "alerts", label: "Sales Alerts", emoji: "🔔" },
   { id: "settings", label: "Settings", emoji: "⚙️" },
 ];
 
@@ -1509,6 +1738,7 @@ export function AdminClient() {
           )}
           {tab === "payouts" && <PayoutsView onOpenAgency={openAgency} />}
           {tab === "signups" && <SignupsView />}
+          {tab === "alerts" && <AdminSalesAlertsView />}
           {tab === "settings" && <SettingsView />}
         </main>
       </div>

@@ -76,45 +76,50 @@ export async function GET(
   }
   if (!allowed) return Response.json({ error: "Forbidden" }, { status: 403 });
 
-  // Pick the best displayable source (see header). media_url only when it's
-  // an image — a video's media_url is an .mp4 that an <img> can't render.
-  let source: string | null = row.thumb_url;
-  if (!source) {
-    source =
-      row.media_url && ppvMediaKind(row.media_url) === "image"
-        ? row.media_url
-        : row.preview_url;
-  }
-  if (!source) return new Response("No thumb", { status: 404 });
+  // Ordered candidates, best first. thumb_url is the crisp 400px tile; for
+  // IMAGE rows the original is a valid crisp <img> source (a video's media_url
+  // is an .mp4 an <img> can't render, so it's excluded); preview_url is the
+  // video poster / blurred fallback. We try each in turn and serve the first
+  // that signs + fetches, so an old row with a missing thumb or a
+  // moved/deleted original still renders via the next candidate instead of
+  // dead-ending on a black tile.
+  const isImageMedia = !!row.media_url && ppvMediaKind(row.media_url) === "image";
+  const candidates = [
+    row.thumb_url,
+    isImageMedia ? row.media_url : null,
+    row.preview_url,
+  ].filter((u): u is string => !!u);
 
-  const path = ppvMediaPathFromUrl(source);
-  // Not a ppvs-bucket url we recognise — refuse rather than proxy an arbitrary
-  // url (media_url is written by an anon-key client).
-  if (!path) return new Response("No thumb", { status: 404 });
+  for (const candidate of candidates) {
+    // Only proxy ppvs-bucket urls we recognise — never an arbitrary url
+    // (media_url is written by an anon-key client).
+    const path = ppvMediaPathFromUrl(candidate);
+    if (!path) continue;
 
-  const { data: signed, error } = await admin.storage
-    .from("ppvs")
-    .createSignedUrl(path, 300);
-  if (error || !signed?.signedUrl) {
-    return Response.json({ error: "Sign failed" }, { status: 500 });
+    const { data: signed, error } = await admin.storage
+      .from("ppvs")
+      .createSignedUrl(path, 300);
+    if (error || !signed?.signedUrl) continue;
+
+    try {
+      const upstream = await fetch(signed.signedUrl);
+      if (!upstream.ok) continue;
+      const buf = new Uint8Array(await upstream.arrayBuffer());
+      return new Response(buf, {
+        status: 200,
+        headers: {
+          "Content-Type": upstream.headers.get("Content-Type") ?? "image/jpeg",
+          "Content-Length": String(buf.byteLength),
+          // Private (authenticated content): browser may cache, shared caches
+          // must not. One day is plenty; the src url is stable per PPV.
+          "Cache-Control": "private, max-age=86400",
+        },
+      });
+    } catch (e) {
+      console.error("[ppv/thumb] proxy error:", e instanceof Error ? e.message : e);
+      continue;
+    }
   }
 
-  try {
-    const upstream = await fetch(signed.signedUrl);
-    if (!upstream.ok) return Response.redirect(signed.signedUrl, 302);
-    const buf = new Uint8Array(await upstream.arrayBuffer());
-    return new Response(buf, {
-      status: 200,
-      headers: {
-        "Content-Type": upstream.headers.get("Content-Type") ?? "image/jpeg",
-        "Content-Length": String(buf.byteLength),
-        // Private (authenticated content): browser may cache, shared caches
-        // must not. One day is plenty; the src url is stable per PPV.
-        "Cache-Control": "private, max-age=86400",
-      },
-    });
-  } catch (e) {
-    console.error("[ppv/thumb] proxy error:", e instanceof Error ? e.message : e);
-    return Response.redirect(signed.signedUrl, 302);
-  }
+  return new Response("No thumb", { status: 404 });
 }

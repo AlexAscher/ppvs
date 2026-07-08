@@ -1,31 +1,32 @@
 import { NextRequest } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase-server";
+import { getCachedAuthUser } from "@/lib/auth-cache";
+import { requireAdmin } from "@/lib/admin-auth";
+import { ppvMediaPathFromUrl, ppvMediaKind } from "@/lib/ppv-storage";
 
 /**
  * GET /api/ppv/thumb/{ppvId}
  *
- * Public Vault thumbnail. Batch 99a — was originally a 302 to the public
- * Supabase Storage URL, which meant Cloudflare could only cache the tiny
- * redirect header; the browser followed the 302 and burned Supabase egress
- * every fresh visit. Now we PROXY bytes through the Node origin so
- * Cloudflare (or any CDN in front of us) caches the actual image body —
- * subsequent viewers hit the edge, Supabase egress goes to zero after the
- * first cache miss.
+ * Small Vault-grid / picker tile. The `ppvs` bucket is PRIVATE, so the stored
+ * `getPublicUrl` strings (thumb_url / preview_url / media_url) all 403 when
+ * fetched directly — that's why the earlier version rendered black tiles
+ * everywhere. Like /api/ppv/file, we resolve the storage PATH and mint a
+ * short-lived SIGNED url, then proxy the bytes so the browser can cache the
+ * tile under the stable /api/ppv/thumb/{id} url (private cache — this is
+ * authenticated agency content, never a shared CDN).
  *
- * Resolution order for the source URL:
- *   1. `ppvs.thumb_url` — crisp 400px JPEG (batch 99 uploads; older rows
- *      get one via the client-side lazy backfill in PPVsTab).
- *   2. `ppvs.preview_url` — the blurred pay-page poster. Small and safe as
- *      a stop-gap.
- *   3. 404 → the Vault tile falls back to an empty placeholder.
+ * Source selection (all agency/admin-facing — see Auth):
+ *   1. thumb_url   — crisp 400px JPEG from batch 99 uploads (~20 KB).
+ *   2. media_url   — for IMAGE rows without a thumb (pre-batch-99): the
+ *      original is a valid crisp <img> source. Small vaults, browser-cached.
+ *   3. preview_url — video poster, or blurred fallback for old images with
+ *      no usable original. Never point an <img> at a video's media_url.
  *
- * Schema resilience: if the deploy has landed but the migration adding
- * `thumb_url` hasn't been run yet, `.select("thumb_url, ...")` errors on
- * Supabase. We catch that specific case, retry with just `preview_url`,
- * and keep serving the blurred preview so the grid renders.
- *
- * Anonymous: thumbnails are shown in the agency Vault grid AND on the fan
- * pay page. Neither leaks the paywalled original, so auth is unnecessary.
+ * Auth: agency owner of the PPV's model, a chatter assigned to it, or the
+ * platform admin. This endpoint is used ONLY in agency/admin surfaces (Vault,
+ * chatter workspace, admin moderation, auto-reply settings) — never on a
+ * fan-facing page — so gating it here prevents an unblurred thumbnail from
+ * leaking the paywalled content to anonymous visitors.
  */
 export async function GET(
   _req: NextRequest,
@@ -34,80 +35,86 @@ export async function GET(
   const { ppvId } = await params;
   if (!ppvId) return Response.json({ error: "ppvId required" }, { status: 400 });
 
-  const admin = createAdminSupabaseClient();
-  let thumbUrl: string | null = null;
-  let previewUrl: string | null = null;
-  let mediaUrl: string | null = null;
+  const user = await getCachedAuthUser();
+  if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const first = await admin
+  const admin = createAdminSupabaseClient();
+  const { data: ppv } = await admin
     .from("ppvs")
-    .select("thumb_url, preview_url, media_url")
+    .select("model_id, thumb_url, preview_url, media_url")
     .eq("id", ppvId)
     .maybeSingle();
-  if (first.error) {
-    // Migration 20260709_ppv_thumb_url.sql hasn't run on this DB yet.
-    // Retry without thumb_url so we can still serve preview_url /
-    // media_url as fallback until the column exists.
-    const retry = await admin
-      .from("ppvs")
-      .select("preview_url, media_url")
-      .eq("id", ppvId)
+  if (!ppv) return Response.json({ error: "Not found" }, { status: 404 });
+  const row = ppv as {
+    model_id: string;
+    thumb_url: string | null;
+    preview_url: string | null;
+    media_url: string | null;
+  };
+
+  // Authorize: admin, or the owning agency, or a chatter assigned to the model.
+  let allowed = false;
+  const adminCheck = await requireAdmin();
+  if (!("errorResponse" in adminCheck)) allowed = true;
+  if (!allowed) {
+    const { data: model } = await admin
+      .from("models")
+      .select("agency_user_id")
+      .eq("id", row.model_id)
       .maybeSingle();
-    const r = retry.data as {
-      preview_url?: string | null;
-      media_url?: string | null;
-    } | null;
-    previewUrl = r?.preview_url ?? null;
-    mediaUrl = r?.media_url ?? null;
-  } else {
-    const row = first.data as {
-      thumb_url?: string | null;
-      preview_url?: string | null;
-      media_url?: string | null;
-    } | null;
-    thumbUrl = row?.thumb_url ?? null;
-    previewUrl = row?.preview_url ?? null;
-    mediaUrl = row?.media_url ?? null;
+    const agencyUserId = (model as { agency_user_id?: string } | null)?.agency_user_id;
+    allowed = agencyUserId === user.id;
+    if (!allowed) {
+      const { data: link } = await admin
+        .from("agency_chatters")
+        .select("chatter_id")
+        .eq("chatter_id", user.id)
+        .eq("model_id", row.model_id)
+        .maybeSingle();
+      allowed = !!link;
+    }
+  }
+  if (!allowed) return Response.json({ error: "Forbidden" }, { status: 403 });
+
+  // Pick the best displayable source (see header). media_url only when it's
+  // an image — a video's media_url is an .mp4 that an <img> can't render.
+  let source: string | null = row.thumb_url;
+  if (!source) {
+    source =
+      row.media_url && ppvMediaKind(row.media_url) === "image"
+        ? row.media_url
+        : row.preview_url;
+  }
+  if (!source) return new Response("No thumb", { status: 404 });
+
+  const path = ppvMediaPathFromUrl(source);
+  // Not a ppvs-bucket url we recognise — refuse rather than proxy an arbitrary
+  // url (media_url is written by an anon-key client).
+  if (!path) return new Response("No thumb", { status: 404 });
+
+  const { data: signed, error } = await admin.storage
+    .from("ppvs")
+    .createSignedUrl(path, 300);
+  if (error || !signed?.signedUrl) {
+    return Response.json({ error: "Sign failed" }, { status: 500 });
   }
 
-  // Ordered fallback: crisp thumb → blurred preview → original media.
-  // media_url last is deliberate — larger bytes, but for very old rows
-  // that predate preview_url generation it's the only way to render
-  // ANYTHING in the tile instead of a black square.
-  const target = thumbUrl || previewUrl || mediaUrl;
-  if (!target) return new Response("No thumb", { status: 404 });
-
-  // Proxy bytes so a CDN in front of us can cache the ACTUAL image body.
-  // A prior 302 to the Supabase URL only cached the redirect — every fresh
-  // viewer still hit Supabase directly, defeating the point.
-  //
-  // Buffered (not streamed) so that Next's Response layer doesn't wrestle
-  // with the readable-stream lifecycle across handlers. Thumbs are ~20 KB
-  // and preview_urls a bit larger — still tiny for a single allocation.
   try {
-    const upstream = await fetch(target);
-    if (!upstream.ok) {
-      // 302 fallback — even if we can't proxy for some reason, at least
-      // the browser can still render something instead of a black tile.
-      return Response.redirect(target, 302);
-    }
+    const upstream = await fetch(signed.signedUrl);
+    if (!upstream.ok) return Response.redirect(signed.signedUrl, 302);
     const buf = new Uint8Array(await upstream.arrayBuffer());
     return new Response(buf, {
       status: 200,
       headers: {
         "Content-Type": upstream.headers.get("Content-Type") ?? "image/jpeg",
         "Content-Length": String(buf.byteLength),
-        // Long CDN cache — after client-side backfill lands, PpvCard bumps
-        // a `?v=` query param on the src, which busts both browser and
-        // CF cache automatically.
-        "Cache-Control": "public, max-age=86400, s-maxage=604800",
+        // Private (authenticated content): browser may cache, shared caches
+        // must not. One day is plenty; the src url is stable per PPV.
+        "Cache-Control": "private, max-age=86400",
       },
     });
   } catch (e) {
     console.error("[ppv/thumb] proxy error:", e instanceof Error ? e.message : e);
-    // Last-resort — redirect the browser directly at the source URL.
-    // The browser will fetch it cross-origin (no cookies), which is fine
-    // for a public Storage URL.
-    return Response.redirect(target, 302);
+    return Response.redirect(signed.signedUrl, 302);
   }
 }

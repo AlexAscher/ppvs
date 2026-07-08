@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Plus, FolderPlus, Tag, ChevronDown, Pencil, Folder, Upload, Music } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { uploadPpvMedia, validatePpvFile, ppvMediaKind, PPV_ACCEPT } from "@/lib/ppv-storage";
-import { queueThumbBackfill } from "@/lib/ppv-thumb-backfill";
 import { PpvGroup, PpvItem, PpvModel, PpvTag } from "./types";
 import { TagManagerModal } from "./TagManagerModal";
 import { PpvFormModal } from "./PpvFormModal";
@@ -757,28 +756,15 @@ export function PPVsTab() {
 }
 
 function PpvCard({ ppv, onClick }: { ppv: PpvItem; onClick: () => void }) {
-  // Vault grid tile — was previously loading the FULL original for every
-  // card (multi-MB × N tiles × N Vault opens), which pushed us past the
-  // Supabase Free-tier egress ceiling. Batch 99 swaps to the /api/ppv/thumb
-  // endpoint (~20 KB) and, for rows uploaded before thumb_url existed,
-  // kicks off a client-side backfill in the background.
+  // Vault grid tile. Was previously loading the FULL original for every card
+  // (multi-MB × N tiles × N Vault opens), blowing past the Supabase egress
+  // ceiling. Now it hits /api/ppv/thumb, which serves a signed, browser-cached
+  // tile: the crisp 400px thumb for batch-99 uploads, or a fallback for older
+  // rows (crisp original for images, poster for videos).
   const isVideo = !!ppv.media_url && /\.(mp4|mov|webm|m4v|mkv)(\?|$)/i.test(ppv.media_url);
   const isAudio = !!ppv.media_url && /\.(mp3|m4a|aac|ogg|oga|opus|wav|flac)(\?|$)/i.test(ppv.media_url);
-  // Cache-buster nonce — bumped when the lazy backfill uploads a fresh
-  // thumb so the <img> re-requests once the endpoint starts returning the
-  // crisp version instead of the preview_url fallback.
-  const [refreshTick, setRefreshTick] = useState(0);
-  useEffect(() => {
-    if (isAudio) return;
-    if (isVideo) return; // video backfill skipped (too expensive in-browser)
-    if (ppv.thumb_url) return;
-    if (!ppv.media_url) return;
-    queueThumbBackfill(ppv.id, ppv.media_url, "image", () => {
-      setRefreshTick((n) => n + 1);
-    });
-  }, [ppv.id, ppv.media_url, ppv.thumb_url, isAudio, isVideo]);
 
-  const src = `/api/ppv/thumb/${ppv.id}${refreshTick ? `?v=${refreshTick}` : ""}`;
+  const src = `/api/ppv/thumb/${ppv.id}`;
   return (
     <button
       onClick={onClick}

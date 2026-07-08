@@ -46,7 +46,13 @@ function release() {
 }
 
 async function fetchAsBlob(url: string): Promise<Blob> {
-  const res = await fetch(url, { credentials: "include" });
+  // credentials:"omit" is critical here: mediaUrl is a public Supabase
+  // Storage URL (cross-origin) and Supabase returns
+  // `Access-Control-Allow-Origin: *`. Browsers refuse `credentials:include`
+  // against a wildcard CORS response, so any fetch with credentials just
+  // errors out — which is exactly the "CORS blocked" spam the user saw
+  // on the Dashboard. We don't need cookies to read a public URL anyway.
+  const res = await fetch(url, { credentials: "omit", mode: "cors" });
   if (!res.ok) throw new Error(`fetch ${url} → ${res.status}`);
   return res.blob();
 }

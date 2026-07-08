@@ -37,43 +37,66 @@ export async function GET(
   const admin = createAdminSupabaseClient();
   let thumbUrl: string | null = null;
   let previewUrl: string | null = null;
+  let mediaUrl: string | null = null;
 
   const first = await admin
     .from("ppvs")
-    .select("thumb_url, preview_url")
+    .select("thumb_url, preview_url, media_url")
     .eq("id", ppvId)
     .maybeSingle();
   if (first.error) {
     // Migration 20260709_ppv_thumb_url.sql hasn't run on this DB yet.
-    // Retry without thumb_url so we can still serve preview_url as
-    // fallback until the column exists.
+    // Retry without thumb_url so we can still serve preview_url /
+    // media_url as fallback until the column exists.
     const retry = await admin
       .from("ppvs")
-      .select("preview_url")
+      .select("preview_url, media_url")
       .eq("id", ppvId)
       .maybeSingle();
-    previewUrl = (retry.data as { preview_url?: string | null } | null)?.preview_url ?? null;
+    const r = retry.data as {
+      preview_url?: string | null;
+      media_url?: string | null;
+    } | null;
+    previewUrl = r?.preview_url ?? null;
+    mediaUrl = r?.media_url ?? null;
   } else {
-    const row = first.data as { thumb_url?: string | null; preview_url?: string | null } | null;
+    const row = first.data as {
+      thumb_url?: string | null;
+      preview_url?: string | null;
+      media_url?: string | null;
+    } | null;
     thumbUrl = row?.thumb_url ?? null;
     previewUrl = row?.preview_url ?? null;
+    mediaUrl = row?.media_url ?? null;
   }
 
-  const target = thumbUrl || previewUrl;
+  // Ordered fallback: crisp thumb → blurred preview → original media.
+  // media_url last is deliberate — larger bytes, but for very old rows
+  // that predate preview_url generation it's the only way to render
+  // ANYTHING in the tile instead of a black square.
+  const target = thumbUrl || previewUrl || mediaUrl;
   if (!target) return new Response("No thumb", { status: 404 });
 
   // Proxy bytes so a CDN in front of us can cache the ACTUAL image body.
   // A prior 302 to the Supabase URL only cached the redirect — every fresh
   // viewer still hit Supabase directly, defeating the point.
+  //
+  // Buffered (not streamed) so that Next's Response layer doesn't wrestle
+  // with the readable-stream lifecycle across handlers. Thumbs are ~20 KB
+  // and preview_urls a bit larger — still tiny for a single allocation.
   try {
     const upstream = await fetch(target);
-    if (!upstream.ok || !upstream.body) {
-      return new Response("Upstream error", { status: 502 });
+    if (!upstream.ok) {
+      // 302 fallback — even if we can't proxy for some reason, at least
+      // the browser can still render something instead of a black tile.
+      return Response.redirect(target, 302);
     }
-    return new Response(upstream.body, {
+    const buf = new Uint8Array(await upstream.arrayBuffer());
+    return new Response(buf, {
       status: 200,
       headers: {
         "Content-Type": upstream.headers.get("Content-Type") ?? "image/jpeg",
+        "Content-Length": String(buf.byteLength),
         // Long CDN cache — after client-side backfill lands, PpvCard bumps
         // a `?v=` query param on the src, which busts both browser and
         // CF cache automatically.
@@ -82,6 +105,9 @@ export async function GET(
     });
   } catch (e) {
     console.error("[ppv/thumb] proxy error:", e instanceof Error ? e.message : e);
-    return new Response("Fetch failed", { status: 502 });
+    // Last-resort — redirect the browser directly at the source URL.
+    // The browser will fetch it cross-origin (no cookies), which is fine
+    // for a public Storage URL.
+    return Response.redirect(target, 302);
   }
 }

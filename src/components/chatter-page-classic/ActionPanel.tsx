@@ -1,11 +1,35 @@
 "use client";
 
-import { Check, Folder, ChevronLeft, Trash2, Plus, Music, Clock, Smile } from "lucide-react";
-import { useState } from "react";
+import { Check, Folder, ChevronLeft, Trash2, Plus, Music, Clock, Smile, Maximize2 } from "lucide-react";
+import { useRef, useState } from "react";
 import type { FanNote, FanRow } from "@/lib/fan-types";
 import { SchedulePopover, formatScheduleShort } from "./SchedulePopover";
 import { EmojiPicker } from "../chatter-page/EmojiPicker";
 import { FanInfoBlock } from "./FanInfoBlock";
+import { PpvLightbox } from "../ppv/PpvLightbox";
+import type { PpvItem as VaultPpvItem } from "../ppv/types";
+import { useCursorInsert } from "@/lib/insert-at-cursor";
+
+/**
+ * Adapt the chatter-page's local PpvItem shape (a subset — no description,
+ * created_at, model_id, etc.) to the VaultPpvItem the lightbox expects.
+ * The lightbox only reads id / name / media_url; everything else is either
+ * derived from media_url or optional.
+ */
+function toVaultItem(it: PpvItem): VaultPpvItem {
+  return {
+    id: it.id,
+    name: it.name,
+    media_url: it.media_url ?? null,
+    preview_url: it.preview_url ?? null,
+    description: null,
+    price: typeof it.price === "number" ? it.price : Number(it.price) || 0,
+    model_id: "",
+    group_id: it.group_id ?? null,
+    created_at: "",
+    tags: [],
+  };
+}
 
 function formatNoteDate(iso: string): string {
   const d = new Date(iso);
@@ -179,6 +203,18 @@ export function ActionPanel({
   const [tipScheduleOpen, setTipScheduleOpen] = useState(false);
   const [tipEmojiOpen, setTipEmojiOpen] = useState(false);
   const [captionEmojiOpen, setCaptionEmojiOpen] = useState(false);
+  // Full-screen viewer for the PPV picker — chatter clicks the small
+  // maximize badge to preview the original before sending. Arrows page
+  // through the currently-scoped list (same items the grid shows).
+  const [lightbox, setLightbox] = useState<{ items: VaultPpvItem[]; index: number } | null>(null);
+  // Caret-tracking refs so emojis inserted from either the quick strip or
+  // the picker land at the cursor position instead of always at the end.
+  // Separate refs per field — caption and tip message have their own
+  // textareas and users may have distinct caret positions in each.
+  const captionRef = useRef<HTMLTextAreaElement | null>(null);
+  const tipMessageRef = useRef<HTMLTextAreaElement | null>(null);
+  const captionInsert = useCursorInsert(captionRef);
+  const tipInsert = useCursorInsert(tipMessageRef);
   const currentFolder = currentFolderId
     ? ppvGroups.find((g) => g.id === currentFolderId) ?? null
     : null;
@@ -348,12 +384,21 @@ export function ActionPanel({
               {filteredItems.map((item) => {
                 const isVid = !!item.media_url && /\.(mp4|mov|webm|m4v|mkv)(\?|$)/i.test(item.media_url);
                 const isAud = !!item.media_url && /\.(mp3|m4a|aac|ogg|oga|opus|wav|flac)(\?|$)/i.test(item.media_url);
+                const isSel = selectedItems.includes(item.id);
                 return (
-                <button
+                <div
                   key={item.id}
                   onClick={() => onToggleItem(item.id)}
-                  className={`relative aspect-square rounded-lg border-2 transition-all overflow-hidden group bg-gradient-to-br from-[#1f2937] to-[#111827] ${
-                    selectedItems.includes(item.id)
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onToggleItem(item.id);
+                    }
+                  }}
+                  className={`relative aspect-square rounded-lg border-2 transition-all overflow-hidden group bg-gradient-to-br from-[#1f2937] to-[#111827] cursor-pointer ${
+                    isSel
                       ? "border-[#00AFF0] ring-2 ring-[#00AFF0]/20"
                       : "border-[#2a2d35] hover:border-[#374151]"
                   }`}
@@ -390,15 +435,61 @@ export function ActionPanel({
                       ♪
                     </div>
                   )}
-                  {selectedItems.includes(item.id) && (
-                    <div className="absolute -top-1.5 -right-1.5 w-6 h-6 bg-[#00AFF0] rounded-full flex items-center justify-center shadow-lg">
-                      <Check className="w-3.5 h-3.5 text-white" />
-                    </div>
-                  )}
-                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2">
+                  {/* Persistent select-circle: always visible so the chatter
+                      can see at a glance what's selectable. Click on the
+                      circle OR anywhere else on the tile toggles selection. */}
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleItem(item.id);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        onToggleItem(item.id);
+                      }
+                    }}
+                    aria-label={isSel ? "Deselect" : "Select"}
+                    className={`absolute top-1.5 right-1.5 w-6 h-6 rounded-full border flex items-center justify-center transition-all shadow ${
+                      isSel
+                        ? "bg-[#00AFF0] border-[#00AFF0]"
+                        : "bg-black/45 border-white/70 hover:bg-black/70"
+                    }`}
+                  >
+                    {isSel && <Check className="w-3.5 h-3.5 text-white" />}
+                  </span>
+                  {/* Open-full-size: shows the original in a lightbox WITHOUT
+                      selecting the item, so a chatter can preview before
+                      committing to send. */}
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const idx = filteredItems.findIndex((it) => it.id === item.id);
+                      setLightbox({ items: filteredItems.map(toVaultItem), index: Math.max(0, idx) });
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        const idx = filteredItems.findIndex((it) => it.id === item.id);
+                        setLightbox({ items: filteredItems.map(toVaultItem), index: Math.max(0, idx) });
+                      }
+                    }}
+                    aria-label="Open full-size"
+                    title="Open full-size"
+                    className="absolute bottom-1.5 right-1.5 w-6 h-6 flex items-center justify-center rounded-md bg-black/60 hover:bg-black/80 backdrop-blur-sm text-white transition-colors"
+                  >
+                    <Maximize2 className="w-3 h-3" />
+                  </span>
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2 pr-9">
                     <div className="text-[11px] text-white truncate font-medium">{item.name}</div>
                   </div>
-                </button>
+                </div>
                 );
               })}
 
@@ -424,8 +515,10 @@ export function ActionPanel({
                   </label>
                   <div className="relative">
                     <textarea
+                      ref={captionRef}
                       value={caption}
                       onChange={(e) => onCaptionChange(e.target.value)}
+                      {...captionInsert.bind}
                       placeholder="Add a message to send with the PPV..."
                       className="w-full px-3 py-2.5 pr-10 bg-[#1f2937] border border-[#374151] rounded-lg text-[12px] text-white placeholder:text-[#6b7280] resize-none focus:outline-none focus:border-[#00AFF0]"
                       rows={2}
@@ -447,12 +540,12 @@ export function ActionPanel({
                     {captionEmojiOpen && (
                       <EmojiPicker
                         anchored
-                        onSelect={(em) => onCaptionChange(caption + em)}
+                        onSelect={(em) => captionInsert.insert(caption, onCaptionChange, em)}
                         onClose={() => setCaptionEmojiOpen(false)}
                       />
                     )}
                   </div>
-                  {quickEmojiRow((em) => onCaptionChange(caption + em))}
+                  {quickEmojiRow((em) => captionInsert.insert(caption, onCaptionChange, em))}
                 </div>
 
                 <div className="flex items-center justify-between">
@@ -602,8 +695,10 @@ export function ActionPanel({
             </div>
             <div className="relative">
               <textarea
+                ref={tipMessageRef}
                 value={tipMessage}
                 onChange={(e) => onTipMessageChange(e.target.value)}
+                {...tipInsert.bind}
                 placeholder="Optional message..."
                 className="w-full px-4 py-2.5 pr-10 bg-[#1f2937] border border-[#374151] rounded-lg text-[10px] text-white placeholder:text-[#6b7280] resize-none focus:outline-none focus:border-[#00AFF0]"
                 rows={2}
@@ -625,11 +720,11 @@ export function ActionPanel({
               {tipEmojiOpen && (
                 <EmojiPicker
                   anchored
-                  onSelect={(em) => onTipMessageChange(tipMessage + em)}
+                  onSelect={(em) => tipInsert.insert(tipMessage, onTipMessageChange, em)}
                   onClose={() => setTipEmojiOpen(false)}
                 />
               )}
-              {quickEmojiRow((em) => onTipMessageChange(tipMessage + em))}
+              {quickEmojiRow((em) => tipInsert.insert(tipMessage, onTipMessageChange, em))}
             </div>
             <div className="flex gap-2">
               <button
@@ -779,6 +874,14 @@ export function ActionPanel({
           </div>
         )}
       </div>
+      {lightbox && (
+        <PpvLightbox
+          items={lightbox.items}
+          index={lightbox.index}
+          onIndexChange={(i) => setLightbox((prev) => (prev ? { ...prev, index: i } : prev))}
+          onClose={() => setLightbox(null)}
+        />
+      )}
     </div>
   );
 }

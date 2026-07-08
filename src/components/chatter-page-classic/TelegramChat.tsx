@@ -6,6 +6,7 @@ import { EmojiPicker } from "../chatter-page/EmojiPicker";
 import { MessageContextMenu } from "../chatter-page/MessageContextMenu";
 import { SchedulePopover, formatScheduleShort } from "./SchedulePopover";
 import { twemoji } from "@/lib/twemoji";
+import { useCursorInsert } from "@/lib/insert-at-cursor";
 
 /**
  * Classic TelegramChat — pixel match of Create_prompt_design/TelegramChat.tsx
@@ -628,6 +629,7 @@ export function TelegramChat({
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const atBottomRef = useRef(true);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const inputInsert = useCursorInsert(inputRef);
   const [showEmoji, setShowEmoji] = useState(false);
   // Separate picker dedicated to *adding* an emoji to the quick-emoji bar
   // (above the input). The main emoji button still inserts into the text.
@@ -733,20 +735,12 @@ export function TelegramChat({
   }
 
   function insertEmoji(emoji: string) {
-    const el = inputRef.current;
-    if (!el) {
-      onInputChange(inputText + emoji);
-      return;
-    }
-    const start = el.selectionStart ?? inputText.length;
-    const end = el.selectionEnd ?? inputText.length;
-    const next = inputText.slice(0, start) + emoji + inputText.slice(end);
-    onInputChange(next);
-    requestAnimationFrame(() => {
-      el.focus();
-      const pos = start + emoji.length;
-      el.setSelectionRange(pos, pos);
-    });
+    // Uses the caret-tracking helper: the emoji picker button steals focus
+    // from the input on mousedown, which used to reset selectionStart to the
+    // end of the field before we could read it. The helper records the
+    // caret on every select/click/focus event on the input, so an insert
+    // fired from an unfocused input still lands where the user last was.
+    inputInsert.insert(inputText, onInputChange, emoji);
   }
 
   return (
@@ -1432,7 +1426,13 @@ export function TelegramChat({
               <button
                 key={e}
                 type="button"
-                onClick={() => onInputChange(inputText + e)}
+                onMouseDown={(ev) => {
+                  // preventDefault keeps the input focused so the caret ref
+                  // isn't nulled out by the button stealing focus, then the
+                  // click handler below fires the actual insert.
+                  ev.preventDefault();
+                }}
+                onClick={() => inputInsert.insert(inputText, onInputChange, e)}
                 onContextMenu={(ev) => {
                   ev.preventDefault();
                   onRemoveQuickEmoji?.(e);
@@ -1477,6 +1477,7 @@ export function TelegramChat({
             type="text"
             value={inputText}
             onChange={(e) => onInputChange(e.target.value)}
+            {...inputInsert.bind}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();

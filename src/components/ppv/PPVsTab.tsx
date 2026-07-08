@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, FolderPlus, Tag, ChevronDown, Pencil, Folder, Upload, Music } from "lucide-react";
+import { Plus, FolderPlus, Tag, ChevronDown, Pencil, Folder, Upload, Music, Maximize2 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { uploadPpvMedia, validatePpvFile, ppvMediaKind, PPV_ACCEPT } from "@/lib/ppv-storage";
 import { PpvGroup, PpvItem, PpvModel, PpvTag } from "./types";
 import { TagManagerModal } from "./TagManagerModal";
 import { PpvFormModal } from "./PpvFormModal";
+import { PpvLightbox } from "./PpvLightbox";
 import { CreateGroupModal } from "./CreateGroupModal";
 import { EditGroupModal } from "./EditGroupModal";
 
@@ -30,6 +31,9 @@ export function PPVsTab() {
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [editingGroup, setEditingGroup] = useState<PpvGroup | null>(null);
   const [ppvForm, setPpvForm] = useState<PpvFormState | null>(null);
+  // Full-screen viewer state. `items` is the list arrows navigate through
+  // (a group's items, or the standalone list), `index` is the current one.
+  const [lightbox, setLightbox] = useState<{ items: PpvItem[]; index: number } | null>(null);
 
   const [loading, setLoading] = useState(false);
 
@@ -548,6 +552,10 @@ export function PPVsTab() {
                       bulkInputRef.current?.click();
                     }}
                     onItemClick={(item) => setPpvForm({ kind: "edit", ppv: item })}
+                    onItemExpand={(item) => {
+                      const idx = g.items.findIndex((it) => it.id === item.id);
+                      setLightbox({ items: g.items, index: Math.max(0, idx) });
+                    }}
                     selectedIds={selectedIds}
                     onToggleSel={toggleSel}
                   />
@@ -591,6 +599,10 @@ export function PPVsTab() {
                         <PpvCard
                           ppv={p}
                           onClick={() => setPpvForm({ kind: "edit", ppv: p })}
+                          onExpand={() => {
+                            const idx = filteredStandalone.findIndex((it) => it.id === p.id);
+                            setLightbox({ items: filteredStandalone, index: Math.max(0, idx) });
+                          }}
                         />
                       </div>
                     );
@@ -737,6 +749,15 @@ export function PPVsTab() {
         />
       )}
 
+      {lightbox && (
+        <PpvLightbox
+          items={lightbox.items}
+          index={lightbox.index}
+          onIndexChange={(i) => setLightbox((prev) => (prev ? { ...prev, index: i } : prev))}
+          onClose={() => setLightbox(null)}
+        />
+      )}
+
       {ppvForm && agencyUserId && selectedModelId && (
         <PpvFormModal
           mode={ppvForm.kind}
@@ -755,7 +776,17 @@ export function PPVsTab() {
   );
 }
 
-function PpvCard({ ppv, onClick }: { ppv: PpvItem; onClick: () => void }) {
+function PpvCard({
+  ppv,
+  onClick,
+  onExpand,
+}: {
+  ppv: PpvItem;
+  onClick: () => void;
+  /** Optional — when provided, a small maximize icon shows on the tile that
+   *  opens a full-screen viewer instead of the edit modal. */
+  onExpand?: () => void;
+}) {
   // Vault grid tile. Was previously loading the FULL original for every card
   // (multi-MB × N tiles × N Vault opens), blowing past the Supabase egress
   // ceiling. Now it hits /api/ppv/thumb, which serves a signed, browser-cached
@@ -815,6 +846,29 @@ function PpvCard({ ppv, onClick }: { ppv: PpvItem; onClick: () => void }) {
             ✕ Declined
           </div>
         )}
+        {onExpand && (
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onExpand();
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.stopPropagation();
+                e.preventDefault();
+                onExpand();
+              }
+            }}
+            aria-label="Open full-size"
+            title="Open full-size"
+            className="absolute bottom-2 right-2 w-7 h-7 flex items-center justify-center rounded-md bg-black/60 hover:bg-black/80 backdrop-blur-sm text-white transition-colors cursor-pointer"
+          >
+            <Maximize2 className="w-3.5 h-3.5" />
+          </span>
+        )}
       </div>
       <div className="p-3">
         <div className="text-[13px] font-semibold text-white truncate">{ppv.name}</div>
@@ -846,6 +900,7 @@ function GroupCard({
   onAddItem,
   onBulkUpload,
   onItemClick,
+  onItemExpand,
   selectedIds,
   onToggleSel,
 }: {
@@ -856,6 +911,10 @@ function GroupCard({
    *  files at once straight into this group (group_id pre-set). */
   onBulkUpload?: () => void;
   onItemClick: (item: PpvItem) => void;
+  /** Optional — when provided, PpvCard renders a small maximize icon that
+   *  fires this callback with the clicked item. Arrows in the lightbox
+   *  navigate within the group's own item list. */
+  onItemExpand?: (item: PpvItem) => void;
   selectedIds?: Set<string>;
   onToggleSel?: (id: string) => void;
 }) {
@@ -941,7 +1000,11 @@ function GroupCard({
                     </svg>
                   </button>
                 )}
-                <PpvCard ppv={it} onClick={() => onItemClick(it)} />
+                <PpvCard
+                  ppv={it}
+                  onClick={() => onItemClick(it)}
+                  onExpand={onItemExpand ? () => onItemExpand(it) : undefined}
+                />
               </div>
             );
           })}

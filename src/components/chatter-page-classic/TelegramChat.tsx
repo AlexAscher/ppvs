@@ -1,6 +1,6 @@
 "use client";
 
-import { Send, Search, Smile, Play, FileText, X, Zap, Check, Reply, ChevronLeft, Clock } from "lucide-react";
+import { Send, Search, Smile, Play, FileText, X, Zap, Check, Reply, ChevronLeft, Clock, Archive } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { EmojiPicker } from "../chatter-page/EmojiPicker";
 import { MessageContextMenu } from "../chatter-page/MessageContextMenu";
@@ -135,6 +135,16 @@ interface TelegramChatProps {
   onCreateGroup?: (name: string) => void | Promise<void>;
   /** Delete a group via right-click on its chip. */
   onDeleteGroup?: (id: string) => void | Promise<void>;
+  /** Archive: a pinned, non-deletable "Archive" row at the top of the chat
+   *  list. Clicking it flips `viewingArchive` (parent state) to show ONLY the
+   *  archived chats. Right-click a chat → archive / un-archive / move-to. */
+  archivedCount?: number;
+  viewingArchive?: boolean;
+  onToggleArchiveView?: () => void;
+  onArchiveChat?: (peerId: string) => void;
+  onUnarchiveChat?: (peerId: string) => void;
+  /** Move a specific (right-clicked) chat into a fan group. */
+  onMoveChatToGroup?: (peerId: string, groupId: string) => void;
   messages: Message[];
   /** Fan's lifetime spend, pre-formatted ("$245"). Shown in the header. */
   totalSpent: string;
@@ -593,6 +603,12 @@ export function TelegramChat({
   onSelectGroup,
   onCreateGroup,
   onDeleteGroup,
+  archivedCount = 0,
+  viewingArchive = false,
+  onToggleArchiveView,
+  onArchiveChat,
+  onUnarchiveChat,
+  onMoveChatToGroup,
   messages,
   totalSpent,
   inputText,
@@ -658,6 +674,19 @@ export function TelegramChat({
       window.removeEventListener("scroll", close, true);
     };
   }, [groupMenu]);
+
+  // Right-click menu on a chat row: archive / un-archive + "Move to <group>".
+  const [chatMenu, setChatMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (!chatMenu) return;
+    const close = () => setChatMenu(null);
+    window.addEventListener("click", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [chatMenu]);
 
   // Album grouping: consecutive messages with the same groupedId render as
   // a thumbnail grid instead of stacked individual bubbles.
@@ -841,10 +870,48 @@ export function TelegramChat({
         </div>
 
         <div className="flex-1 overflow-y-auto">
+          {/* Pinned, non-deletable Archive row. Click flips the list to the
+              archived chats (which load only now, on open). While viewing the
+              archive it turns into a "back" affordance. */}
+          {onToggleArchiveView && (
+            <button
+              type="button"
+              onClick={onToggleArchiveView}
+              className={`w-full p-3 flex items-center gap-3 border-b border-[#2a2d35] transition-colors ${
+                viewingArchive ? "bg-[#1f2937]" : "hover:bg-[#1f2937]/50"
+              }`}
+            >
+              <div className="w-11 h-11 shrink-0 rounded-full bg-[#1f2937] border border-[#374151] flex items-center justify-center">
+                {viewingArchive ? (
+                  <ChevronLeft className="w-5 h-5 text-[#00AFF0]" />
+                ) : (
+                  <Archive className="w-5 h-5 text-[#9ca3af]" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0 text-left">
+                <div className="text-[13px] font-semibold text-white">
+                  {viewingArchive ? "← Back to chats" : "Archive"}
+                </div>
+                <div className="text-[11px] text-[#6b7280]">
+                  {archivedCount} {archivedCount === 1 ? "chat" : "chats"} archived
+                </div>
+              </div>
+            </button>
+          )}
+          {viewingArchive && chatList.length === 0 && (
+            <div className="py-10 text-center text-[12px] text-[#6b7280]">
+              No archived chats
+            </div>
+          )}
           {chatList.map((chat) => (
             <button
               key={chat.id}
               onClick={() => onSelectChat(chat.id)}
+              onContextMenu={(e) => {
+                if (!onArchiveChat && !onUnarchiveChat) return;
+                e.preventDefault();
+                setChatMenu({ id: chat.id, x: e.clientX, y: e.clientY });
+              }}
               className={`w-full p-3 flex items-center gap-3 border-b border-[#2a2d35]/50 hover:bg-[#1f2937]/50 transition-colors ${
                 selectedChat === chat.id ? "bg-[#1f2937]" : ""
               }`}
@@ -1643,6 +1710,65 @@ export function TelegramChat({
           >
             Delete “{groupMenu.name}”
           </button>
+        </div>
+      )}
+
+      {/* Chat right-click → archive / un-archive + move to a fan group */}
+      {chatMenu && (
+        <div
+          className="fixed z-[100] bg-[#1f2937] border border-[#374151] rounded-lg shadow-2xl py-1 min-w-[190px] max-h-[60vh] overflow-y-auto"
+          style={{ left: chatMenu.x, top: chatMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {viewingArchive ? (
+            <button
+              type="button"
+              onClick={() => {
+                onUnarchiveChat?.(chatMenu.id);
+                setChatMenu(null);
+              }}
+              className="w-full px-3 py-2 text-left text-[12px] text-white hover:bg-[#374151] transition-colors flex items-center gap-2"
+            >
+              <ChevronLeft className="w-3.5 h-3.5 text-[#00AFF0]" /> Return to main
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  onArchiveChat?.(chatMenu.id);
+                  setChatMenu(null);
+                }}
+                className="w-full px-3 py-2 text-left text-[12px] text-white hover:bg-[#374151] transition-colors flex items-center gap-2"
+              >
+                <Archive className="w-3.5 h-3.5 text-[#9ca3af]" /> Move to Archive
+              </button>
+              {onMoveChatToGroup && (groups ?? []).length > 0 && (
+                <>
+                  <div className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider text-[#6b7280]">
+                    Move to…
+                  </div>
+                  {(groups ?? []).map((g) => (
+                    <button
+                      key={g.id}
+                      type="button"
+                      onClick={() => {
+                        onMoveChatToGroup(chatMenu.id, g.id);
+                        setChatMenu(null);
+                      }}
+                      className="w-full px-3 py-2 text-left text-[12px] text-white hover:bg-[#374151] transition-colors flex items-center gap-2"
+                    >
+                      <span
+                        className="w-2.5 h-2.5 rounded-full shrink-0"
+                        style={{ background: g.color }}
+                      />
+                      {g.emoji ? `${g.emoji} ` : ""}{g.name}
+                    </button>
+                  ))}
+                </>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>

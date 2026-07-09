@@ -288,6 +288,13 @@ export default function ChatterPage() {
   const [groupIdsByPeer, setGroupIdsByPeer] = useState<Record<string, string[]>>({});
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
 
+  // Archive: per-model set of archived peer ids (shared across chatters via
+  // chat_archives). `viewingArchive` swaps the dialog list to show ONLY the
+  // archived chats. Archived chats are excluded from the main list so they
+  // don't render (or load avatars) until the Archive folder is opened.
+  const [archivedPeers, setArchivedPeers] = useState<Set<string>>(new Set());
+  const [viewingArchive, setViewingArchive] = useState(false);
+
   // Engagement score per peer (0-100) → hot-lead dot in the chat list.
 
   // Smart pricing hint for the send panel (avg / common range / top sale).
@@ -661,6 +668,75 @@ export default function ChatterPage() {
       })
       .catch(() => { /* best-effort */ });
   }, []);
+
+  // Load the per-model archive set whenever the selected model changes, and
+  // reset the archive view so switching models never strands you inside an
+  // empty archive.
+  useEffect(() => {
+    setViewingArchive(false);
+    if (!selectedModelId) { setArchivedPeers(new Set()); return; }
+    let cancelled = false;
+    void fetch(`/api/chat-archive/${selectedModelId}`)
+      .then((r) => (r.ok ? r.json() : { peerIds: [] }))
+      .then((data: { peerIds?: string[] }) => {
+        if (!cancelled) setArchivedPeers(new Set(data.peerIds ?? []));
+      })
+      .catch(() => { /* best-effort — treat as nothing archived */ });
+    return () => { cancelled = true; };
+  }, [selectedModelId]);
+
+  // Archive / un-archive a chat. Optimistic: flip the local set immediately,
+  // roll back on failure. Shared across chatters (server keys per model).
+  const setChatArchived = useCallback(
+    async (peerId: string, archived: boolean) => {
+      if (!selectedModelId) return;
+      setArchivedPeers((prev) => {
+        const next = new Set(prev);
+        if (archived) next.add(peerId);
+        else next.delete(peerId);
+        return next;
+      });
+      try {
+        const res = await fetch(`/api/chat-archive/${selectedModelId}`, {
+          method: archived ? "POST" : "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ peerId }),
+        });
+        if (!res.ok) throw new Error(String(res.status));
+      } catch {
+        // Roll back the optimistic change.
+        setArchivedPeers((prev) => {
+          const next = new Set(prev);
+          if (archived) next.delete(peerId);
+          else next.add(peerId);
+          return next;
+        });
+      }
+    },
+    [selectedModelId],
+  );
+
+  // Add a specific (right-clicked) chat to a fan group — the peer-targeted
+  // version of onToggleFanGroup, used by the chat context menu's "Move to…".
+  const moveChatToGroup = useCallback(
+    async (peerId: string, groupId: string) => {
+      if (!selectedModelId) return;
+      const current = groupIdsByPeer[peerId] ?? [];
+      if (current.includes(groupId)) return; // already a member
+      setGroupIdsByPeer((prev) => ({ ...prev, [peerId]: [...current, groupId] }));
+      try {
+        const res = await fetch(`/api/groups/${groupId}/members`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ modelId: selectedModelId, peerId }),
+        });
+        if (!res.ok) throw new Error(String(res.status));
+      } catch {
+        setGroupIdsByPeer((prev) => ({ ...prev, [peerId]: current }));
+      }
+    },
+    [selectedModelId, groupIdsByPeer],
+  );
 
   // ── dialogs polling ───────────────────────────────────────────────────────
 
@@ -1854,6 +1930,11 @@ export default function ChatterPage() {
           (d) => d.title.toLowerCase().includes(q) || (d.username ?? "").toLowerCase().includes(q),
         )
       : currentDialogs;
+    // Archive split: the main list hides archived chats (they don't render or
+    // load avatars until you open Archive); the Archive view shows only them.
+    list = viewingArchive
+      ? list.filter((d) => archivedPeers.has(d.id))
+      : list.filter((d) => !archivedPeers.has(d.id));
     // Group filter: keep only dialogs whose peer is in the active group.
     if (activeGroupId) {
       list = list.filter((d) => (groupIdsByPeer[d.id] ?? []).includes(activeGroupId));
@@ -1877,7 +1958,7 @@ export default function ChatterPage() {
       lastMessageId: d.lastMessageId ?? 0,
       readOutboxMaxId: d.readOutboxMaxId ?? 0,
     }));
-  }, [currentDialogs, search, fanTagsByPeer, fanSpentByPeer, activeGroupId, groupIdsByPeer, role]);
+  }, [currentDialogs, search, fanTagsByPeer, fanSpentByPeer, activeGroupId, groupIdsByPeer, role, viewingArchive, archivedPeers]);
 
   const chatMessages = useMemo(
     (): ChatMessage[] =>
@@ -2329,6 +2410,12 @@ export default function ChatterPage() {
           hideUsername={true}
           modelId={selectedModelId}
           readOutboxMaxId={selectedDialog?.readOutboxMaxId}
+          archivedCount={archivedPeers.size}
+          viewingArchive={viewingArchive}
+          onToggleArchiveView={() => setViewingArchive((v) => !v)}
+          onArchiveChat={(peerId) => void setChatArchived(peerId, true)}
+          onUnarchiveChat={(peerId) => void setChatArchived(peerId, false)}
+          onMoveChatToGroup={(peerId, groupId) => void moveChatToGroup(peerId, groupId)}
           groups={fanGroups}
           activeGroupId={activeGroupId}
           onSelectGroup={setActiveGroupId}

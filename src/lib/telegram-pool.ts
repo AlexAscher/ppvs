@@ -18,7 +18,12 @@ declare global {
   var __ppvs_tg_pool__: Map<string, Entry> | undefined;
   var __ppvs_tg_connect_locks__: Map<string, Promise<TelegramClient>> | undefined;
   var __ppvs_tg_cleanup__: ReturnType<typeof setInterval> | undefined;
-  var __ppvs_tg_expired_marked__: Set<string> | undefined;
+  // modelId → UNIX-ms when the session was flagged expired. A Map (not a Set)
+  // so we can auto-retry a flagged session after EXPIRED_RETRY_MS — a
+  // transient AUTH_KEY_DUPLICATED (two connections briefly overlapping during
+  // a deploy, or a local dev instance racing prod) must NOT brick the model
+  // forever; we re-probe and clear the flag the moment it reconnects.
+  var __ppvs_tg_expired_marked__: Map<string, number> | undefined;
 }
 
 const pool: Map<string, Entry> =
@@ -88,21 +93,34 @@ function runWithTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T>
 const DEAD_CONNECTION_RE =
   /AUTH_KEY|CONNECTION_NOT_INITED|disconnect|TIMEOUT|ECONNRESET|Not connected|fetch failed/i;
 
-// Fatal, non-recoverable session errors. These mean the stored
-// session_string is dead — the model must re-authenticate (we can't
-// silently re-login without a fresh login code). We flag the DB so the
-// UI can prompt "Reconnect" and stop hammering a dead session.
+// Fatal, non-recoverable session errors. These mean the stored session_string
+// is dead — the model must re-authenticate (we can't silently re-login without
+// a fresh login code). We flag the DB so the UI can prompt "Reconnect".
+//
+// AUTH_KEY_DUPLICATED is DELIBERATELY NOT here. It fires when the same session
+// connects from two places at once (a deploy overlap, or a local dev instance
+// racing prod). That's transient — the key itself is still valid, so we treat
+// it as a dead-connection error (matched by DEAD_CONNECTION_RE's `AUTH_KEY`)
+// and reconnect instead of permanently bricking the model. Bricking it here
+// was the root cause of "dialogs stopped loading / auto-reply died / avatars
+// 404" after deploys.
 const EXPIRED_SESSION_RE =
-  /AUTH_KEY_UNREGISTERED|AUTH_KEY_INVALID|AUTH_KEY_DUPLICATED|SESSION_REVOKED|SESSION_EXPIRED|USER_DEACTIVATED/i;
+  /AUTH_KEY_UNREGISTERED|AUTH_KEY_INVALID|SESSION_REVOKED|SESSION_EXPIRED|USER_DEACTIVATED/i;
 
-// Avoid spamming the DB with the same update on every failing poll.
-const expiredMarked: Set<string> =
-  globalThis.__ppvs_tg_expired_marked__ ?? new Set<string>();
+// How long a flagged session waits before we automatically re-probe it. A
+// false-positive expiry (transient duplicate) self-heals within this window
+// with zero manual intervention; a genuinely dead session just re-flags.
+const EXPIRED_RETRY_MS = 10 * 60 * 1000; // 10 min
+
+// modelId → when it was flagged expired. Avoids spamming the DB with the same
+// update on every failing poll, and drives the auto-retry window.
+const expiredMarked: Map<string, number> =
+  globalThis.__ppvs_tg_expired_marked__ ?? new Map<string, number>();
 globalThis.__ppvs_tg_expired_marked__ = expiredMarked;
 
 async function markSessionExpired(modelId: string) {
   if (expiredMarked.has(modelId)) return;
-  expiredMarked.add(modelId);
+  expiredMarked.set(modelId, Date.now());
   try {
     const admin = createAdminSupabaseClient();
     await admin.from("models").update({ session_status: "expired" }).eq("id", modelId);
@@ -114,6 +132,24 @@ async function markSessionExpired(modelId: string) {
       "[telegram-pool] failed to flag expired session:",
       e instanceof Error ? e.message : e,
     );
+  }
+}
+
+/**
+ * Clear the expired flag in BOTH the in-memory map and the DB after a session
+ * proves healthy again (self-heal on reconnect, or an explicit re-auth). This
+ * is what lets a transiently-flagged model come back without the agency having
+ * to click "Reconnect".
+ */
+async function clearSessionExpired(modelId: string) {
+  if (!expiredMarked.has(modelId)) return;
+  expiredMarked.delete(modelId);
+  try {
+    const admin = createAdminSupabaseClient();
+    await admin.from("models").update({ session_status: "active" }).eq("id", modelId);
+    console.log(`[telegram-pool] model ${modelId} session recovered — flag cleared`);
+  } catch {
+    // Best-effort; the in-memory clear already unblocks ops this process.
   }
 }
 
@@ -231,15 +267,23 @@ export async function withTelegramClient<T>(
   // recovery. NEVER pass true for sends (retrying could double-send).
   retryOnDeadConnection: boolean = false,
 ): Promise<T> {
-  // Known-dead session (already flagged expired): don't reconnect or invoke.
-  // Hammering a dead key just spams Telegram with AUTH_KEY_* errors (and can
-  // destabilize connections for the whole process). Fail fast; the UI shows
-  // the "session expired → Reconnect" prompt. A successful re-auth calls
-  // clearExpiredFlag() so polling resumes.
-  if (expiredMarked.has(modelId)) {
-    const stale = pool.get(modelId);
-    if (stale) evictBroken(modelId, stale);
-    throw new Error("SESSION_EXPIRED: reconnect this creator");
+  // Flagged-expired session handling with auto-heal. Within EXPIRED_RETRY_MS of
+  // being flagged we fail fast (don't hammer a possibly-dead key). Once that
+  // window elapses we clear the flag and let this call attempt a real
+  // reconnect: if the session was only TRANSIENTLY duplicated it heals here and
+  // clearSessionExpired() (below, on success) wipes the DB flag too; if it's
+  // genuinely dead the connect throws AUTH_KEY_UNREGISTERED and re-flags it.
+  const flaggedAt = expiredMarked.get(modelId);
+  let healingExpired = false;
+  if (flaggedAt != null) {
+    if (Date.now() - flaggedAt < EXPIRED_RETRY_MS) {
+      const stale = pool.get(modelId);
+      if (stale) evictBroken(modelId, stale);
+      throw new Error("SESSION_EXPIRED: reconnect this creator");
+    }
+    // Retry window elapsed — drop the flag and probe the session for real.
+    expiredMarked.delete(modelId);
+    healingExpired = true;
   }
 
   // A single attempt: connect (or reuse) then run the op under the timeout.
@@ -258,6 +302,10 @@ export async function withTelegramClient<T>(
       const result = await runWithTimeout(fn(client), timeoutMs, "operation");
       const entry = pool.get(modelId);
       if (entry) entry.lastUsedAt = Date.now();
+      // The op succeeded. If we got here while probing a previously-expired
+      // session, it was a false positive (transient duplicate) — clear the DB
+      // flag so keepalive + avatars resume without a manual reconnect.
+      if (healingExpired) void clearSessionExpired(modelId);
       return result;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

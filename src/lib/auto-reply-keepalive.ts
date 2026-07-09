@@ -49,7 +49,14 @@ async function tick() {
     if (error) return;
     const models = (data ?? []) as ModelRow[];
     for (const m of models) {
-      if (!m.session_string || !m.api_id || !m.api_hash || m.session_status === "expired") continue;
+      // NOTE: we intentionally do NOT skip session_status === "expired" here.
+      // The pool now auto-heals a flagged session after a 10-min back-off
+      // (see telegram-pool EXPIRED_RETRY_MS): a transient AUTH_KEY_DUPLICATED
+      // clears itself on the next successful probe. Skipping expired models
+      // would leave a false-positive expiry stuck forever with no chatter to
+      // trigger a reconnect. The pool bounds how often it actually retries,
+      // so this stays cheap.
+      if (!m.session_string || !m.api_id || !m.api_hash) continue;
       const sess = decryptIfNeeded(m.session_string);
       const hash = decryptIfNeeded(m.api_hash);
       if (!sess || !hash) continue;
@@ -75,6 +82,15 @@ async function tick() {
 /** Start the keep-alive loop once per process. Safe to call repeatedly. */
 export function startAutoReplyKeepAlive() {
   if (globalThis.__ppvs_autoreply_keepalive__) return;
+  // Only run in production. If a local `next dev` instance also warmed every
+  // model, it would connect the SAME Telegram sessions as the live server and
+  // Telegram would kill the key with AUTH_KEY_DUPLICATED — the exact session
+  // war that used to brick creators. Local dev still connects on demand when a
+  // chat is opened; it just doesn't proactively warm all models.
+  if (process.env.NODE_ENV !== "production" && !process.env.FORCE_TG_KEEPALIVE) {
+    console.log("[autoreply-keepalive] disabled outside production");
+    return;
+  }
   const timer = setInterval(() => void tick(), TICK_MS);
   if (typeof timer.unref === "function") timer.unref();
   globalThis.__ppvs_autoreply_keepalive__ = timer;

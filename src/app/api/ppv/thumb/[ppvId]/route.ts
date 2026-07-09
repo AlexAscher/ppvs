@@ -110,9 +110,14 @@ export async function GET(
         headers: {
           "Content-Type": upstream.headers.get("Content-Type") ?? "image/jpeg",
           "Content-Length": String(buf.byteLength),
-          // Private (authenticated content): browser may cache, shared caches
-          // must not. One day is plenty; the src url is stable per PPV.
-          "Cache-Control": "private, max-age=86400",
+          // Private = only browser may cache (never CDN — this endpoint is
+          // auth-gated). `immutable` is the critical bit: without it Chrome
+          // treats a regular F5 as a hint to revalidate and refetches every
+          // tile from us; with `immutable` it uses the cache and doesn't
+          // hit the network until max-age expires. 7 days for thumbs — the
+          // /api/ppv/thumb/{id} url is stable per PPV, so a longer TTL
+          // just means one less refetch per week.
+          "Cache-Control": "private, max-age=604800, immutable",
         },
       });
     } catch (e) {

@@ -82,11 +82,24 @@ export async function GET(
     return Response.json({ error: "No media" }, { status: 404 });
   }
 
+  // 24 h signed URL so the browser cache (below) can keep the redirect valid
+  // for its whole TTL. If we returned a 5-min signed URL and the browser
+  // cached the 302 for 24 h, following the redirect an hour later would 400.
   const { data: signed, error } = await admin.storage
     .from("ppvs")
-    .createSignedUrl(path, 300);
+    .createSignedUrl(path, 86400);
   if (error || !signed?.signedUrl) {
     return Response.json({ error: "Sign failed" }, { status: 500 });
   }
-  return Response.redirect(signed.signedUrl, 302);
+  // `Response.redirect` doesn't accept custom headers, so build the 302 by
+  // hand. `immutable` keeps Chrome from ping-ponging the endpoint on every
+  // F5 — without it the browser revalidates and re-fetches the video's
+  // first-frame metadata for every tile on every reload.
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: signed.signedUrl,
+      "Cache-Control": "private, max-age=86400, immutable",
+    },
+  });
 }

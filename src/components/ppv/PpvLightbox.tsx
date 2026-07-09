@@ -1,42 +1,38 @@
 "use client";
 
 import { useEffect, useMemo } from "react";
-import { X, ChevronLeft, ChevronRight } from "lucide-react";
+import { X } from "lucide-react";
 import type { PpvItem } from "./types";
 
 type Props = {
-  /** Ordered list the arrows navigate through (usually the current group's
-   *  items or the standalone list). */
+  /** Ordered list — kept in the API for now in case navigation is added
+   *  back later, but only `items[index]` is shown. */
   items: PpvItem[];
-  /** Index inside `items` currently displayed. */
   index: number;
-  onIndexChange: (next: number) => void;
+  /** No-op today (arrow navigation was removed per user request), retained
+   *  so callers don't need to change their state wiring. */
+  onIndexChange?: (next: number) => void;
   onClose: () => void;
 };
 
 /**
- * Full-screen viewer for a PPV. Serves the ORIGINAL via /api/ppv/file
- * (auth-gated, signed URL), with left/right arrows to page through the
- * surrounding list. Video renders in a native player with controls; audio
- * uses the browser audio widget; images fill the viewport preserving
- * aspect ratio. The media name is shown in a bar at the bottom.
+ * Full-screen viewer for a single PPV. Serves the ORIGINAL via /api/ppv/file
+ * (auth-gated, signed URL). Video renders in a native player with controls,
+ * audio uses the browser widget, images fill the viewport preserving aspect
+ * ratio. The media name is shown in a bar at the bottom. No prev/next
+ * navigation — close and click another tile to see the next item.
  */
-export function PpvLightbox({ items, index, onIndexChange, onClose }: Props) {
+export function PpvLightbox({ items, index, onClose }: Props) {
   const current = items[index];
 
-  // Keyboard navigation: ← / → / Esc. Only bound while the lightbox is open;
-  // teardown removes the listener so it doesn't leak into the parent page.
+  // Esc to close. No arrow-key navigation — no arrows to move to.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
-      else if (e.key === "ArrowLeft" && index > 0) onIndexChange(index - 1);
-      else if (e.key === "ArrowRight" && index < items.length - 1) {
-        onIndexChange(index + 1);
-      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [index, items.length, onIndexChange, onClose]);
+  }, [onClose]);
 
   const kind = useMemo(() => {
     if (!current?.media_url) return "unknown" as const;
@@ -47,8 +43,6 @@ export function PpvLightbox({ items, index, onIndexChange, onClose }: Props) {
 
   if (!current) return null;
 
-  const hasPrev = index > 0;
-  const hasNext = index < items.length - 1;
   // The endpoint gates access and mints a signed URL against the private
   // ppvs bucket — same route the agency lightbox already used for admin
   // moderation, so cache/CDN behaviour is consistent.
@@ -60,10 +54,7 @@ export function PpvLightbox({ items, index, onIndexChange, onClose }: Props) {
       onClick={onClose}
     >
       {/* Top bar — close button */}
-      <div className="shrink-0 flex items-center justify-between px-4 py-3">
-        <div className="text-[12px] text-[#9ca3af] tabular-nums">
-          {index + 1} / {items.length}
-        </div>
+      <div className="shrink-0 flex items-center justify-end px-4 py-3">
         <button
           type="button"
           onClick={(e) => {
@@ -101,29 +92,6 @@ export function PpvLightbox({ items, index, onIndexChange, onClose }: Props) {
         )}
         {kind === "audio" && (
           <audio key={current.id} src={originalSrc} controls autoPlay className="w-[90%] max-w-[600px]" />
-        )}
-
-        {/* Prev / next arrows — only rendered when navigable, so the user
-            has a clear signal they've reached the edge of the group. */}
-        {hasPrev && (
-          <button
-            type="button"
-            onClick={() => onIndexChange(index - 1)}
-            className="absolute left-2 md:left-6 top-1/2 -translate-y-1/2 w-11 h-11 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
-            aria-label="Previous"
-          >
-            <ChevronLeft className="w-6 h-6" />
-          </button>
-        )}
-        {hasNext && (
-          <button
-            type="button"
-            onClick={() => onIndexChange(index + 1)}
-            className="absolute right-2 md:right-6 top-1/2 -translate-y-1/2 w-11 h-11 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
-            aria-label="Next"
-          >
-            <ChevronRight className="w-6 h-6" />
-          </button>
         )}
       </div>
 

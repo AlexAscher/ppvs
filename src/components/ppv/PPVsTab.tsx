@@ -807,11 +807,24 @@ function PpvCard({
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-[#1f2937] to-[#111827]">
               <Music className="w-10 h-10 text-[#00AFF0]" />
             </div>
+          ) : isVideo ? (
+            // preload="metadata" downloads only the moov atom + first frames
+            // (~50-200 KB), never the full stream. The browser renders the
+            // first frame as the tile — crisp and unblurred for BOTH new
+            // and old uploads. This replaces /api/ppv/thumb for videos,
+            // which was returning the BLURRED preview_url as a fallback for
+            // pre-batch-99 rows that lack thumb_url.
+            <video
+              src={`/api/ppv/file/${ppv.id}?kind=original`}
+              preload="metadata"
+              muted
+              playsInline
+              className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+            />
           ) : (
-            // Both image and video tiles render as static <img>. For videos
-            // the thumb endpoint 302s to the crisp poster (new uploads) or
-            // the blurred preview_url (old uploads); the ▶ badge below tells
-            // the agency it's playable and click opens the lightbox.
+            // Static image tile — thumb endpoint returns a crisp 400 px
+            // JPEG (batch 99+) or falls through to the original for older
+            // rows that never got a generated thumb.
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={src}

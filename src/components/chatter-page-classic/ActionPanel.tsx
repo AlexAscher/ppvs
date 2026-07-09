@@ -408,11 +408,25 @@ export function ActionPanel({
                       <div className="w-full h-full flex items-center justify-center">
                         <Music className="w-8 h-8 text-[#00AFF0]" />
                       </div>
+                    ) : isVid ? (
+                      // preload="metadata" downloads only the moov atom +
+                      // first frames (~50-200 KB), never the full stream.
+                      // The browser renders the first frame as the tile's
+                      // still — crisp and unblurred for BOTH new and old
+                      // uploads, unlike the /api/ppv/thumb fallback which
+                      // returns a blurred preview_url for pre-batch-99
+                      // videos that have no thumb_url yet.
+                      <video
+                        src={`/api/ppv/file/${item.id}?kind=original`}
+                        preload="metadata"
+                        muted
+                        playsInline
+                        className="w-full h-full object-cover pointer-events-none"
+                      />
                     ) : (
-                      // Batch 99: was `<video autoPlay>` on the full original,
-                      // which quietly streamed every video in the picker on
-                      // every open — one of the top drivers of the Supabase
-                      // egress blowup. Now a static thumb via /api/ppv/thumb.
+                      // Static image tile — thumb endpoint returns a crisp
+                      // 400px JPEG (batch 99+) or falls through to the
+                      // original for older image rows.
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={`/api/ppv/thumb/${item.id}`}
@@ -461,9 +475,14 @@ export function ActionPanel({
                   >
                     {isSel && <Check className="w-3.5 h-3.5 text-white" />}
                   </span>
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2 pr-9 pointer-events-none">
+                    <div className="text-[11px] text-white truncate font-medium">{item.name}</div>
+                  </div>
                   {/* Open-full-size: shows the original in a lightbox WITHOUT
                       selecting the item, so a chatter can preview before
-                      committing to send. */}
+                      committing to send. Rendered AFTER the name-gradient
+                      overlay so it stacks on top and pointer-events land
+                      here instead of the label div. */}
                   <span
                     role="button"
                     tabIndex={0}
@@ -482,13 +501,10 @@ export function ActionPanel({
                     }}
                     aria-label="Open full-size"
                     title="Open full-size"
-                    className="absolute bottom-1.5 right-1.5 w-6 h-6 flex items-center justify-center rounded-md bg-black/60 hover:bg-black/80 backdrop-blur-sm text-white transition-colors"
+                    className="absolute bottom-1.5 right-1.5 z-10 w-6 h-6 flex items-center justify-center rounded-md bg-black/60 hover:bg-black/80 backdrop-blur-sm text-white transition-colors cursor-pointer"
                   >
                     <Maximize2 className="w-3 h-3" />
                   </span>
-                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2 pr-9">
-                    <div className="text-[11px] text-white truncate font-medium">{item.name}</div>
-                  </div>
                 </div>
                 );
               })}

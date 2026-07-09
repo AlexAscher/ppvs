@@ -808,19 +808,34 @@ function PpvCard({
               <Music className="w-10 h-10 text-[#00AFF0]" />
             </div>
           ) : isVideo ? (
-            // preload="metadata" downloads only the moov atom + first frames
-            // (~50-200 KB), never the full stream. The browser renders the
-            // first frame as the tile — crisp and unblurred for BOTH new
-            // and old uploads. This replaces /api/ppv/thumb for videos,
-            // which was returning the BLURRED preview_url as a fallback for
-            // pre-batch-99 rows that lack thumb_url.
-            <video
-              src={`/api/ppv/file/${ppv.id}?kind=original`}
-              preload="metadata"
-              muted
-              playsInline
-              className="absolute inset-0 w-full h-full object-cover pointer-events-none"
-            />
+            ppv.thumb_url ? (
+              // New uploads ship a crisp poster (thumb_url). Serve it via the
+              // immutable-cached thumb endpoint — instant on re-open, zero
+              // repeat egress, same as a photo tile.
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={src}
+                alt={ppv.name}
+                loading="lazy"
+                className="absolute inset-0 w-full h-full object-cover"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = "none";
+                }}
+              />
+            ) : (
+              // Legacy video with no generated poster — render the first frame
+              // live via preload="metadata" (moov atom + first frames only,
+              // ~50-200 KB). Crisp + unblurred, but re-fetched on each mount
+              // since browsers don't cache partial video ranges. These heal as
+              // content is re-uploaded (new uploads always get a thumb_url).
+              <video
+                src={`/api/ppv/file/${ppv.id}?kind=original`}
+                preload="metadata"
+                muted
+                playsInline
+                className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+              />
+            )
           ) : (
             // Static image tile — thumb endpoint returns a crisp 400 px
             // JPEG (batch 99+) or falls through to the original for older

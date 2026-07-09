@@ -68,6 +68,9 @@ export interface PpvItem {
   media_url?: string | null;
   /** Pre-blurred JPEG poster — see chatter-page/ActionPanel for rationale. */
   preview_url?: string | null;
+  /** Crisp cached poster (immutable). Present on new uploads; when set, video
+   *  tiles render it as a static <img> instead of a live <video>. */
+  thumb_url?: string | null;
   group_id?: string | null;
   tags: PpvTag[];
 }
@@ -416,20 +419,33 @@ export function ActionPanel({
                         <Music className="w-8 h-8 text-[#00AFF0]" />
                       </div>
                     ) : isVid ? (
-                      // preload="metadata" downloads only the moov atom +
-                      // first frames (~50-200 KB), never the full stream.
-                      // The browser renders the first frame as the tile's
-                      // still — crisp and unblurred for BOTH new and old
-                      // uploads, unlike the /api/ppv/thumb fallback which
-                      // returns a blurred preview_url for pre-batch-99
-                      // videos that have no thumb_url yet.
-                      <video
-                        src={`/api/ppv/file/${item.id}?kind=original`}
-                        preload="metadata"
-                        muted
-                        playsInline
-                        className="w-full h-full object-cover pointer-events-none"
-                      />
+                      item.thumb_url ? (
+                        // New uploads ship a crisp poster (thumb_url): serve it
+                        // via the immutable-cached thumb endpoint — instant on
+                        // re-open, zero repeat egress, same as a photo tile.
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={`/api/ppv/thumb/${item.id}`}
+                          alt={item.name}
+                          loading="lazy"
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).style.display = "none";
+                          }}
+                        />
+                      ) : (
+                        // Legacy video with no poster — render the first frame
+                        // live (moov atom + first frames only). Crisp, but
+                        // re-fetched each mount since browsers don't cache
+                        // partial video ranges. Heals on re-upload.
+                        <video
+                          src={`/api/ppv/file/${item.id}?kind=original`}
+                          preload="metadata"
+                          muted
+                          playsInline
+                          className="w-full h-full object-cover pointer-events-none"
+                        />
+                      )
                     ) : (
                       // Static image tile — thumb endpoint returns a crisp
                       // 400px JPEG (batch 99+) or falls through to the

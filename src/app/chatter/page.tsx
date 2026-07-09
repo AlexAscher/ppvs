@@ -540,6 +540,7 @@ export default function ChatterPage() {
         price: number | string;
         media_url: string | null;
         preview_url?: string | null;
+        thumb_url?: string | null;
         group_id: string | null;
         review_status?: "pending" | "approved" | "rejected" | null;
       }>)
@@ -554,6 +555,7 @@ export default function ChatterPage() {
           price: row.price,
           media_url: row.media_url,
           preview_url: row.preview_url ?? null,
+          thumb_url: row.thumb_url ?? null,
           group_id: row.group_id,
           tags: linksByItem.get(row.id) ?? [],
         }));

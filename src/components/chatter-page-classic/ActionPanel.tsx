@@ -230,9 +230,16 @@ export function ActionPanel({
   const overStarCap =
     Number.isFinite(parsedPrice) && parsedPrice > MAX_STARS_PER_SEND;
 
+  // Root view = standalone items PLUS any "orphaned" item whose group_id no
+  // longer matches a loaded group (group deleted but item kept the id, or the
+  // groups list is a subset). Without this an approved PPV with a dangling
+  // group_id renders NOWHERE — not under a folder (none matches) and not at
+  // root — which is exactly how a model's items could show in the Vault but
+  // vanish from the send picker.
+  const knownGroupIds = new Set(ppvGroups.map((g) => g.id));
   const scopedItems = currentFolderId
     ? ppvItems.filter((i) => i.group_id === currentFolderId)
-    : ppvItems.filter((i) => !i.group_id);
+    : ppvItems.filter((i) => !i.group_id || !knownGroupIds.has(i.group_id));
 
   const filteredItems =
     activeFilter === "All"

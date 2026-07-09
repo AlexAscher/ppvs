@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import type {
@@ -1629,16 +1629,194 @@ function SignupsView() {
 
 // ─── Shell ──────────────────────────────────────────────────────────────────
 // Wallet tab will be rebuilt for TON in batch 56 (after Stars pay-in lands).
-type Tab = "overview" | "agencies" | "vault" | "payouts" | "signups" | "alerts" | "settings";
+type Tab = "overview" | "agencies" | "vault" | "payouts" | "signups" | "referrals" | "alerts" | "settings";
 const NAV: { id: Tab; label: string; emoji: string }[] = [
   { id: "overview", label: "Overview", emoji: "📊" },
   { id: "agencies", label: "Agencies", emoji: "🏢" },
   { id: "vault", label: "Vault", emoji: "🔒" },
   { id: "payouts", label: "Payouts", emoji: "💸" },
   { id: "signups", label: "Signups", emoji: "📨" },
+  { id: "referrals", label: "Referrals", emoji: "🔗" },
   { id: "alerts", label: "Sales Alerts", emoji: "🔔" },
   { id: "settings", label: "Settings", emoji: "⚙️" },
 ];
+
+type ReferralLink = {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  percent: number;
+  createdAt: string;
+  signups: number;
+  gross: number;
+  owed: number;
+};
+
+function ReferralsView() {
+  const [links, setLinks] = useState<ReferralLink[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [percent, setPercent] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch("/api/admin/referrals");
+      const j = (await r.json()) as { links?: ReferralLink[] };
+      setLinks(j.links ?? []);
+    } catch {
+      setLinks([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function create() {
+    setError("");
+    const pct = Number(percent);
+    if (!name.trim()) return setError("Name is required");
+    if (!Number.isFinite(pct) || pct < 0 || pct > 100) return setError("Percent must be 0–100");
+    setSaving(true);
+    try {
+      const r = await fetch("/api/admin/referrals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim(), description: description.trim(), percent: pct }),
+      });
+      const j = (await r.json()) as { error?: string };
+      if (!r.ok) {
+        setError(j.error || "Failed to create");
+        return;
+      }
+      setName("");
+      setDescription("");
+      setPercent("");
+      await load();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove(id: string) {
+    if (!confirm("Delete this referral link? Agencies already tagged to it keep their tag.")) return;
+    await fetch(`/api/admin/referrals?id=${id}`, { method: "DELETE" });
+    await load();
+  }
+
+  const linkUrl = (code: string) =>
+    `${typeof window !== "undefined" ? window.location.origin : "https://ppvs.io"}/signup?ref=${code}`;
+
+  return (
+    <div className="space-y-6">
+      {/* Create form */}
+      <div className="bg-[#161a22] border border-[#2a2d35] rounded-xl p-5">
+        <h3 className="text-[15px] font-semibold text-white mb-3">Create referral link</h3>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Name (e.g. Instagram promo)"
+            className="md:col-span-2 px-3 py-2 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#00AFF0]"
+          />
+          <input
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Description (optional)"
+            className="px-3 py-2 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#00AFF0]"
+          />
+          <div className="relative">
+            <input
+              value={percent}
+              onChange={(e) => setPercent(e.target.value.replace(/[^0-9.]/g, ""))}
+              inputMode="decimal"
+              placeholder="%"
+              className="w-full px-3 pr-7 py-2 bg-[#1f2937] border border-[#374151] rounded-lg text-[13px] text-white placeholder:text-[#6b7280] focus:outline-none focus:border-[#00AFF0]"
+            />
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[12px] text-[#6b7280]">%</span>
+          </div>
+        </div>
+        {error && <div className="text-[12px] text-red-400 mt-2">{error}</div>}
+        <button
+          type="button"
+          onClick={create}
+          disabled={saving}
+          className="mt-3 px-4 py-2 bg-[#00AFF0] text-white rounded-lg text-[13px] font-semibold hover:bg-[#0098D4] transition-colors disabled:opacity-50"
+        >
+          {saving ? "Creating…" : "Create link"}
+        </button>
+      </div>
+
+      {/* Links table */}
+      <div className="bg-[#161a22] border border-[#2a2d35] rounded-xl overflow-hidden">
+        {loading ? (
+          <div className="p-8 text-center text-[13px] text-[#6b7280]">Loading…</div>
+        ) : links.length === 0 ? (
+          <div className="p-8 text-center text-[13px] text-[#6b7280]">No referral links yet.</div>
+        ) : (
+          <table className="w-full text-[13px]">
+            <thead>
+              <tr className="text-left text-[11px] uppercase tracking-wider text-[#6b7280] border-b border-[#2a2d35]">
+                <th className="px-4 py-3 font-medium">Name</th>
+                <th className="px-4 py-3 font-medium">Link</th>
+                <th className="px-4 py-3 font-medium text-right">%</th>
+                <th className="px-4 py-3 font-medium text-right">Sign-ups</th>
+                <th className="px-4 py-3 font-medium text-right">Gross</th>
+                <th className="px-4 py-3 font-medium text-right">Owed</th>
+                <th className="px-4 py-3" />
+              </tr>
+            </thead>
+            <tbody>
+              {links.map((l) => (
+                <tr key={l.id} className="border-b border-[#2a2d35]/50 last:border-0">
+                  <td className="px-4 py-3">
+                    <div className="text-white font-medium">{l.name}</div>
+                    {l.description && <div className="text-[11px] text-[#6b7280]">{l.description}</div>}
+                  </td>
+                  <td className="px-4 py-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void navigator.clipboard.writeText(linkUrl(l.code));
+                        setCopied(l.code);
+                        setTimeout(() => setCopied((c) => (c === l.code ? null : c)), 1500);
+                      }}
+                      title="Copy signup link"
+                      className="font-mono text-[12px] text-[#00AFF0] hover:underline"
+                    >
+                      {copied === l.code ? "Copied!" : `/signup?ref=${l.code}`}
+                    </button>
+                  </td>
+                  <td className="px-4 py-3 text-right text-[#9ca3af]">{l.percent}%</td>
+                  <td className="px-4 py-3 text-right text-white">{l.signups}</td>
+                  <td className="px-4 py-3 text-right text-white">${l.gross.toFixed(2)}</td>
+                  <td className="px-4 py-3 text-right text-[#10b981] font-semibold">${l.owed.toFixed(2)}</td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      type="button"
+                      onClick={() => void remove(l.id)}
+                      className="text-[12px] text-red-400 hover:text-red-300"
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function AdminClient() {
   const router = useRouter();
@@ -1764,6 +1942,7 @@ export function AdminClient() {
           )}
           {tab === "payouts" && <PayoutsView onOpenAgency={openAgency} />}
           {tab === "signups" && <SignupsView />}
+          {tab === "referrals" && <ReferralsView />}
           {tab === "alerts" && <AdminSalesAlertsView />}
           {tab === "settings" && <SettingsView />}
         </main>

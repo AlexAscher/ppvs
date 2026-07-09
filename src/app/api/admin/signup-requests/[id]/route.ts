@@ -25,14 +25,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const admin = createAdminSupabaseClient();
   const { data: reqRow, error: fetchErr } = await admin
     .from("signup_requests")
-    .select("id, email, password, display_name, role, agency_name, agency_telegram, status")
+    .select("id, email, password, display_name, role, agency_name, agency_telegram, referral_code, status")
     .eq("id", id)
     .maybeSingle();
   if (fetchErr) return Response.json({ error: fetchErr.message }, { status: 500 });
   if (!reqRow) return Response.json({ error: "Request not found" }, { status: 404 });
   const r = reqRow as {
     email: string; password: string | null; display_name: string | null;
-    role: string; agency_name: string | null; agency_telegram: string | null; status: string;
+    role: string; agency_name: string | null; agency_telegram: string | null;
+    referral_code: string | null; status: string;
   };
 
   if (action === "reject") {
@@ -51,7 +52,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const password =
     decrypted ||
     `Ppv-${Math.random().toString(36).slice(2, 8)}${Math.floor(1000 + Math.random() * 9000)}`;
-  const { error: createErr } = await admin.auth.admin.createUser({
+  const { data: created, error: createErr } = await admin.auth.admin.createUser({
     email: r.email,
     password,
     email_confirm: true,
@@ -64,11 +65,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // metadata; not surfaced to chatters.
       agency_telegram:
         r.role === "agency" ? (r.agency_telegram ?? undefined) : undefined,
+      referral_code: r.referral_code ?? undefined,
     },
   });
   if (createErr) {
     return Response.json({ error: `Could not create account: ${createErr.message}` }, { status: 400 });
   }
+
+  // Tag the new agency to its referral code so the admin Referrals tab can
+  // attribute this agency's gross to the referrer. Best-effort: a failure
+  // here must not block the approval (the account already exists).
+  if (r.role === "agency" && r.referral_code && created?.user?.id) {
+    const { error: refErr } = await admin
+      .from("referral_signups")
+      .upsert(
+        { referral_code: r.referral_code, agency_user_id: created.user.id },
+        { onConflict: "referral_code,agency_user_id" },
+      );
+    if (refErr) {
+      console.warn("[signup approve] referral tag failed:", refErr.message);
+    }
+  }
+
   await admin
     .from("signup_requests")
     .update({ status: "approved", reviewed_at: new Date().toISOString(), password: null })

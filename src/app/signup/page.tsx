@@ -58,6 +58,13 @@ export default function SignupPage() {
   // workspace's auth bounce.
   const [backHref, setBackHref] = useState("/");
   useEffect(() => { setBackHref(homeUrl()); }, []);
+  // Referral code from /signup?ref=CODE — captured on mount and carried into
+  // the signup request so the admin Referrals tab can attribute this agency.
+  const [referralCode, setReferralCode] = useState<string | null>(null);
+  useEffect(() => {
+    const code = new URLSearchParams(window.location.search).get("ref");
+    if (code) setReferralCode(code.trim().toUpperCase().slice(0, 32));
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -77,6 +84,7 @@ export default function SignupPage() {
         role,
         agencyName: role === "agency" ? agencyName : null,
         agencyTelegram: role === "agency" ? agencyTelegram : null,
+        referralCode: role === "agency" ? referralCode : null,
       }),
     });
     const body = (await res.json().catch(() => ({}))) as { error?: string };

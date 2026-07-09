@@ -32,6 +32,7 @@ export async function POST(req: NextRequest) {
     role?: string;
     agencyName?: string | null;
     agencyTelegram?: string | null;
+    referralCode?: string | null;
   } | null;
   const email = (body?.email ?? "").trim().toLowerCase();
   if (!email || !/^[^@]+@[^@]+\.[^@]+$/.test(email)) {
@@ -56,6 +57,14 @@ export async function POST(req: NextRequest) {
   const rawTg = role === "agency" ? (body?.agencyTelegram ?? "").trim() : "";
   const normalizedTg = rawTg.replace(/^@+/, "").trim();
   const agencyTelegram = normalizedTg ? `@${normalizedTg}` : null;
+  // Referral code from /signup?ref=CODE. Only meaningful for agencies —
+  // that's who has GMV to share. Uppercased to match our generated codes;
+  // stored as-is (validated against referral_links at approval-report time,
+  // not here — a stale code just tags nothing).
+  const referralCode =
+    role === "agency" && typeof body?.referralCode === "string"
+      ? body.referralCode.trim().toUpperCase().slice(0, 32) || null
+      : null;
 
   const admin = createAdminSupabaseClient();
   const { data, error } = await admin
@@ -67,6 +76,7 @@ export async function POST(req: NextRequest) {
       role,
       agency_name: agencyName,
       agency_telegram: agencyTelegram,
+      referral_code: referralCode,
       status: "pending",
     })
     .select("id")

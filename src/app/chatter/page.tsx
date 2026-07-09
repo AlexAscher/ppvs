@@ -1860,9 +1860,12 @@ export default function ChatterPage() {
     }
     return list.map((d) => ({
       id: d.id,
-      // Chatters see fan first+last name from Telegram (`title`); only the
-      // agency in chatter view sees the actual @handle.
-      username: role === "chatter" ? d.title : (d.username ?? d.title),
+      // Chatters see the fan's first+last name (`title`). The agency sees the
+      // real @handle when the fan has one, and the plain name (NO fake `@`)
+      // when they don't — the value is rendered verbatim (hideUsername), so we
+      // bake the `@` in here rather than prefixing it unconditionally.
+      username:
+        role === "chatter" ? d.title : d.username ? `@${d.username}` : d.title,
       lastMessage: d.lastMessage || "—",
       time: formatTime(d.lastMessageDate),
       unread: d.unreadCount ?? 0,
@@ -2038,7 +2041,12 @@ export default function ChatterPage() {
     else if (activity?.online) status = "online";
     return {
       id: source.id,
-      username: role === "chatter" ? source.title : (source.username ?? source.title),
+      username:
+        role === "chatter"
+          ? source.title
+          : source.username
+            ? `@${source.username}`
+            : source.title,
       lastMessage: source.lastMessage || "—",
       time: formatTime(source.lastMessageDate),
       unread: source.unreadCount ?? 0,
@@ -2318,7 +2326,7 @@ export default function ChatterPage() {
           selectedChat={selectedDialog?.id ?? ""}
           onSelectChat={handleDialogSelect}
           selected={selectedChatItem}
-          hideUsername={role === "chatter"}
+          hideUsername={true}
           modelId={selectedModelId}
           readOutboxMaxId={selectedDialog?.readOutboxMaxId}
           groups={fanGroups}

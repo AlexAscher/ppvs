@@ -243,6 +243,16 @@ function MediaBubble({
   // already — the inline preview is cheap *and* shows what was actually
   // sent.
   const [hqLoaded, setHqLoaded] = useState(false);
+  // Fan-sent images/videos are blurred by default. Pressing "View" peeks the
+  // media unblurred for 2 seconds, then it re-blurs. Only applies to inbound
+  // media (fan → us); our own outbound stays visible. Videos share the same
+  // peek behaviour on the poster frame.
+  const [peekVisible, setPeekVisible] = useState(false);
+  useEffect(() => {
+    if (!peekVisible) return;
+    const t = setTimeout(() => setPeekVisible(false), 2000);
+    return () => clearTimeout(t);
+  }, [peekVisible]);
 
   if (media.type === "sticker") {
     const size = 128;
@@ -300,6 +310,10 @@ function MediaBubble({
     const w = 240;
     const h = Math.round(w / Math.max(0.6, Math.min(1.8, aspect)));
     const hqUrl = `${media.fullUrl}&quality=thumb`;
+    // Blur fan-sent media by default. Peek reveals it for 2s, then re-blurs.
+    // Our own outbound is never blurred. The lightbox tap still shows the
+    // original (peek is a preview affordance, not a permission gate).
+    const isBlurred = !isChatter && !peekVisible;
     return (
       <button
         type="button"
@@ -312,7 +326,8 @@ function MediaBubble({
           <img
             src={media.thumbDataUrl}
             alt=""
-            className="absolute inset-0 w-full h-full object-cover"
+            className="absolute inset-0 w-full h-full object-cover transition-[filter] duration-200"
+            style={{ filter: isBlurred ? "blur(22px)" : "none" }}
             draggable={false}
           />
         ) : (
@@ -322,13 +337,43 @@ function MediaBubble({
         <img
           src={hqUrl}
           alt=""
-          className="absolute inset-0 w-full h-full object-cover transition-opacity duration-300"
-          style={{ opacity: hqLoaded ? 1 : 0 }}
+          className="absolute inset-0 w-full h-full object-cover transition-[opacity,filter] duration-200"
+          style={{
+            opacity: hqLoaded ? 1 : 0,
+            filter: isBlurred ? "blur(22px)" : "none",
+          }}
           onLoad={() => setHqLoaded(true)}
           onError={() => { /* keep stripped thumb if HQ fails */ }}
           draggable={false}
         />
-        {media.type === "video" && (
+        {isBlurred && (
+          <>
+            {/* Slight scrim so the View button reads over any thumbnail. */}
+            <div className="absolute inset-0 bg-black/25 z-10 pointer-events-none" />
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(e) => {
+                e.stopPropagation();
+                setPeekVisible(true);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  setPeekVisible(true);
+                }
+              }}
+              className="absolute inset-0 z-20 flex items-center justify-center cursor-pointer"
+              aria-label="Reveal image for 2 seconds"
+            >
+              <span className="px-4 py-1.5 rounded-full bg-black/70 border border-white/25 backdrop-blur-sm text-white text-[13px] font-semibold tracking-wide">
+                View
+              </span>
+            </span>
+          </>
+        )}
+        {media.type === "video" && !isBlurred && (
           <>
             <div className="absolute inset-0 flex items-center justify-center z-10">
               <div className="w-12 h-12 rounded-full bg-black/55 border border-white/15 flex items-center justify-center">

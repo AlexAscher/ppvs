@@ -92,25 +92,17 @@ async function buildConversations7d(
   }
   const cutoff = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 6)).toISOString();
   try {
-    // Rule: a "conversation started" is a fan whose first message we have on
-    // record AND who received a reply from the creator/agency (auto-reply
-    // counts as a reply because the agency configured it; a fan reading our
-    // reply or paying for a PPV proves an outbound existed).
-    // Bucketed by the fan's first-message date (fans.created_at).
+    // Rule: a "conversation started" = a fan who wrote to this creator for
+    // the FIRST time — one point per unique peer on the day their fans row
+    // was created. Subsequent messages from the same fan never re-count.
+    // fans is UNIQUE(model_id, peer_id) so counting rows == counting distinct
+    // new peers per day.
     const { data } = await admin
       .from("fans")
-      .select("created_at, auto_replied_at, last_read_at, total_spent")
+      .select("created_at")
       .in("model_id", modelIds)
       .gte("created_at", cutoff);
-    for (const r of (data ?? []) as {
-      created_at: string;
-      auto_replied_at: string | null;
-      last_read_at: string | null;
-      total_spent: number | string | null;
-    }[]) {
-      const wasReplied =
-        !!r.auto_replied_at || !!r.last_read_at || Number(r.total_spent ?? 0) > 0;
-      if (!wasReplied) continue;
+    for (const r of (data ?? []) as { created_at: string }[]) {
       const key = new Date(r.created_at).toISOString().slice(0, 10);
       if (buckets.has(key)) buckets.set(key, (buckets.get(key) ?? 0) + 1);
     }

@@ -133,9 +133,27 @@ export async function GET(
       auth.model.api_hash,
       async (tg) => {
         const selfId = await getSelfId(tg, modelId);
-        const raw = await withResolvedPeer(tg, peerId, accessHash, (peer) =>
+        let raw = await withResolvedPeer(tg, peerId, accessHash, (peer) =>
           tg.getMessages(peer, { limit: 50 }),
         );
+        // COLD-SESSION HEAL (permanent fix for "dialogs show but the
+        // conversation is empty after the model sat idle"): a freshly
+        // reconnected gramJS client has an empty entity cache, so getHistory
+        // returns [] for a peer that really has messages — the client only
+        // stays warm for models with auto-reply on (keepalive), which is why
+        // it hit some agencies and not others. When we get an empty result we
+        // warm the entity cache with a dialogs pull and retry the history
+        // ONCE. Only runs on the empty path, so warm sessions pay nothing.
+        if (raw.length === 0) {
+          try {
+            await tg.getDialogs({ limit: 100 });
+            raw = await withResolvedPeer(tg, peerId, accessHash, (peer) =>
+              tg.getMessages(peer, { limit: 50 }),
+            );
+          } catch {
+            /* keep empty — genuinely no history, or a transient we can't heal */
+          }
+        }
         const msgs = raw.filter((m): m is Api.Message => m instanceof Api.Message);
         // Throttled diagnostic (≤1/model/30s). If direction is still wrong,
         // this shows whether getHistory carries fromId and how it lines up

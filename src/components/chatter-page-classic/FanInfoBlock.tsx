@@ -21,6 +21,11 @@ interface Props {
   modelId: string | null;
   peerId: string | null;
   fan: FanRow | null;
+  /** Caller role. Chatters must NEVER see the fan's @handle — they only see
+   *  the display name. The agency sees the real @handle when the fan has one.
+   *  When omitted (legacy call sites), defaults to hiding the handle for
+   *  safety. */
+  role?: "agency" | "chatter" | null;
 }
 
 type SalesStats = {
@@ -28,7 +33,7 @@ type SalesStats = {
   avgPpv: number;
 };
 
-export function FanInfoBlock({ modelId, peerId, fan }: Props) {
+export function FanInfoBlock({ modelId, peerId, fan, role = null }: Props) {
   const [salesStats, setSalesStats] = useState<SalesStats | null>(null);
   const [bio, setBio] = useState(fan?.bio ?? "");
   const [birthdate, setBirthdate] = useState(fan?.birthdate ?? "");
@@ -129,15 +134,23 @@ export function FanInfoBlock({ modelId, peerId, fan }: Props) {
         <div className="text-[10px] text-[#6b7280] uppercase tracking-wide flex items-center justify-between gap-2">
           <span className="flex items-baseline gap-2 min-w-0">
             <span>Profile</span>
-            {/* Fan name next to the section header — `@username` when the
-                fan has one, otherwise the Telegram display name. Chatters
-                get a persistent "who is this" anchor while editing the
-                profile fields. */}
-            {(fan.telegram_username || fan.telegram_name) && (
-              <span className="normal-case text-[12px] text-white font-medium tracking-normal truncate">
-                {fan.telegram_username ? `@${fan.telegram_username}` : fan.telegram_name}
-              </span>
-            )}
+            {/* Fan name next to the section header. Agency sees `@username`
+                when the fan has one; chatters ALWAYS see the display name
+                only (they must never see the fan's Telegram handle — same
+                rule as the chat list / header hideUsername). */}
+            {(() => {
+              const showHandle =
+                role === "agency" && !!fan.telegram_username;
+              const label = showHandle
+                ? `@${fan.telegram_username}`
+                : fan.telegram_name || null;
+              if (!label) return null;
+              return (
+                <span className="normal-case text-[12px] text-white font-medium tracking-normal truncate">
+                  {label}
+                </span>
+              );
+            })()}
           </span>
           {basicsMsg && (
             <span

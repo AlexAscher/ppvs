@@ -840,7 +840,7 @@ function DashboardTab() {
           {/* Creators Breakdown — 1 row visible, scrolls if more. */}
           <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-5 flex flex-col">
             <h2 className="text-[15px] font-semibold text-white mb-3">Creators Breakdown 👥</h2>
-            <div className="overflow-y-auto space-y-2 pr-2 custom-scrollbar" style={{ maxHeight: 68 }}>
+            <div className="overflow-y-auto space-y-2 pr-2 custom-scrollbar" style={{ maxHeight: 204 }}>
               {(stats?.models ?? []).length === 0 ? (
                 <div className="py-3 text-center text-[12px] text-[#6b7280]">
                   {stats ? "No creators connected yet." : "Loading…"}
@@ -867,7 +867,7 @@ function DashboardTab() {
           {/* Top Chatters — 1 row visible, scrolls if more. */}
           <div className="bg-[#161a22] border border-[#2a2d35] rounded-lg p-5 flex flex-col">
             <h2 className="text-[15px] font-semibold text-white mb-3">Top Chatters ✍️</h2>
-            <div className="overflow-y-auto space-y-2 pr-2 custom-scrollbar" style={{ maxHeight: 68 }}>
+            <div className="overflow-y-auto space-y-2 pr-2 custom-scrollbar" style={{ maxHeight: 204 }}>
               {(stats?.chatters ?? []).length === 0 ? (
                 <div className="py-3 text-center text-[12px] text-[#6b7280]">
                   {stats ? "No chatters connected yet." : "Loading…"}

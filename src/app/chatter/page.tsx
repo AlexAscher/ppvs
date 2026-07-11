@@ -2533,6 +2533,7 @@ export default function ChatterPage() {
         <ActionPanel
           activeTab={activeTab}
           onTabChange={setActiveTab}
+          role={role}
           ppvItems={ppvItems}
           ppvTags={ppvTags}
           ppvGroups={ppvGroups}
@@ -2627,6 +2628,7 @@ export default function ChatterPage() {
         fan={fan}
         displayName={selectedDialog?.title ?? "User"}
         username={selectedDialog?.username ?? null}
+        role={role}
       />
       <DeleteMessageModal
         open={!!deletingMessage}

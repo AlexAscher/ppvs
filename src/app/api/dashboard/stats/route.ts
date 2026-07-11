@@ -99,16 +99,35 @@ async function buildConversations7d(
   const cutoff = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 6)).toISOString();
   try {
     // Rule: a "conversation started" = a fan who wrote to this creator for
-    // the FIRST time — one point per unique peer on the day their fans row
-    // was created. Subsequent messages from the same fan never re-count.
-    // fans is UNIQUE(model_id, peer_id) so counting rows == counting distinct
-    // new peers per day.
+    // the FIRST time — one point per unique peer on the day they became a
+    // fan. Filter OUT historical backfill: on first connect, the dialog scan
+    // creates a fans row for every existing conversation (all with created_at
+    // = today), even for fans whose actual last message is months old. Those
+    // aren't "new conversations" — they're the pre-existing inbox.
+    //
+    // A backfilled fan is spotted by comparing fans.last_response_at (the
+    // date of their most-recent inbound message we've seen) to
+    // fans.created_at: if last_response_at is more than 1 hour BEFORE
+    // created_at, they were captured retroactively → skip. A genuine new fan
+    // has last_response_at ≈ created_at (they just messaged us). Fans with
+    // no last_response_at yet are skipped defensively — a real inbound
+    // always populates it within the same dialog poll that captured the fan.
     const { data } = await admin
       .from("fans")
-      .select("created_at")
+      .select("created_at, last_response_at")
       .in("model_id", modelIds)
       .gte("created_at", cutoff);
-    for (const r of (data ?? []) as { created_at: string }[]) {
+    for (const r of (data ?? []) as {
+      created_at: string;
+      last_response_at: string | null;
+    }[]) {
+      if (!r.last_response_at) continue;
+      const createdMs = new Date(r.created_at).getTime();
+      const respondedMs = new Date(r.last_response_at).getTime();
+      // Backfill guard: last inbound message is much older than capture. A
+      // 1-hour tolerance absorbs poll-order jitter without letting a
+      // months-old conversation pass.
+      if (createdMs - respondedMs > 60 * 60 * 1000) continue;
       const key = new Date(r.created_at).toISOString().slice(0, 10);
       if (buckets.has(key)) buckets.set(key, (buckets.get(key) ?? 0) + 1);
     }

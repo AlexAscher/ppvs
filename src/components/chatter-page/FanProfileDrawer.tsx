@@ -44,6 +44,9 @@ interface Props {
   fan: FanRow | null;
   displayName: string;
   username: string | null;
+  /** Caller role. Chatters must NEVER see the fan's @handle (same rule as
+   *  the chat list / header). Defaults to hidden. */
+  role?: "agency" | "chatter" | null;
 }
 
 function formatDate(iso: string | null): string {
@@ -81,6 +84,7 @@ export function FanProfileDrawer({
   fan,
   displayName,
   username,
+  role = null,
 }: Props) {
   const [history, setHistory] = useState<HistoryRow[] | null>(null);
   const [notes, setNotes] = useState<FanNoteRow[] | null>(null);
@@ -189,7 +193,9 @@ export function FanProfileDrawer({
               <div className="text-[14px] font-semibold text-white truncate">
                 {displayName || "User"}
               </div>
-              {username && (
+              {/* Handle is only shown to the AGENCY. Chatters never see the
+                  fan's Telegram @handle (same rule as chat list / header). */}
+              {role === "agency" && username && (
                 <div className="text-[12px] text-[#9ca3af] truncate">@{username}</div>
               )}
               <div className="text-[10px] text-[#6b7280] mt-1 flex items-center gap-1">

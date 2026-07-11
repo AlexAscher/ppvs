@@ -143,6 +143,9 @@ interface ActionPanelProps {
   fanInfoModelId?: string | null;
   fanInfoPeerId?: string | null;
   fan?: FanRow | null;
+  /** Caller role. Threads down to FanInfoBlock so chatters never see the
+   *  fan's @handle (agency only). */
+  role?: "agency" | "chatter" | null;
 }
 
 export type StatsView = {
@@ -201,6 +204,7 @@ export function ActionPanel({
   quickEmojis,
   fanInfoModelId = null,
   fanInfoPeerId = null,
+  role = null,
   fan = null,
 }: ActionPanelProps) {
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
@@ -820,6 +824,7 @@ export function ActionPanel({
               modelId={fanInfoModelId}
               peerId={fanInfoPeerId}
               fan={fan}
+              role={role}
             />
             <div className="border-t border-[#2a2d35] pt-3 text-[10px] text-[#6b7280] uppercase tracking-wide">
               Notes

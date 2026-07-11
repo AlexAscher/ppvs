@@ -311,16 +311,25 @@ export async function POST(req: NextRequest) {
             media: items,
           });
           console.log(`[ppv/send native] sent message=${out.messageId} via connection=${conn.connectionId}`);
+          // Persist the message id + send_channel so a later Delete/Edit knows
+          // which Telegram message to touch and via which API. Columns are
+          // nullable; if the migration hasn't run yet the update silently
+          // drops them and delete-path falls back to DB-only.
           await admin
             .from("ppv_sends")
-            .update({ status: "sent", error: null })
+            .update({
+              status: "sent",
+              error: null,
+              telegram_msg_ids: [out.messageId],
+              send_channel: "business",
+            })
             .eq("id", sendCtx.sendId);
           return; // Done — Telegram handles blur + unlock.
         }
 
         // Free sends only: push originals directly (paid sends are native-only
         // and have already returned or thrown above).
-        await withTelegramClient(
+        const freeResult = await withTelegramClient(
           sendCtx.modelId,
           sendCtx.session_string,
           sendCtx.api_id,
@@ -330,7 +339,7 @@ export async function POST(req: NextRequest) {
             // so multi-file free sends arrive as one grouped message
             // instead of N individual messages. Cached file_ids are
             // bypassed for this path — small cost, much better UX.
-            await sendOriginalsAlbum(
+            return sendOriginalsAlbum(
               tg,
               sendCtx.peerId,
               sendCtx.accessHash,
@@ -355,7 +364,17 @@ export async function POST(req: NextRequest) {
 
         await admin
           .from("ppv_sends")
-          .update({ status: "delivered", delivered_at: new Date().toISOString(), error: null })
+          .update({
+            status: "delivered",
+            delivered_at: new Date().toISOString(),
+            error: null,
+            // Persist captured message ids + channel so a later Delete/Edit
+            // can reach the actual Telegram messages via MTProto. Empty
+            // array (only fully-cached SendMedia path, rare) → best-effort
+            // DB-only delete later.
+            telegram_msg_ids: freeResult.messageIds.length > 0 ? freeResult.messageIds : null,
+            send_channel: "mtproto",
+          })
           .eq("id", sendCtx.sendId);
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : "Failed";

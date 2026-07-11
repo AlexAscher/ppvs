@@ -179,3 +179,58 @@ export async function sendPaidMediaAsBusiness(params: {
   }
   return { messageId: j.result.message_id };
 }
+
+/**
+ * Delete a message the bot previously sent via a business connection. Wraps
+ * the bot API `deleteBusinessMessages` (multi-id in one call). Non-throwing:
+ * returns { ok: false, description } on failure so callers can distinguish
+ * "message already gone" from "network glitch" without bringing down the
+ * whole delete operation.
+ */
+export async function deleteBusinessMessages(params: {
+  connectionId: string;
+  messageIds: number[];
+}): Promise<{ ok: boolean; description?: string }> {
+  const { connectionId, messageIds } = params;
+  if (messageIds.length === 0) return { ok: true };
+  const form = new FormData();
+  form.set("business_connection_id", connectionId);
+  form.set("message_ids", JSON.stringify(messageIds));
+  const res = await fetch(`${API}/bot${botToken()}/deleteBusinessMessages`, {
+    method: "POST",
+    body: form,
+    cache: "no-store",
+  });
+  const j = (await res.json().catch(() => null)) as
+    | { ok?: boolean; description?: string }
+    | null;
+  return { ok: !!j?.ok, description: j?.description };
+}
+
+/**
+ * Edit the caption of a paid-media message the bot sent via a business
+ * connection. Telegram lets us change the caption text but NOT the media
+ * itself (that's a hard protocol limit for paid media, not our choice).
+ */
+export async function editBusinessMessageCaption(params: {
+  connectionId: string;
+  chatId: string;
+  messageId: number;
+  caption: string;
+}): Promise<{ ok: boolean; description?: string }> {
+  const { connectionId, chatId, messageId, caption } = params;
+  const form = new FormData();
+  form.set("business_connection_id", connectionId);
+  form.set("chat_id", String(chatId));
+  form.set("message_id", String(messageId));
+  form.set("caption", caption.slice(0, 1024));
+  const res = await fetch(`${API}/bot${botToken()}/editMessageCaption`, {
+    method: "POST",
+    body: form,
+    cache: "no-store",
+  });
+  const j = (await res.json().catch(() => null)) as
+    | { ok?: boolean; description?: string }
+    | null;
+  return { ok: !!j?.ok, description: j?.description };
+}

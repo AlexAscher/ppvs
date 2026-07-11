@@ -336,7 +336,7 @@ async function sendAutoReply(
       } else {
         const isVideo = (u: string) => /\.(mp4|mov|m4v|webm|mkv)(\?|$)/i.test(u);
         try {
-          await sendPaidMediaAsBusiness({
+          const arOut = await sendPaidMediaAsBusiness({
             connectionId: conn.connectionId,
             chatId: peerId,
             stars,
@@ -347,6 +347,20 @@ async function sendAutoReply(
               url: m.mediaUrl,
             })),
           });
+          // Persist the message id + send channel so a later Delete/Edit
+          // on this auto-reply PPV can reach the real Telegram message.
+          if (send) {
+            try {
+              const admin2 = createAdminSupabaseClient();
+              await admin2
+                .from("ppv_sends")
+                .update({
+                  telegram_msg_ids: [arOut.messageId],
+                  send_channel: "business",
+                })
+                .eq("id", send.sendId);
+            } catch { /* best-effort */ }
+          }
           return;
         } catch (e) {
           console.error(
@@ -381,10 +395,28 @@ async function sendAutoReply(
     if (text) await client.sendMessage(peerId, { message: text, linkPreview: false });
     return;
   }
-  await client.sendFile(peerId, {
+  const arAlbum = (await client.sendFile(peerId, {
     file: files,
     caption: text || "",
-  });
+  })) as unknown as { id?: number } | { id?: number }[];
+  // Persist message ids + channel so Delete/Edit later can reach the real
+  // Telegram messages via MTProto. Best-effort — a failure here doesn't
+  // undo the successful send.
+  if (send) {
+    const arr = Array.isArray(arAlbum) ? arAlbum : [arAlbum];
+    const ids = arr
+      .map((m) => (typeof m?.id === "number" ? m.id : null))
+      .filter((n): n is number => n !== null);
+    if (ids.length > 0) {
+      try {
+        const admin3 = createAdminSupabaseClient();
+        await admin3
+          .from("ppv_sends")
+          .update({ telegram_msg_ids: ids, send_channel: "mtproto" })
+          .eq("id", send.sendId);
+      } catch { /* best-effort */ }
+    }
+  }
 }
 
 /**

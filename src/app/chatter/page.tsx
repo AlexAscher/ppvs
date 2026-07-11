@@ -119,6 +119,11 @@ type PpvBubbleItem = { orig: string; poster: string; kind: "photo" | "video" };
 /** Rendered PPV bubble. `readMaxId` is the max real Telegram message id this
  *  send maps to (for ✓/✓✓ ticks); 0/undefined = just-sent (single check). */
 type PpvBubblePayload = {
+  /** ppv_sends.code — populated when the bubble comes from a real DB row
+   *  (persisted via chat-events). Null for the client-side optimistic bubble
+   *  a chatter briefly sees between clicking Send and the row landing. Used
+   *  by the right-click menu to call /api/ppv/sends/{code} for Delete/Edit. */
+  code?: string | null;
   items: PpvBubbleItem[];
   caption: string;
   label: string;
@@ -1550,6 +1555,69 @@ export default function ChatterPage() {
     });
   }
 
+  /**
+   * Delete a PPV bubble via /api/ppv/sends/{code}. Server tries to remove the
+   * Telegram messages too when telegram_msg_ids were captured at send time
+   * (post-100l sends); for pre-100l bubbles it drops just the DB row (the
+   * virtual bubble disappears from this view) and leaves Telegram alone.
+   * Optimistic: remove from the local ppv-sends state immediately.
+   */
+  async function handleDeletePpv(code: string) {
+    if (!code) return;
+    if (typeof window !== "undefined" && !window.confirm("Delete this PPV? This will try to remove it from the fan's chat too.")) {
+      return;
+    }
+    // Optimistically hide the bubble from the current dialog view.
+    const before = ppvVirtuals;
+    setPpvVirtuals((prev) => prev.filter((v) => v.code !== code));
+    try {
+      const r = await fetch(`/api/ppv/sends/${encodeURIComponent(code)}`, {
+        method: "DELETE",
+      });
+      if (!r.ok) throw new Error(String(r.status));
+    } catch (e) {
+      // Roll back.
+      setPpvVirtuals(before);
+      if (typeof window !== "undefined") {
+        window.alert(`Failed to delete: ${e instanceof Error ? e.message : "unknown error"}`);
+      }
+    }
+  }
+
+  /**
+   * Edit a PPV bubble's caption via /api/ppv/sends/{code}. Uses a lightweight
+   * window.prompt for the input — matches how DeleteMessageModal was skipped
+   * in favour of a modal only where needed. Only works for post-100l sends
+   * (where telegram_msg_ids exists); the server returns 400 for legacy rows
+   * and we surface that as a friendly alert.
+   */
+  async function handleEditPpvCaption(code: string, currentCaption: string) {
+    if (!code) return;
+    if (typeof window === "undefined") return;
+    const next = window.prompt("Edit PPV caption:", currentCaption ?? "");
+    if (next == null) return; // user cancelled
+    if (next === currentCaption) return; // no change
+    try {
+      const r = await fetch(`/api/ppv/sends/${encodeURIComponent(code)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ caption: next }),
+      });
+      const j = (await r.json().catch(() => ({}))) as { error?: string };
+      if (!r.ok) {
+        window.alert(j.error || `HTTP ${r.status}`);
+        return;
+      }
+      // Reflect the new caption in the local state so the bubble updates
+      // without waiting on the next chat-events poll.
+      setPpvVirtuals((prev) =>
+        prev.map((v) => (v.code === code ? { ...v, caption: next } : v)),
+      );
+    } catch (e) {
+      window.alert(`Failed to edit: ${e instanceof Error ? e.message : "unknown error"}`);
+    }
+  }
+
   async function confirmDeleteMessage(revoke: boolean) {
     if (!selectedModelId || !selectedDialog || !deletingMessage) return;
     const modelId = selectedModelId;
@@ -1647,7 +1715,10 @@ export default function ChatterPage() {
           isOutgoing: true,
           groupedId: null,
           media: null,
-          ppv: { items: bubbleItems, caption: capturedCaption.trim(), label },
+          // Optimistic bubble: no code yet (server assigns it in the POST
+          // response). Once the real ppv_sends row lands via chat-events the
+          // real bubble replaces this one with the code populated.
+          ppv: { code: null, items: bubbleItems, caption: capturedCaption.trim(), label },
         };
         setApiMessages((prev) => [...prev, optimisticMsg]);
       }
@@ -2097,7 +2168,7 @@ export default function ChatterPage() {
         media: null,
         replyPreview: null,
         groupedId: null,
-        ppv: { items: v.items, caption: v.caption?.trim() || "", label, readMaxId: v.readMaxId },
+        ppv: { code: v.code, items: v.items, caption: v.caption?.trim() || "", label, readMaxId: v.readMaxId },
         _sortKey: v.createdAtSec,
       };
     });
@@ -2522,6 +2593,8 @@ export default function ChatterPage() {
           onReplyWithQuote={handleReplyWithQuote}
           onStartEdit={handleStartEdit}
           onDeleteMessage={handleDeleteMessage}
+          onDeletePpv={handleDeletePpv}
+          onEditPpvCaption={handleEditPpvCaption}
           mobileView={mobileView}
           onMobileBack={() => setMobileView("list")}
         />

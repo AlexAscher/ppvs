@@ -591,6 +591,12 @@ export type DeliveryResult = {
   total: number;
   delivered: number;
   failed: number;
+  /** Telegram message ids of every message we successfully sent. Populated
+   *  by sendOriginalsAlbum's upload path (single or album). Persisted on the
+   *  originating ppv_sends row so a later Delete/Edit can reach into
+   *  Telegram. Empty for legacy cached SendMedia sends and any chunk that
+   *  raised — callers treat "empty" as "best-effort DB-only delete". */
+  messageIds: number[];
 };
 
 export async function sendOriginalsAlbum(
@@ -605,7 +611,12 @@ export async function sendOriginalsAlbum(
 ): Promise<DeliveryResult> {
   const peer = buildPeer(peerId, accessHash);
   const filtered = items.filter((it) => !!it.mediaUrl);
-  const result: DeliveryResult = { total: filtered.length, delivered: 0, failed: 0 };
+  const result: DeliveryResult = {
+    total: filtered.length,
+    delivered: 0,
+    failed: 0,
+    messageIds: [],
+  };
   if (filtered.length === 0) return result;
 
   const trimmed = caption.trim();
@@ -720,7 +731,9 @@ export async function sendOriginalsAlbum(
             caption: chunkCaption,
             scheduleDate,
           });
-          const cf = extractCachedFile(sent as Api.Message);
+          const msg = sent as Api.Message;
+          if (typeof msg.id === "number") result.messageIds.push(msg.id);
+          const cf = extractCachedFile(msg);
           if (cf && onCache) {
             await onCache(chunk[0].ppvId, serializeCachedFile(cf));
           }
@@ -731,6 +744,9 @@ export async function sendOriginalsAlbum(
             scheduleDate,
           })) as unknown as Api.Message | Api.Message[];
           const arr = Array.isArray(sent) ? sent : [sent];
+          for (const m of arr) {
+            if (typeof m.id === "number") result.messageIds.push(m.id);
+          }
           if (arr.length === chunk.length && onCache) {
             for (let j = 0; j < chunk.length; j++) {
               const cf = extractCachedFile(arr[j]);

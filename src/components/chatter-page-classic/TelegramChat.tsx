@@ -88,6 +88,9 @@ export interface Message {
    *  Video items show a first-frame + play overlay; `readMaxId` (the max real
    *  Telegram message id this send maps to) drives the ✓/✓✓ ticks. */
   ppv?: {
+    /** ppv_sends.code — passed to the /api/ppv/sends/{code} endpoint for
+     *  Delete / Edit-caption from the right-click menu. */
+    code?: string | null;
     items: { orig: string; poster: string; kind: "photo" | "video" }[];
     caption: string;
     label: string;
@@ -202,6 +205,10 @@ interface TelegramChatProps {
   ) => void;
   onStartEdit: (id: number, currentText: string) => void;
   onDeleteMessage: (id: number) => void;
+  /** Right-click on a PPV bubble → Delete / Edit caption. Optional so
+   *  consumers that don't wire them (admin previews) get no menu. */
+  onDeletePpv?: (code: string) => void;
+  onEditPpvCaption?: (code: string, currentCaption: string) => void;
   mobileView: "list" | "chat" | "actions";
   onMobileBack: () => void;
 }
@@ -683,6 +690,8 @@ export function TelegramChat({
   onReplyWithQuote,
   onStartEdit,
   onDeleteMessage,
+  onDeletePpv,
+  onEditPpvCaption,
   mobileView,
   onMobileBack,
   hideUsername = false,
@@ -719,6 +728,19 @@ export function TelegramChat({
       window.removeEventListener("scroll", close, true);
     };
   }, [groupMenu]);
+
+  // Right-click menu on a PPV bubble: Delete / Edit caption.
+  const [ppvMenu, setPpvMenu] = useState<{ code: string; caption: string; x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (!ppvMenu) return;
+    const close = () => setPpvMenu(null);
+    window.addEventListener("click", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [ppvMenu]);
 
   // Right-click menu on a chat row: archive / un-archive + "Move to <group>".
   const [chatMenu, setChatMenu] = useState<{ id: string; x: number; y: number } | null>(null);
@@ -1188,6 +1210,17 @@ export function TelegramChat({
                       style={single
                         ? { width: singleTileW + 8 }
                         : { maxWidth: cols * 100 + (cols - 1) * 2 + 8 }}
+                      onContextMenu={(e) => {
+                        if (!onDeletePpv && !onEditPpvCaption) return;
+                        if (!ppv.code) return;
+                        e.preventDefault();
+                        setPpvMenu({
+                          code: ppv.code,
+                          caption: ppv.caption ?? "",
+                          x: e.clientX,
+                          y: e.clientY,
+                        });
+                      }}
                     >
                       {items.length > 0 && (
                         <div
@@ -1755,6 +1788,41 @@ export function TelegramChat({
           >
             Delete “{groupMenu.name}”
           </button>
+        </div>
+      )}
+
+      {/* PPV bubble right-click → Edit caption / Delete. Renders only when
+          the parent wired at least one of the handlers. */}
+      {ppvMenu && (onDeletePpv || onEditPpvCaption) && (
+        <div
+          className="fixed z-[100] bg-[#1f2937] border border-[#374151] rounded-lg shadow-2xl py-1 min-w-[180px]"
+          style={{ left: ppvMenu.x, top: ppvMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {onEditPpvCaption && (
+            <button
+              type="button"
+              onClick={() => {
+                onEditPpvCaption(ppvMenu.code, ppvMenu.caption);
+                setPpvMenu(null);
+              }}
+              className="w-full px-3 py-2 text-left text-[12px] text-white hover:bg-[#374151] transition-colors"
+            >
+              Edit caption
+            </button>
+          )}
+          {onDeletePpv && (
+            <button
+              type="button"
+              onClick={() => {
+                onDeletePpv(ppvMenu.code);
+                setPpvMenu(null);
+              }}
+              className="w-full px-3 py-2 text-left text-[12px] text-red-400 hover:bg-[#374151] transition-colors"
+            >
+              Delete
+            </button>
+          )}
         </div>
       )}
 

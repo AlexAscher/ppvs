@@ -148,6 +148,8 @@ interface ActionPanelProps {
 export type StatsView = {
   todayNet: number;
   allTimeNet: number;
+  todayNetAfterCut: number;
+  allTimeNetAfterCut: number;
   todaySales: number;
   allTimeSales: number;
   unlocks: number;
@@ -883,10 +885,13 @@ export function ActionPanel({
           <div className="space-y-1">
             {(stats
               ? [
-                  { label: "Today net", value: fmtDollars(stats.todayNet) },
-                  { label: "All time net", value: fmtDollars(stats.allTimeNet) },
-                  { label: "Sales today", value: String(stats.todaySales) },
-                  { label: "Sales all time", value: String(stats.allTimeSales) },
+                  // "Net" = after platform cut (matches agency dashboard).
+                  { label: "Today net", value: fmtDollars(stats.todayNetAfterCut) },
+                  { label: "All time net", value: fmtDollars(stats.allTimeNetAfterCut) },
+                  // "Sales" = dollar amount of unlocked PPVs (pre-cut gross).
+                  { label: "Sales today", value: fmtDollars(stats.todayNet) },
+                  { label: "Sales all time", value: fmtDollars(stats.allTimeNet) },
+                  // "Sends" = count of PPVs sent out (any status).
                   { label: "Sends today", value: String(stats.todayMessages) },
                   { label: "Sends all time", value: String(stats.allTimeMessages) },
                 ]

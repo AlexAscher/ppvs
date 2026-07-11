@@ -31,8 +31,15 @@ import { FanProfileDrawer } from "@/components/chatter-page/FanProfileDrawer";
 import { dashboardUrl } from "@/lib/host-routes";
 
 export type StatsPayload = {
+  /** Gross paid revenue (sum of total_price where status ∈ paid/delivered).
+   *  Used as the "sales" dollar amount in the chatter Dashboard tab. */
   todayNet: number;
   allTimeNet: number;
+  /** After-platform-cut version of the above — matches the "Net" figures on
+   *  the agency dashboard. Used as the "net" dollar amount in the chatter
+   *  Dashboard tab. */
+  todayNetAfterCut: number;
+  allTimeNetAfterCut: number;
   todaySales: number;
   allTimeSales: number;
   unlocks: number;

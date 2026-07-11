@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase-server";
 import { authorizeModelAccess } from "@/lib/telegram-authorize";
 import { withTimeout } from "@/lib/with-timeout";
+import { agencyNet } from "@/lib/platform";
 
 // Hard cap so a saturated uplink can't pin this route for 70s. On
 // timeout we 503 and the client keeps its last-known stats.
@@ -105,6 +106,11 @@ export async function GET(
     return Response.json({
       todayNet,
       allTimeNet,
+      // Gross-minus-platform-fee, matching the agency dashboard's "Net" figures.
+      // Same PLATFORM_FEE_PCT constant is used everywhere, so the two views
+      // agree to the cent regardless of what the fee is set to.
+      todayNetAfterCut: agencyNet(todayNet),
+      allTimeNetAfterCut: agencyNet(allTimeNet),
       todaySales,
       allTimeSales,
       unlocks: allTimeSales,

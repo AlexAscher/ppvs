@@ -632,11 +632,14 @@ function DashboardTab() {
         { label: "Avg Order Value", emoji: "🛒", kind: "money", usd: stats.avgOrder },
         { label: "Sales / Unlocks", emoji: "🔓", kind: "raw", value: String(stats.sales) },
         {
+          // Unlocked ÷ Sent — how many PPVs the agency sent out that fans
+          // actually paid to open. sales is the count of paid/delivered
+          // sends; totalSends is every send regardless of status.
           label: "Conversion Rate",
           emoji: "🎯",
           kind: "raw",
-          value: stats.totalFans > 0 ? `${Math.round((stats.payingFans / stats.totalFans) * 100)}%` : "—",
-          sub: `${stats.payingFans} / ${stats.totalFans} paying`,
+          value: stats.totalSends > 0 ? `${Math.round((stats.sales / stats.totalSends) * 100)}%` : "—",
+          sub: `${stats.sales} unlocked / ${stats.totalSends} sent`,
         },
       ]
     : (Array.from({ length: 8 }, (_, i) => ({
@@ -840,7 +843,7 @@ function DashboardTab() {
             <div className="overflow-y-auto space-y-2 pr-2 custom-scrollbar" style={{ maxHeight: 68 }}>
               {(stats?.models ?? []).length === 0 ? (
                 <div className="py-3 text-center text-[12px] text-[#6b7280]">
-                  {stats ? "No sales yet." : "Loading…"}
+                  {stats ? "No creators connected yet." : "Loading…"}
                 </div>
               ) : (
                 stats!.models.map((m) => (
@@ -867,7 +870,7 @@ function DashboardTab() {
             <div className="overflow-y-auto space-y-2 pr-2 custom-scrollbar" style={{ maxHeight: 68 }}>
               {(stats?.chatters ?? []).length === 0 ? (
                 <div className="py-3 text-center text-[12px] text-[#6b7280]">
-                  {stats ? "No chatter sales yet." : "Loading…"}
+                  {stats ? "No chatters connected yet." : "Loading…"}
                 </div>
               ) : (
                 stats!.chatters.map((c) => (

@@ -53,10 +53,16 @@ export type DashboardStats = {
   netMonth: number;
   netAllTime: number;
   sales: number;
+  /** Total PPV sends across the agency's models, ANY status (sent, paid,
+   *  delivered, expired, failed). Denominator for the Conversion Rate card
+   *  (= sales ÷ totalSends = "unlocked out of sent"). Includes free sends
+   *  since those still count as "sent". */
+  totalSends: number;
   avgOrder: number;
   payingFans: number;
-  /** Total fans recorded for the agency's models — the "chats started"
-   *  denominator behind the dashboard's Conversion Rate card. */
+  /** Total fans recorded for the agency's models — legacy denominator
+   *  behind the previous Conversion Rate card definition (paying/total).
+   *  Kept in the payload for callers still reading it. */
   totalFans: number;
   activeChatters: number;
   availableBalance: number;
@@ -153,7 +159,7 @@ export async function GET(req: NextRequest) {
 
     const empty: DashboardStats = {
       netToday: 0, netWeek: 0, netMonth: 0, netAllTime: 0,
-      sales: 0, avgOrder: 0, payingFans: 0, totalFans: 0, activeChatters: 0,
+      sales: 0, totalSends: 0, avgOrder: 0, payingFans: 0, totalFans: 0, activeChatters: 0,
       availableBalance: 0, pendingPayouts: 0, chart: [], conversations7d: [], models: [], chatters: [], topFans: [],
       recentSales: [],
       partial,
@@ -272,28 +278,30 @@ export async function GET(req: NextRequest) {
     // number matches everywhere (only sales past the 30-day hold count).
     const { available: availableBalance } = await computeAgencyBalances(admin, user.id);
 
-    const modelStats: ModelStat[] = [...modelAgg.entries()]
+    const sellingModels: ModelStat[] = [...modelAgg.entries()]
       .map(([id, v]) => ({ id, name: nameByModel.get(id) ?? "Model", net: v.net, sales: v.sales }))
       .sort((a, b) => b.net - a.net);
+    // Pad the list so every connected model shows in Creators Breakdown, even
+    // when they had zero sales in the period.
+    const modelStats = padModelsWithConnected(sellingModels, nameByModel);
 
     // Resolve chatter display names (best-effort, few of them).
     const chatterEntries = [...chatterAgg.entries()].sort((a, b) => b[1].net - a[1].net).slice(0, 10);
-    const chatters: ChatterStat[] = await Promise.all(
-      chatterEntries.map(async ([id, v]) => {
-        let name = "Chatter";
-        try {
-          const { data } = await admin.auth.admin.getUserById(id);
-          const u = data?.user;
-          name =
-            (u?.user_metadata?.full_name as string) ||
-            (u?.user_metadata?.display_name as string) ||
-            u?.email?.split("@")[0] ||
-            "Chatter";
-        } catch {
-          /* keep default */
-        }
-        return { id, name, net: v.net, sales: v.sales };
-      }),
+    const sellingChatters: ChatterStat[] = await Promise.all(
+      chatterEntries.map(async ([id, v]) => ({
+        id,
+        name: await resolveChatterName(admin, id),
+        net: v.net,
+        sales: v.sales,
+      })),
+    );
+    // Pad Top Chatters so every chatter connected via agency_chatters shows,
+    // even when they had zero sales in the period.
+    const connectedChatterIds = [...new Set(links.map((l) => l.chatter_id))];
+    const chatters = await padChattersWithConnected(
+      admin,
+      sellingChatters,
+      connectedChatterIds,
     );
 
     // Recent Sales — the 10 most recently paid/delivered sends. Fetched
@@ -353,9 +361,13 @@ export async function GET(req: NextRequest) {
     // the agency's models for the last 7 days. Independent of Net Sales.
     const conversations7d = await buildConversations7d(admin, modelIds);
 
+    // totalSends = ALL ppv_sends across scoped models, regardless of status.
+    // The in-Node path already has every row in `sends` — no extra query.
+    const totalSends = sends.length;
+
     const payload: DashboardStats = {
       netToday, netWeek, netMonth, netAllTime,
-      sales, avgOrder, payingFans, totalFans, activeChatters,
+      sales, totalSends, avgOrder, payingFans, totalFans, activeChatters,
       availableBalance, pendingPayouts,
       chart: chartBuckets.map((b) => ({ date: b.date, value: Math.round(b.value) })),
       conversations7d,
@@ -374,6 +386,96 @@ export async function GET(req: NextRequest) {
 }
 
 type AdminClient = ReturnType<typeof createAdminSupabaseClient>;
+
+/**
+ * Pad the Creators Breakdown list with every connected model that had zero
+ * sales in the period. Order: sales/net descending, then alphabetical for
+ * the zero-sales tail. Same rule applied on both the fast (RPC) and slow
+ * (in-Node) paths so the two paths render identically.
+ */
+function padModelsWithConnected(
+  sellingModels: ModelStat[],
+  nameByModel: Map<string, string>,
+): ModelStat[] {
+  const seen = new Set(sellingModels.map((m) => m.id));
+  const zeroTail: ModelStat[] = [];
+  for (const [id, name] of nameByModel.entries()) {
+    if (seen.has(id)) continue;
+    zeroTail.push({ id, name, net: 0, sales: 0 });
+  }
+  zeroTail.sort((a, b) => a.name.localeCompare(b.name));
+  return [...sellingModels, ...zeroTail];
+}
+
+/**
+ * Best-effort resolution of a chatter's display name via the Supabase auth
+ * admin API. Used to render zero-sales-connected chatters in Top Chatters —
+ * their metadata isn't cached anywhere else. Never blocks or throws:
+ * a lookup miss falls back to "Chatter".
+ */
+async function resolveChatterName(admin: AdminClient, id: string): Promise<string> {
+  try {
+    const { data } = await admin.auth.admin.getUserById(id);
+    const u = data?.user;
+    return (
+      (u?.user_metadata?.full_name as string) ||
+      (u?.user_metadata?.display_name as string) ||
+      u?.email?.split("@")[0] ||
+      "Chatter"
+    );
+  } catch {
+    return "Chatter";
+  }
+}
+
+/**
+ * Pad the Top Chatters list with every chatter connected to the agency who
+ * had zero sales in the period. Names for the zero-sales tail are resolved
+ * in parallel (a handful of auth lookups). Same rule on both paths.
+ */
+async function padChattersWithConnected(
+  admin: AdminClient,
+  sellingChatters: ChatterStat[],
+  connectedIds: string[],
+): Promise<ChatterStat[]> {
+  const seen = new Set(sellingChatters.map((c) => c.id));
+  const missing = connectedIds.filter((id) => !seen.has(id));
+  if (missing.length === 0) return sellingChatters;
+  const zeroTail: ChatterStat[] = await Promise.all(
+    missing.map(async (id) => ({
+      id,
+      name: await resolveChatterName(admin, id),
+      net: 0,
+      sales: 0,
+    })),
+  );
+  zeroTail.sort((a, b) => a.name.localeCompare(b.name));
+  return [...sellingChatters, ...zeroTail];
+}
+
+/**
+ * Count of all ppv_sends (any status) across the scoped models — denominator
+ * for the Conversion Rate card (= sales ÷ totalSends). HEAD count keeps this
+ * tiny. Returns 0 on failure so the card shows "—".
+ */
+async function countTotalSends(admin: AdminClient, modelIds: string[]): Promise<number> {
+  if (modelIds.length === 0) return 0;
+  try {
+    const res = await withTimeout(
+      Promise.resolve(
+        admin
+          .from("ppv_sends")
+          .select("id", { count: "exact", head: true })
+          .in("model_id", modelIds),
+      ),
+      Q_TIMEOUT,
+      "dashboard: total sends",
+    );
+    return (res as { count: number | null }).count ?? 0;
+  } catch {
+    return 0;
+  }
+}
 
 /**
  * Postgres-side aggregation via fn_dashboard_core. Returns the full
@@ -455,23 +557,14 @@ async function computeViaRpc(
     }
   }
 
-  // Chatter display names (best-effort, capped at 10).
-  const chatters: ChatterStat[] = await Promise.all(
-    core.chatters.slice(0, 10).map(async (c) => {
-      let name = "Chatter";
-      try {
-        const { data } = await admin.auth.admin.getUserById(c.id);
-        const u = data?.user;
-        name =
-          (u?.user_metadata?.full_name as string) ||
-          (u?.user_metadata?.display_name as string) ||
-          u?.email?.split("@")[0] ||
-          "Chatter";
-      } catch {
-        /* keep default */
-      }
-      return { id: c.id, name, net: c.net, sales: c.sales };
-    }),
+  // Chatter display names for those with sales (best-effort, capped at 10).
+  const sellingChatters: ChatterStat[] = await Promise.all(
+    core.chatters.slice(0, 10).map(async (c) => ({
+      id: c.id,
+      name: await resolveChatterName(admin, c.id),
+      net: c.net,
+      sales: c.sales,
+    })),
   );
 
   // Recent sales + payouts + active-chatter count + total-fans count —
@@ -541,12 +634,22 @@ async function computeViaRpc(
   const { available: availableBalance } = await computeAgencyBalances(admin, agencyUserId);
   const conversations7d = await buildConversations7d(admin, modelIds);
 
-  const models: ModelStat[] = core.models.map((m) => ({
+  const sellingModels: ModelStat[] = core.models.map((m) => ({
     id: m.id,
     name: nameByModel.get(m.id) ?? "Model",
     net: m.net,
     sales: m.sales,
   }));
+  // Pad both lists so Creators Breakdown / Top Chatters show every connected
+  // creator + chatter, not just those with sales this period.
+  const models = padModelsWithConnected(sellingModels, nameByModel);
+  const connectedChatterIds = [
+    ...new Set(((linksRes.data ?? []) as { chatter_id: string }[]).map((l) => l.chatter_id)),
+  ];
+  const chattersFull = await padChattersWithConnected(admin, sellingChatters, connectedChatterIds);
+  // totalSends = ALL ppv_sends across the scoped models (any status).
+  const totalSends = await countTotalSends(admin, modelIds);
+
   const topFans: FanStat[] = core.top_fans.map((f) => ({
     name: f.username ? `@${f.username}` : f.name || "Fan",
     spent: Number(f.spent),
@@ -558,6 +661,7 @@ async function computeViaRpc(
     netMonth: core.net_month,
     netAllTime: core.net_all,
     sales: core.sales,
+    totalSends,
     avgOrder: core.sales > 0 ? core.net_all / core.sales : 0,
     payingFans: core.paying_fans,
     totalFans: (fansCountRes as { count: number | null }).count ?? 0,
@@ -567,7 +671,7 @@ async function computeViaRpc(
     chart: buckets.map((b) => ({ date: b.date, value: Math.round(b.value) })),
     conversations7d,
     models,
-    chatters,
+    chatters: chattersFull,
     topFans,
     recentSales,
     partial,

@@ -26,7 +26,6 @@ interface Props {
 type SalesStats = {
   purchased: number;
   avgPpv: number;
-  avgTip: number;
 };
 
 export function FanInfoBlock({ modelId, peerId, fan }: Props) {
@@ -127,11 +126,22 @@ export function FanInfoBlock({ modelId, peerId, fan }: Props) {
     <div className="space-y-4">
       {/* Profile — bio / birthdate / location, auto-saved */}
       <div className="space-y-2">
-        <div className="text-[10px] text-[#6b7280] uppercase tracking-wide flex items-center justify-between">
-          <span>Profile</span>
+        <div className="text-[10px] text-[#6b7280] uppercase tracking-wide flex items-center justify-between gap-2">
+          <span className="flex items-baseline gap-2 min-w-0">
+            <span>Profile</span>
+            {/* Fan name next to the section header — `@username` when the
+                fan has one, otherwise the Telegram display name. Chatters
+                get a persistent "who is this" anchor while editing the
+                profile fields. */}
+            {(fan.telegram_username || fan.telegram_name) && (
+              <span className="normal-case text-[12px] text-white font-medium tracking-normal truncate">
+                {fan.telegram_username ? `@${fan.telegram_username}` : fan.telegram_name}
+              </span>
+            )}
+          </span>
           {basicsMsg && (
             <span
-              className={`normal-case text-[10px] ${
+              className={`normal-case text-[10px] shrink-0 ${
                 basicsMsg.startsWith("Error") ? "text-red-400" : "text-emerald-400"
               }`}
             >
@@ -210,7 +220,6 @@ export function FanInfoBlock({ modelId, peerId, fan }: Props) {
             },
             { label: "Purchased", value: String(salesStats?.purchased ?? 0) },
             { label: "Avg PPV", value: salesStats ? `$${salesStats.avgPpv.toFixed(2)}` : "—" },
-            { label: "Avg Tip", value: salesStats ? `$${salesStats.avgTip.toFixed(2)}` : "—" },
           ].map((c) => (
             <div
               key={c.label}

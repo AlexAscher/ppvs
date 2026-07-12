@@ -74,6 +74,9 @@ export interface Message {
     targetText: string;
     quoteText: string | null;
     isToChatter: boolean;
+    /** Resolved display name of the sender of the replied-to message.
+     *  Fan name comes from selectedDialog.title; outgoing = "You". */
+    senderName?: string;
   } | null;
   /** Telegram grouped_id — messages in the same album share one id. */
   groupedId?: string | null;
@@ -438,7 +441,7 @@ function ReplyPreviewCard({
   preview: NonNullable<Message["replyPreview"]>;
   isChatter: boolean;
 }) {
-  const senderLabel = preview.isToChatter ? "You" : "Fan";
+  const senderLabel = preview.senderName ?? (preview.isToChatter ? "You" : "Fan");
   const accent = isChatter
     ? "bg-white/80" // inside the gradient bubble — light bar on indigo
     : "bg-[#00AFF0]";
@@ -446,26 +449,25 @@ function ReplyPreviewCard({
   const bg = isChatter ? "bg-black/15" : "bg-[#111827]/60";
   const body = preview.quoteText ?? preview.targetText;
   const truncated =
-    body && body.length > 120 ? `${body.slice(0, 120).trim()}…` : body || "Message";
+    body && body.length > 120 ? `${body.slice(0, 120).trim()}…` : body || "";
   return (
     <div
       className={`flex items-stretch gap-2 mb-1.5 px-2.5 py-1.5 rounded-md ${bg}`}
     >
       <div className={`w-[3px] rounded ${accent}`} />
       <div className="min-w-0 flex-1">
-        <div
-          className={`text-[10px] font-semibold uppercase tracking-wide ${labelColor} flex items-center gap-1`}
-        >
-          {preview.quoteText ? "Quoted from " : "Replying to "}
+        <div className={`text-[11px] font-semibold ${labelColor} truncate`}>
           {senderLabel}
         </div>
-        <div
-          className={`text-[11px] truncate ${
-            isChatter ? "text-white/90" : "text-[#d1d5db]"
-          }`}
-        >
-          {truncated}
-        </div>
+        {truncated ? (
+          <div
+            className={`text-[11px] truncate ${
+              isChatter ? "text-white/75" : "text-[#d1d5db]"
+            }`}
+          >
+            {truncated}
+          </div>
+        ) : null}
       </div>
     </div>
   );

@@ -2140,11 +2140,13 @@ export default function ChatterPage() {
           const target = apiMessages.find((x) => x.id === m.replyTo!.msgId);
           const isToChatter = target ? target.isOutgoing : false;
           const targetText = target?.text?.trim() || (target?.media ? "[media]" : "");
+          const senderName = isToChatter ? "You" : (selectedDialog?.title ?? "Fan");
           replyPreview = {
             targetMsgId: m.replyTo.msgId,
             targetText,
             quoteText: m.replyTo.quoteText,
             isToChatter,
+            senderName,
           };
         }
         return {

@@ -105,30 +105,55 @@ async function buildConversations7d(
     // = today), even for fans whose actual last message is months old. Those
     // aren't "new conversations" — they're the pre-existing inbox.
     //
-    // A backfilled fan is spotted by comparing fans.last_response_at (the
-    // date of their most-recent inbound message we've seen) to
-    // fans.created_at: if last_response_at is more than 1 hour BEFORE
-    // created_at, they were captured retroactively → skip. A genuine new fan
-    // has last_response_at ≈ created_at (they just messaged us). Fans with
-    // no last_response_at yet are skipped defensively — a real inbound
-    // always populates it within the same dialog poll that captured the fan.
+    // PRIMARY filter — exclude each model's CONNECT/BACKFILL day. On first
+    // connect the dialog scan imports the ENTIRE pre-existing inbox as fan rows
+    // all dated that one day; those are not new conversations. The model's
+    // earliest fan.created_at marks that day. Excluding it is harmless for
+    // models whose connect day predates the 7-day window (that day isn't in the
+    // chart anyway). We can't rely on last_response_at alone here: on connect
+    // gramJS replayed old messages and (pre-fix) stamped last_response_at =
+    // now(), so many backfilled fans still look "fresh" — the day-level exclude
+    // catches them regardless. One tiny indexed query per model (agencies have
+    // few models).
+    const earliestByModel = new Map<string, string>();
+    await Promise.all(
+      modelIds.map(async (mid) => {
+        const { data: first } = await admin
+          .from("fans")
+          .select("created_at")
+          .eq("model_id", mid)
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        const c = (first as { created_at: string } | null)?.created_at;
+        if (c) earliestByModel.set(mid, new Date(c).toISOString().slice(0, 10));
+      }),
+    );
+
+    // SECONDARY guard — a fan whose last inbound message is much older than
+    // capture is backfill picked up on a LATER reconnect (not the connect day).
+    // A genuine new fan has last_response_at ≈ created_at. Null last_response_at
+    // → the fan never wrote to us (we messaged them) → not a started
+    // conversation → skip.
     const { data } = await admin
       .from("fans")
-      .select("created_at, last_response_at")
+      .select("model_id, created_at, last_response_at")
       .in("model_id", modelIds)
       .gte("created_at", cutoff);
     for (const r of (data ?? []) as {
+      model_id: string;
       created_at: string;
       last_response_at: string | null;
     }[]) {
+      const key = new Date(r.created_at).toISOString().slice(0, 10);
+      // Connect/backfill day for this model → not new conversations.
+      if (earliestByModel.get(r.model_id) === key) continue;
       if (!r.last_response_at) continue;
       const createdMs = new Date(r.created_at).getTime();
       const respondedMs = new Date(r.last_response_at).getTime();
-      // Backfill guard: last inbound message is much older than capture. A
       // 1-hour tolerance absorbs poll-order jitter without letting a
       // months-old conversation pass.
       if (createdMs - respondedMs > 60 * 60 * 1000) continue;
-      const key = new Date(r.created_at).toISOString().slice(0, 10);
       if (buckets.has(key)) buckets.set(key, (buckets.get(key) ?? 0) + 1);
     }
   } catch { /* best-effort */ }

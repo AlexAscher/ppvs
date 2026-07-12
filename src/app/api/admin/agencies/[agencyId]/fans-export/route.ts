@@ -78,20 +78,26 @@ export async function GET(
     list.push({ label, spent });
   }
 
+  // Consistent with the "All Fans — usernames" panel: hide nameless stubs
+  // (no @username AND no display name → labelled "id:<peer>") that never
+  // spent. A nameless fan who PAID is always kept so the export never loses a
+  // revenue record.
+  const visible = list.filter((l) => !(l.label.startsWith("id:") && l.spent <= 0));
+
   let body: string;
   let filename: string;
   if (type === "all") {
-    body = list.map((l) => l.label).join("\n");
+    body = visible.map((l) => l.label).join("\n");
     filename = "fans-all-usernames.txt";
   } else if (type === "paying") {
-    body = list
+    body = visible
       .filter((l) => l.spent > 0)
       .sort((a, b) => b.spent - a.spent)
       .map((l) => `${l.label} — $${l.spent.toFixed(2)}`)
       .join("\n");
     filename = "fans-paying.txt";
   } else {
-    body = list
+    body = visible
       .sort((a, b) => b.spent - a.spent)
       .map((l) => `${l.label} — $${l.spent.toFixed(2)}`)
       .join("\n");

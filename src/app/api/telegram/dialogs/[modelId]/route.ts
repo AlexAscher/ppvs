@@ -117,6 +117,15 @@ export async function GET(
         const bumps: BumpInfo[] = [];
         for (const d of dialogs) {
           const entity = d.entity;
+          // Telegram archive state. Telegram AUTO-archives chats from
+          // NON-contacts by default, so brand-new fans land in Archive — those
+          // we must keep. But chats the model DELIBERATELY archived (a contact
+          // they put away, or a group/channel) should stay hidden. So we hide
+          // archived dialogs UNLESS the peer is a non-contact user. The guard
+          // runs after the type/contact flags are known (below).
+          const dInfo = d as { dialog?: { folderId?: number }; archived?: boolean };
+          const isArchived = dInfo.dialog?.folderId === 1 || dInfo.archived === true;
+          let isContact = false;
           let type: DialogItem["type"];
           let title: string;
           let username: string | null = null;
@@ -131,6 +140,7 @@ export async function GET(
             id = entity.id.toString();
             accessHash = entity.accessHash?.toString() ?? null;
             status = getUserStatus(entity.status);
+            isContact = entity.contact === true;
           } else if (entity instanceof Api.Chat) {
             type = "chat";
             title = entity.title;
@@ -163,6 +173,12 @@ export async function GET(
             id = did;
             title = dd.name || "Chat";
           }
+
+          // Archive filter (see note at loop top): hide archived dialogs except
+          // non-contact users — Telegram auto-archives new non-contact fans and
+          // we must not lose them. Unresolved-entity users default to
+          // non-contact (kept), so a real fan is never dropped by mistake.
+          if (isArchived && !(type === "user" && !isContact)) continue;
 
           const msg = d.message;
           const lastMessage = (() => {

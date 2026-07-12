@@ -197,6 +197,15 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ age
       }
     }
     const allFans: AdminAgencyFan[] = Array.from(fanByPeer.values())
+      // Hide "nameless" stubs — fans with no @username AND no display name
+      // (they'd render as the literal "Fan"). These come from auto-reply /
+      // payment capture that ran before a dialog scan filled in identity. We
+      // ALWAYS keep a nameless fan who spent money so no paying-fan record is
+      // ever lost; only the $0 stubs are dropped from the list.
+      .filter((f) => {
+        const nameless = !f.username && (!f.name || f.name === "Fan");
+        return !nameless || f.spent > 0;
+      })
       .sort((a, b) => b.spent - a.spent);
     const topFans = allFans.filter((f) => f.spent > 0).slice(0, 10);
     const payingFans = allFans.filter((f) => f.spent > 0).length;

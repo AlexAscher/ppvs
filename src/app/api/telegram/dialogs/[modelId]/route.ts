@@ -104,18 +104,18 @@ export async function GET(
       auth.model.api_id,
       auth.model.api_hash,
       async (tg) => {
-        const dialogs = await tg.getDialogs({ limit: 50 });
+        // Fetch BOTH folders (main + Telegram archive). We used to skip
+        // folderId === 1 (archived) on the theory that "the model hid it" —
+        // but Telegram auto-archives chats from non-contacts by default, so
+        // brand-new fans land in Archive and vanished from the chatter inbox
+        // (only 22 of N conversations showed, missing real chats). Archiving
+        // in OUR app is handled separately (chat_archives, client-side), so we
+        // no longer hide Telegram-archived conversations here. Limit raised to
+        // 200 so accounts with many chats aren't truncated at 50.
+        const dialogs = await tg.getDialogs({ limit: 200 });
         const items: DialogItem[] = [];
         const bumps: BumpInfo[] = [];
         for (const d of dialogs) {
-          // Hide dialogs the model has archived on their Telegram account.
-          // gramJS exposes the archived state via dialog.folderId === 1
-          // (Telegram's "Archive" folder). The chatter workspace treats
-          // archived as "put away, do not touch" — matching the fact that
-          // the model themselves already hid it.
-          const dInfo = d as { dialog?: { folderId?: number }; archived?: boolean };
-          const isArchived = dInfo.dialog?.folderId === 1 || dInfo.archived === true;
-          if (isArchived) continue;
           const entity = d.entity;
           let type: DialogItem["type"];
           let title: string;

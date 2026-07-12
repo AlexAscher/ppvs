@@ -138,11 +138,15 @@ async function deleteViaBusiness(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ code: string }> },
 ) {
   try {
     const { code } = await params;
+    // revoke=false → "delete for me only": drop our DB row but leave the
+    // Telegram messages in the fan's chat. Default true → also remove from
+    // Telegram. Mirrors the text-message delete modal's two options.
+    const revoke = new URL(req.url).searchParams.get("revoke") !== "false";
     const user = await getCachedAuthUser();
     if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -153,12 +157,14 @@ export async function DELETE(
     const auth = await authorize(admin, send, user.id);
     if (!auth.ok) return auth.res;
 
-    // Reach into Telegram if we captured msg ids at send time. If we didn't
-    // (pre-migration send), skip and just drop our DB row — the chatter UI's
-    // virtual bubble disappears immediately, Telegram messages remain in
-    // the fan's chat. This is the "best-effort delete" option the user picked.
+    // Reach into Telegram if we captured msg ids at send time AND the caller
+    // asked to revoke. If we didn't capture ids (pre-migration send) or the
+    // caller chose "for me only", skip and just drop our DB row — the
+    // chatter UI's virtual bubble disappears immediately, Telegram messages
+    // remain in the fan's chat.
     let telegramDropped = false;
     if (
+      revoke &&
       send.telegram_msg_ids &&
       send.telegram_msg_ids.length > 0 &&
       send.send_channel

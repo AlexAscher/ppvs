@@ -192,9 +192,19 @@ export function subscribeActivityEvents(modelId: string, client: TelegramClient)
       const senderId = evt.message.senderId?.toString();
       if (senderId) {
         bump(modelId, senderId, "message");
-        // Timezone histogram + Mass DM reply tracking (fire-and-forget).
+        // Timezone histogram + last_response_at (fire-and-forget). Use the
+        // message's OWN date, NOT now(): on connect gramJS replays the missed
+        // update queue, so old messages arrive here as "new" events. Stamping
+        // now() made every replayed old message look like a fresh response,
+        // which corrupted last_response_at and inflated "Conversations
+        // Started" (the backfill filter keys off created_at ≈ last_response_at).
+        const msgDateSec = Number(evt.message.date ?? 0);
+        const atIso =
+          msgDateSec > 0
+            ? new Date(msgDateSec * 1000).toISOString()
+            : new Date().toISOString();
         void import("@/lib/fan-activity").then((m) =>
-          m.recordIncomingMessage(modelId, senderId),
+          m.recordIncomingMessageAt(modelId, senderId, atIso),
         );
       }
     } catch {

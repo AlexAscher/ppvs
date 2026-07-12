@@ -23,6 +23,9 @@ interface Props {
   preview: string;
   onConfirm: (revoke: boolean) => void;
   onClose: () => void;
+  /** Header text — defaults to "Delete message?". PPV bubbles pass
+   *  "Delete PPV?" so the same modal reads correctly for both. */
+  title?: string;
 }
 
 export function DeleteMessageModal({
@@ -31,6 +34,7 @@ export function DeleteMessageModal({
   preview,
   onConfirm,
   onClose,
+  title = "Delete message?",
 }: Props) {
   // Default: "for everyone" when available (it's what the chatter
   // almost always wants — incoming/outgoing both treat their own
@@ -90,7 +94,7 @@ export function DeleteMessageModal({
               <Trash2 className="w-4 h-4 text-red-400" />
             </div>
             <div className="text-[13px] font-semibold text-white">
-              Delete message?
+              {title}
             </div>
           </div>
           <button

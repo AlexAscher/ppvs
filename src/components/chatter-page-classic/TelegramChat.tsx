@@ -194,6 +194,11 @@ interface TelegramChatProps {
   onOpenFanProfile: () => void;
   replyingTo: ReplyContext | null;
   editing: EditContext | null;
+  /** When set, the composer is editing a PPV bubble's caption (same in-input
+   *  UX as message edit): the caption sits in the input, the bar above reads
+   *  "Editing PPV caption", and the Send button becomes "Save". */
+  editingPpv?: { code: string; originalCaption: string } | null;
+  onCancelEditPpv?: () => void;
   onCancelReply: () => void;
   onCancelEdit: () => void;
   onReplyToMessage: (id: number, text: string, isChatter: boolean) => void;
@@ -692,6 +697,8 @@ export function TelegramChat({
   onDeleteMessage,
   onDeletePpv,
   onEditPpvCaption,
+  editingPpv = null,
+  onCancelEditPpv,
   mobileView,
   onMobileBack,
   hideUsername = false,
@@ -1517,16 +1524,21 @@ export function TelegramChat({
         </div>
 
         {/* Reply / Edit indicator bar — sits directly above the input. */}
-        {(replyingTo || editing) && (
+        {(replyingTo || editing || editingPpv) && (
           <div className="px-5 py-2 bg-[#1f2937]/60 border-t border-[#2a2d35] flex items-start gap-2">
             <div
               className={`w-1 self-stretch rounded ${
-                editing ? "bg-amber-400" : "bg-[#00AFF0]"
+                editing || editingPpv ? "bg-amber-400" : "bg-[#00AFF0]"
               }`}
             />
             <div className="flex-1 min-w-0">
               <div className="text-[10px] uppercase tracking-wide font-semibold mb-0.5 flex items-center gap-1">
-                {editing ? (
+                {editingPpv ? (
+                  <>
+                    <Check className="w-3 h-3 text-amber-400" />
+                    <span className="text-amber-400">Editing PPV caption</span>
+                  </>
+                ) : editing ? (
                   <>
                     <Check className="w-3 h-3 text-amber-400" />
                     <span className="text-amber-400">Editing message</span>
@@ -1542,16 +1554,24 @@ export function TelegramChat({
                 )}
               </div>
               <div className="text-[11px] text-[#9ca3af] truncate">
-                {editing
-                  ? editing.originalText
-                  : replyingTo!.quote
-                    ? `«${replyingTo!.quote}»`
-                    : replyingTo!.text || "—"}
+                {editingPpv
+                  ? editingPpv.originalCaption || "(no caption)"
+                  : editing
+                    ? editing.originalText
+                    : replyingTo!.quote
+                      ? `«${replyingTo!.quote}»`
+                      : replyingTo!.text || "—"}
               </div>
             </div>
             <button
               type="button"
-              onClick={() => (editing ? onCancelEdit() : onCancelReply())}
+              onClick={() =>
+                editingPpv
+                  ? onCancelEditPpv?.()
+                  : editing
+                    ? onCancelEdit()
+                    : onCancelReply()
+              }
               aria-label="Cancel"
               className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-[#374151] text-[#9ca3af] hover:text-white"
             >
@@ -1691,9 +1711,13 @@ export function TelegramChat({
           )}
           <button
             onClick={onSend}
-            disabled={sending || !inputText.trim() || !selected}
+            // Editing a PPV caption allows an empty value (clear the caption);
+            // normal send + message edit still require non-empty text.
+            disabled={
+              sending || !selected || (!editingPpv && !inputText.trim())
+            }
             className={`px-3.5 md:px-5 py-2.5 text-white rounded-lg font-semibold text-[13px] transition-all shadow-lg flex items-center gap-1.5 md:gap-2 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed ${
-              editing
+              editing || editingPpv
                 ? "bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 shadow-amber-500/20"
                 : "bg-gradient-to-r from-[#00AFF0] to-[#00AFF0] hover:from-[#0098D4] hover:to-[#0098D4] shadow-[#00AFF0]/20"
             }`}
@@ -1704,7 +1728,7 @@ export function TelegramChat({
                 : undefined
             }
           >
-            {editing ? (
+            {editing || editingPpv ? (
               <>
                 <Check className="w-4 h-4 shrink-0" />
                 <span className="hidden sm:inline">Save</span>

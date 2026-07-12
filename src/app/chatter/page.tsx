@@ -336,6 +336,11 @@ export default function ChatterPage() {
     quote: string | null;
   } | null>(null);
   const [editing, setEditing] = useState<{ id: number; originalText: string } | null>(null);
+  // PPV bubble edit/delete — mirror the message edit (in-input Save) + delete
+  // (styled modal) UX. editingPpv drives the composer's "Editing PPV caption"
+  // state; deletingPpv drives the reused DeleteMessageModal.
+  const [editingPpv, setEditingPpv] = useState<{ code: string; originalCaption: string } | null>(null);
+  const [deletingPpv, setDeletingPpv] = useState<{ code: string; preview: string } | null>(null);
 
   // Delete confirmation modal — caches the message id + text + revoke
   // permission so the modal can render a preview and pick the right
@@ -1429,6 +1434,12 @@ export default function ChatterPage() {
   }
 
   async function handleSend() {
+    // PPV CAPTION EDIT: takes priority and allows an empty value (clear the
+    // caption), so it runs before the non-empty guard below.
+    if (editingPpv) {
+      await saveEditPpvCaption();
+      return;
+    }
     if (!inputText.trim() || !selectedModelId || !selectedDialog) return;
     setSending(true);
     setError("");
@@ -1556,27 +1567,32 @@ export default function ChatterPage() {
   }
 
   /**
-   * Delete a PPV bubble via /api/ppv/sends/{code}. Server tries to remove the
-   * Telegram messages too when telegram_msg_ids were captured at send time
-   * (post-100l sends); for pre-100l bubbles it drops just the DB row (the
-   * virtual bubble disappears from this view) and leaves Telegram alone.
-   * Optimistic: remove from the local ppv-sends state immediately.
+   * Open the delete-confirmation modal for a PPV bubble (styled exactly like
+   * the message-delete modal, with the same for-me / for-everyone choice).
+   * The actual delete runs in confirmDeletePpv once the chatter picks.
    */
-  async function handleDeletePpv(code: string) {
+  function handleDeletePpv(code: string) {
     if (!code) return;
-    if (typeof window !== "undefined" && !window.confirm("Delete this PPV? This will try to remove it from the fan's chat too.")) {
-      return;
-    }
-    // Optimistically hide the bubble from the current dialog view.
-    const before = ppvVirtuals;
+    const v = ppvVirtualsRef.current.find((x) => x.code === code);
+    const preview = v?.caption?.trim() || "PPV media";
+    setDeletingPpv({ code, preview });
+  }
+
+  /** Runs the actual PPV delete. revoke=true also removes from the fan's chat
+   *  (Telegram), revoke=false drops only our DB row. Optimistic + rollback. */
+  async function confirmDeletePpv(revoke: boolean) {
+    if (!deletingPpv) return;
+    const code = deletingPpv.code;
+    setDeletingPpv(null);
+    const before = ppvVirtualsRef.current;
     setPpvVirtuals((prev) => prev.filter((v) => v.code !== code));
     try {
-      const r = await fetch(`/api/ppv/sends/${encodeURIComponent(code)}`, {
-        method: "DELETE",
-      });
+      const r = await fetch(
+        `/api/ppv/sends/${encodeURIComponent(code)}?revoke=${revoke ? "true" : "false"}`,
+        { method: "DELETE" },
+      );
       if (!r.ok) throw new Error(String(r.status));
     } catch (e) {
-      // Roll back.
       setPpvVirtuals(before);
       if (typeof window !== "undefined") {
         window.alert(`Failed to delete: ${e instanceof Error ? e.message : "unknown error"}`);
@@ -1585,18 +1601,34 @@ export default function ChatterPage() {
   }
 
   /**
-   * Edit a PPV bubble's caption via /api/ppv/sends/{code}. Uses a lightweight
-   * window.prompt for the input — matches how DeleteMessageModal was skipped
-   * in favour of a modal only where needed. Only works for post-100l sends
-   * (where telegram_msg_ids exists); the server returns 400 for legacy rows
-   * and we surface that as a friendly alert.
+   * Start editing a PPV bubble's caption. Same in-input UX as message edit:
+   * put the current caption in the composer, flip the composer into
+   * "Editing PPV caption" mode, and let handleSend do the PATCH on Save.
    */
-  async function handleEditPpvCaption(code: string, currentCaption: string) {
+  function handleEditPpvCaption(code: string, currentCaption: string) {
     if (!code) return;
-    if (typeof window === "undefined") return;
-    const next = window.prompt("Edit PPV caption:", currentCaption ?? "");
-    if (next == null) return; // user cancelled
-    if (next === currentCaption) return; // no change
+    setEditing(null); // never both at once
+    setReplyingTo(null);
+    setEditingPpv({ code, originalCaption: currentCaption ?? "" });
+    setInputText(currentCaption ?? "");
+  }
+
+  function handleCancelEditPpv() {
+    setEditingPpv(null);
+    setInputText("");
+  }
+
+  /** Save the edited PPV caption (called from handleSend when editingPpv). */
+  async function saveEditPpvCaption() {
+    if (!editingPpv) return;
+    const code = editingPpv.code;
+    const next = inputText;
+    if (next === editingPpv.originalCaption) {
+      handleCancelEditPpv();
+      return;
+    }
+    setEditingPpv(null);
+    setInputText("");
     try {
       const r = await fetch(`/api/ppv/sends/${encodeURIComponent(code)}`, {
         method: "PATCH",
@@ -1605,16 +1637,16 @@ export default function ChatterPage() {
       });
       const j = (await r.json().catch(() => ({}))) as { error?: string };
       if (!r.ok) {
-        window.alert(j.error || `HTTP ${r.status}`);
+        if (typeof window !== "undefined") window.alert(j.error || `HTTP ${r.status}`);
         return;
       }
-      // Reflect the new caption in the local state so the bubble updates
-      // without waiting on the next chat-events poll.
       setPpvVirtuals((prev) =>
         prev.map((v) => (v.code === code ? { ...v, caption: next } : v)),
       );
     } catch (e) {
-      window.alert(`Failed to edit: ${e instanceof Error ? e.message : "unknown error"}`);
+      if (typeof window !== "undefined") {
+        window.alert(`Failed to edit: ${e instanceof Error ? e.message : "unknown error"}`);
+      }
     }
   }
 
@@ -2595,6 +2627,8 @@ export default function ChatterPage() {
           onDeleteMessage={handleDeleteMessage}
           onDeletePpv={handleDeletePpv}
           onEditPpvCaption={handleEditPpvCaption}
+          editingPpv={editingPpv}
+          onCancelEditPpv={handleCancelEditPpv}
           mobileView={mobileView}
           onMobileBack={() => setMobileView("list")}
         />
@@ -2709,6 +2743,16 @@ export default function ChatterPage() {
         preview={deletingMessage?.text ?? ""}
         onClose={() => setDeletingMessage(null)}
         onConfirm={(revoke) => void confirmDeleteMessage(revoke)}
+      />
+      {/* PPV bubble delete — same modal, "Delete PPV?" header. PPV is always
+          our outgoing so canRevoke is true (for-me / for-everyone). */}
+      <DeleteMessageModal
+        open={!!deletingPpv}
+        title="Delete PPV?"
+        canRevoke={true}
+        preview={deletingPpv?.preview ?? ""}
+        onClose={() => setDeletingPpv(null)}
+        onConfirm={(revoke) => void confirmDeletePpv(revoke)}
       />
       {/* Thin trust-signal footer (v3 brief). Sits above the chatter UI
           shell so it never scrolls with the message list. */}

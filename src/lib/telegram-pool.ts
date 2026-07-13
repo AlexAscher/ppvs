@@ -1,7 +1,7 @@
 import { TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions";
 import { buildTelegramClientOptions } from "@/lib/telegram-client";
-import { subscribeAutoReplyEvents } from "@/lib/auto-reply";
+import { subscribeAutoReplyEvents, clearAutoReplySubscription } from "@/lib/auto-reply";
 import {
   subscribeActivityEvents,
   clearActivitySubscription,
@@ -56,8 +56,11 @@ function scheduleCleanup() {
     const now = Date.now();
     for (const [key, entry] of pool.entries()) {
       if (now - entry.lastUsedAt > IDLE_TIMEOUT_MS) {
-        entry.client.disconnect().catch(() => {});
-        pool.delete(key);
+        // Route idle eviction through evictBroken so the activity + auto-reply
+        // subscription guards are cleared too. Raw-disconnecting here left both
+        // `subscribed` sets stale, so a model that idled out and later
+        // reconnected never re-attached its handlers (auto-reply went silent).
+        evictBroken(key, entry);
       }
     }
   }, 60_000);
@@ -169,7 +172,13 @@ export function clearExpiredFlag(modelId: string) {
 function evictBroken(modelId: string, entry: Entry) {
   pool.delete(modelId);
   connectLocks.delete(modelId);
+  // Clear BOTH subscription guards so the NEXT reconnect re-attaches fresh
+  // handlers to the new client. Missing the auto-reply clear here silently
+  // killed auto-reply after any eviction: the `subscribed` set still held the
+  // model, so subscribeAutoReplyEvents early-returned on reconnect and the
+  // handler stayed bound to the now-dead client.
   clearActivitySubscription(modelId);
+  clearAutoReplySubscription(modelId);
   entry.client.disconnect().catch(() => {});
 }
 

@@ -1,25 +1,7 @@
 import { NextRequest } from "next/server";
-import { TelegramClient } from "telegram";
-import { StringSession } from "telegram/sessions";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
-
-function buildClientOptions() {
-  const base = { connectionRetries: 0, timeout: 15 };
-  if (process.env.TELEGRAM_PROXY_IP) {
-    return {
-      ...base,
-      useWSS: false,
-      proxy: {
-        ip: process.env.TELEGRAM_PROXY_IP,
-        port: Number(process.env.TELEGRAM_PROXY_PORT ?? 1080),
-        socksType: 5 as const,
-        username: process.env.TELEGRAM_PROXY_USER,
-        password: process.env.TELEGRAM_PROXY_PASS,
-      },
-    };
-  }
-  return { ...base, useWSS: true };
-}
+import { withTelegramClient } from "@/lib/telegram-pool";
+import { decryptIfNeeded } from "@/lib/crypto";
 
 const cache = new Map<string, { data: Buffer; ts: number }>();
 const CACHE_TTL = 5 * 60 * 1000;
@@ -63,21 +45,31 @@ export async function GET(
       });
     }
 
-    const session = new StringSession(model.session_string);
-    const tg = new TelegramClient(
-      session,
-      model.api_id,
-      model.api_hash,
-      buildClientOptions(),
-    );
+    // Decrypt secrets (verify-code stores them AES-GCM-encrypted; legacy
+    // plaintext rows pass through). Go through the shared pool so we NEVER open
+    // a second socket on this model's session — a raw connect here duplicated
+    // the pooled connection and triggered AUTH_KEY_DUPLICATED whenever the
+    // model was already connected (keepalive, or a chatter viewing it).
+    const decSession = decryptIfNeeded(model.session_string);
+    const decHash = decryptIfNeeded(model.api_hash);
+    if (!decSession || !decHash) return new Response("Bad session", { status: 404 });
 
     let photo: Buffer | null = null;
     try {
-      await tg.connect();
-      const downloaded = await tg.downloadProfilePhoto("me", { isBig: false });
-      if (downloaded instanceof Buffer) photo = downloaded;
-    } finally {
-      tg.disconnect().catch(() => {});
+      photo = await withTelegramClient(
+        modelId,
+        decSession,
+        model.api_id,
+        decHash,
+        async (tg) => {
+          const downloaded = await tg.downloadProfilePhoto("me", { isBig: false });
+          return downloaded instanceof Buffer ? downloaded : null;
+        },
+        15_000,
+        true, // read-only: safe to reconnect+retry once on a dead pooled socket
+      );
+    } catch {
+      photo = null;
     }
 
     if (!photo) return new Response("No photo", { status: 404 });

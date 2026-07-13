@@ -1,6 +1,4 @@
 import { NextRequest } from "next/server";
-import { TelegramClient } from "telegram";
-import { StringSession } from "telegram/sessions";
 import {
   createSupabaseServerClient,
   createAdminSupabaseClient,
@@ -9,24 +7,8 @@ import {
   downloadPhotoBuffer,
   uploadAvatarToStorage,
 } from "@/lib/telegram-avatar";
-
-function buildClientOptions() {
-  const base = { connectionRetries: 0, timeout: 15 };
-  if (process.env.TELEGRAM_PROXY_IP) {
-    return {
-      ...base,
-      useWSS: false,
-      proxy: {
-        ip: process.env.TELEGRAM_PROXY_IP,
-        port: Number(process.env.TELEGRAM_PROXY_PORT ?? 1080),
-        socksType: 5 as const,
-        username: process.env.TELEGRAM_PROXY_USER,
-        password: process.env.TELEGRAM_PROXY_PASS,
-      },
-    };
-  }
-  return { ...base, useWSS: true };
-}
+import { withTelegramClient } from "@/lib/telegram-pool";
+import { decryptIfNeeded } from "@/lib/crypto";
 
 const inFlight = new Map<string, Promise<Response>>();
 
@@ -35,34 +17,30 @@ async function doRefresh(
   model: { session_string: string; api_id: number; api_hash: string },
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
 ): Promise<Response> {
-  const session = new StringSession(model.session_string);
-  const tg = new TelegramClient(
-    session,
-    model.api_id,
-    model.api_hash,
-    buildClientOptions(),
-  );
-
-  let me: Awaited<ReturnType<typeof tg.getMe>> | undefined;
-  let photoBuffer: Buffer | null = null;
-
-  try {
-    await Promise.race([
-      (async () => {
-        await tg.connect();
-        me = await tg.getMe();
-        photoBuffer = await downloadPhotoBuffer(tg);
-      })(),
-      new Promise<void>((_, reject) =>
-        setTimeout(() => reject(new Error("Telegram timeout")), 15000),
-      ),
-    ]);
-  } finally {
-    await Promise.race([
-      tg.disconnect(),
-      new Promise<void>((r) => setTimeout(r, 2000)),
-    ]);
+  // Decrypt secrets (encrypted at rest; legacy plaintext passes through).
+  const decSession = decryptIfNeeded(model.session_string);
+  const decHash = decryptIfNeeded(model.api_hash);
+  if (!decSession || !decHash) {
+    return Response.json({ error: "Bad session" }, { status: 400 });
   }
+
+  // Reuse the model's pooled connection instead of opening a second socket.
+  // A raw connect here would AUTH_KEY_DUPLICATE against keepalive or a chatter
+  // viewing the same model — the exact conflict this hardening removes.
+  // Read-only (getMe + profile photo) → safe to reconnect+retry once.
+  const { me, photoBuffer } = await withTelegramClient(
+    modelId,
+    decSession,
+    model.api_id,
+    decHash,
+    async (tg) => {
+      const meRes = await tg.getMe();
+      const photo = await downloadPhotoBuffer(tg);
+      return { me: meRes, photoBuffer: photo };
+    },
+    15_000,
+    true,
+  );
 
   if (!me) throw new Error("Failed to get user info");
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronDown, Smile, X, Sparkles } from "lucide-react";
+import { ChevronDown, Smile, X, Sparkles, ChevronLeft, Folder, Play } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { EmojiPicker } from "@/components/chatter-page/EmojiPicker";
 
@@ -27,11 +27,17 @@ type VaultPpv = {
   name: string;
   media_url: string | null;
   preview_url: string | null;
+  /** Vault folder this PPV lives in (ppv_groups.id). null = standalone
+   *  (shown on the picker's top level). Foldered items only appear once you
+   *  open their folder. */
+  group_id?: string | null;
   /** null = pre-moderation (older upload), "approved" = ready to send,
    *  "pending" / "rejected" = HIDDEN from the AR picker — automatic
    *  replies must never ship un-vetted content to a fan. */
   review_status?: "pending" | "approved" | "rejected" | null;
 };
+
+type VaultGroup = { id: string; name: string };
 
 type Config = {
   enabled: boolean;
@@ -80,6 +86,7 @@ export function AutoRepliesSection() {
 
   // Vault picker.
   const [vaultPpvs, setVaultPpvs] = useState<VaultPpv[]>([]);
+  const [vaultGroups, setVaultGroups] = useState<VaultGroup[]>([]);
   const [showPicker, setShowPicker] = useState(false);
 
   useEffect(() => {
@@ -104,11 +111,16 @@ export function AutoRepliesSection() {
     (async () => {
       setLoading(true);
       try {
-        const [cfgRes, ppvsRes] = await Promise.all([
+        const [cfgRes, ppvsRes, groupsRes] = await Promise.all([
           fetch(`/api/auto-reply/${selectedModelId}`),
           supabase
             .from("ppvs")
-            .select("id, name, media_url, preview_url, thumb_url, review_status")
+            .select("id, name, media_url, preview_url, thumb_url, review_status, group_id")
+            .eq("model_id", selectedModelId)
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("ppv_groups")
+            .select("id, name")
             .eq("model_id", selectedModelId)
             .order("created_at", { ascending: false }),
         ]);
@@ -131,6 +143,7 @@ export function AutoRepliesSection() {
             (p) => !p.review_status || p.review_status === "approved",
           ),
         );
+        setVaultGroups((groupsRes.data ?? []) as VaultGroup[]);
         setMsg("");
       } catch (e: unknown) {
         if (!cancelled) setMsg(e instanceof Error ? `Error: ${e.message}` : "Error");
@@ -466,6 +479,7 @@ export function AutoRepliesSection() {
       {showPicker && agencyUserId && selectedModelId && (
         <VaultPickerModal
           vaultPpvs={vaultPpvs}
+          groups={vaultGroups}
           selectedIds={config.ppvIds}
           onToggle={toggleSelPpv}
           onClose={() => setShowPicker(false)}
@@ -475,17 +489,103 @@ export function AutoRepliesSection() {
   );
 }
 
+/** Rough video detection off the media URL extension — matches the same set
+ *  the chatter compose + auto-reply send use. Drives the play-icon overlay so
+ *  a video PPV's poster frame reads as a video in the picker. */
+function isVideoUrl(url: string | null | undefined): boolean {
+  return !!url && /\.(mp4|mov|m4v|webm|mkv)(\?|$)/i.test(url);
+}
+
+/** One selectable PPV tile. Poster comes from /api/ppv/thumb (~20 KB, and for
+ *  video PPVs it's the captured first-frame), so videos show a real frame here
+ *  too — with a play badge so they're recognisable. */
+function PpvPickTile({
+  ppv,
+  selected,
+  disabled,
+  onToggle,
+}: {
+  ppv: VaultPpv;
+  selected: boolean;
+  disabled: boolean;
+  onToggle: (id: string) => void;
+}) {
+  const video = isVideoUrl(ppv.media_url);
+  return (
+    <button
+      onClick={() => !disabled && onToggle(ppv.id)}
+      disabled={disabled}
+      className={`relative aspect-square rounded-lg overflow-hidden bg-[#1f2937] border-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+        selected ? "border-[#00AFF0]" : "border-[#374151] hover:border-[#00AFF0]/50"
+      }`}
+    >
+      {ppv.media_url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={`/api/ppv/thumb/${ppv.id}`}
+          alt={ppv.name}
+          loading="lazy"
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+      ) : (
+        <div className="absolute inset-0 flex items-center justify-center text-[11px] text-[#6b7280] p-2 text-center">
+          {ppv.name}
+        </div>
+      )}
+      {video && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="w-8 h-8 rounded-full bg-black/55 border border-white/15 flex items-center justify-center">
+            <Play className="w-4 h-4 text-white" fill="white" />
+          </div>
+        </div>
+      )}
+      {selected && (
+        <div className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-[#00AFF0] flex items-center justify-center shadow-lg">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M2 6L5 9L10 3" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
+      )}
+      <div className="absolute bottom-0 inset-x-0 px-2 py-1 bg-gradient-to-t from-black/80 to-transparent">
+        <div className="text-[10px] text-white truncate">{ppv.name}</div>
+      </div>
+    </button>
+  );
+}
+
 function VaultPickerModal({
   vaultPpvs,
+  groups,
   selectedIds,
   onToggle,
   onClose,
 }: {
   vaultPpvs: VaultPpv[];
+  groups: VaultGroup[];
   selectedIds: string[];
   onToggle: (id: string) => void;
   onClose: () => void;
 }) {
+  // null = top level (folders + standalone PPVs); otherwise we're inside a
+  // folder showing only its items. Resets every time the modal remounts.
+  const [openFolderId, setOpenFolderId] = useState<string | null>(null);
+
+  // Only folders that actually hold ≥1 approved PPV are worth showing — the
+  // vaultPpvs list is already approved-only, so an empty match means nothing
+  // to pick in there.
+  const foldersWithItems = groups.filter((g) =>
+    vaultPpvs.some((p) => p.group_id === g.id),
+  );
+  const standalone = vaultPpvs.filter((p) => !p.group_id);
+  const openFolder = openFolderId
+    ? groups.find((g) => g.id === openFolderId) ?? null
+    : null;
+  const folderItems = openFolderId
+    ? vaultPpvs.filter((p) => p.group_id === openFolderId)
+    : [];
+
+  const atMax = selectedIds.length >= MAX_PPVS_PER_AR;
+
   return (
     <div
       className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
@@ -496,62 +596,80 @@ function VaultPickerModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className="text-[15px] font-semibold text-white">Pick from Vault</h3>
-            <p className="text-[11px] text-[#9ca3af] mt-0.5">
-              {selectedIds.length} / {MAX_PPVS_PER_AR} selected · click a card to toggle
-            </p>
+          <div className="flex items-center gap-2 min-w-0">
+            {openFolder && (
+              <button
+                onClick={() => setOpenFolderId(null)}
+                aria-label="Back to all folders"
+                className="w-8 h-8 shrink-0 flex items-center justify-center rounded-lg bg-[#1f2937] border border-[#374151] text-[#9ca3af] hover:text-white hover:bg-[#374151] transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+            )}
+            <div className="min-w-0">
+              <h3 className="text-[15px] font-semibold text-white truncate">
+                {openFolder ? openFolder.name : "Pick from Vault"}
+              </h3>
+              <p className="text-[11px] text-[#9ca3af] mt-0.5">
+                {selectedIds.length} / {MAX_PPVS_PER_AR} selected · click a card to toggle
+              </p>
+            </div>
           </div>
           <button
             onClick={onClose}
-            className="text-[#9ca3af] hover:text-white text-[22px] leading-none"
+            className="text-[#9ca3af] hover:text-white text-[22px] leading-none shrink-0 ml-2"
             aria-label="Close"
           >
             ×
           </button>
         </div>
 
-        <div className="grid grid-cols-3 md:grid-cols-4 gap-3">
-          {vaultPpvs.map((p) => {
-            const sel = selectedIds.includes(p.id);
-            const disabled = !sel && selectedIds.length >= MAX_PPVS_PER_AR;
-            return (
-              <button
+        {openFolder ? (
+          <div className="grid grid-cols-3 md:grid-cols-4 gap-3">
+            {folderItems.map((p) => (
+              <PpvPickTile
                 key={p.id}
-                onClick={() => !disabled && onToggle(p.id)}
-                disabled={disabled}
-                className={`relative aspect-square rounded-lg overflow-hidden bg-[#1f2937] border-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
-                  sel ? "border-[#00AFF0]" : "border-[#374151] hover:border-[#00AFF0]/50"
-                }`}
-              >
-                {p.media_url ? (
-                  // Batch 99 — see comment above.
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={`/api/ppv/thumb/${p.id}`}
-                    alt={p.name}
-                    loading="lazy"
-                    className="absolute inset-0 w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center text-[11px] text-[#6b7280] p-2 text-center">
-                    {p.name}
+                ppv={p}
+                selected={selectedIds.includes(p.id)}
+                disabled={!selectedIds.includes(p.id) && atMax}
+                onToggle={onToggle}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 md:grid-cols-4 gap-3">
+            {/* Folders first — opening one drills into its items. Foldered
+                PPVs are intentionally NOT shown at this top level. */}
+            {foldersWithItems.map((g) => {
+              const count = vaultPpvs.filter((p) => p.group_id === g.id).length;
+              return (
+                <button
+                  key={g.id}
+                  onClick={() => setOpenFolderId(g.id)}
+                  className="relative aspect-square rounded-lg overflow-hidden bg-[#1f2937] border-2 border-[#374151] hover:border-[#00AFF0]/50 transition-all flex flex-col items-center justify-center gap-2 p-2"
+                >
+                  <Folder className="w-8 h-8 text-[#00AFF0]" />
+                  <div className="text-[11px] text-white text-center truncate w-full px-1">
+                    {g.name}
                   </div>
-                )}
-                {sel && (
-                  <div className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-[#00AFF0] flex items-center justify-center shadow-lg">
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                      <path d="M2 6L5 9L10 3" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
+                  <div className="text-[10px] text-[#6b7280]">
+                    {count} item{count === 1 ? "" : "s"}
                   </div>
-                )}
-                <div className="absolute bottom-0 inset-x-0 px-2 py-1 bg-gradient-to-t from-black/80 to-transparent">
-                  <div className="text-[10px] text-white truncate">{p.name}</div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
+                </button>
+              );
+            })}
+            {/* Then standalone (ungrouped) PPVs. */}
+            {standalone.map((p) => (
+              <PpvPickTile
+                key={p.id}
+                ppv={p}
+                selected={selectedIds.includes(p.id)}
+                disabled={!selectedIds.includes(p.id) && atMax}
+                onToggle={onToggle}
+              />
+            ))}
+          </div>
+        )}
 
         <div className="mt-4 flex justify-end">
           <button

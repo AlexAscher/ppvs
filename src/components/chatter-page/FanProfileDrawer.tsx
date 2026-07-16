@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { X, Calendar, User as UserIcon, Tag as TagIcon } from "lucide-react";
 import type { FanRow } from "@/lib/fan-types";
 import { FanGroupsSection } from "./FanGroupsSection";
+import { FanAvatar } from "./FanAvatar";
 
 /**
  * FanProfileDrawer — right-side slide-out panel opened by clicking the fan in
@@ -182,13 +183,26 @@ export function FanProfileDrawer({
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
           {/* Identity block */}
           <div className="flex items-start gap-3">
-            <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] flex items-center justify-center text-white text-[18px] font-semibold flex-shrink-0">
-              {displayName
-                .split(/\s+/)
-                .slice(0, 2)
-                .map((p) => p[0]?.toUpperCase() ?? "")
-                .join("")}
-            </div>
+            {peerId ? (
+              <FanAvatar
+                modelId={modelId}
+                peerId={peerId}
+                initials={displayName
+                  .split(/\s+/)
+                  .slice(0, 2)
+                  .map((p) => p[0]?.toUpperCase() ?? "")
+                  .join("")}
+                size={56}
+              />
+            ) : (
+              <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] flex items-center justify-center text-white text-[18px] font-semibold flex-shrink-0">
+                {displayName
+                  .split(/\s+/)
+                  .slice(0, 2)
+                  .map((p) => p[0]?.toUpperCase() ?? "")
+                  .join("")}
+              </div>
+            )}
             <div className="min-w-0 flex-1">
               <div className="text-[14px] font-semibold text-white truncate">
                 {displayName || "User"}

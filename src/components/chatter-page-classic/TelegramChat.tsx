@@ -3,6 +3,7 @@
 import { Send, Search, Smile, Play, FileText, X, Zap, Check, Reply, ChevronLeft, Clock, Archive } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { EmojiPicker } from "../chatter-page/EmojiPicker";
+import { FanAvatar } from "../chatter-page/FanAvatar";
 import { MessageContextMenu } from "../chatter-page/MessageContextMenu";
 import { SchedulePopover, formatScheduleShort } from "./SchedulePopover";
 import { twemoji } from "@/lib/twemoji";
@@ -575,53 +576,6 @@ function Lightbox({
         )}
       </div>
     </div>
-  );
-}
-
-/**
- * Fan avatar with graceful fallback. Tries the cached Telegram photo
- * (served via /api/telegram/fan-avatar, which caches to Storage); on any
- * error or when no model is known, falls back to coloured initials.
- * `loading="lazy"` so off-screen dialogs don't all fetch at once.
- */
-function FanAvatar({
-  modelId,
-  peerId,
-  initials,
-  size = 44,
-}: {
-  modelId?: string | null;
-  peerId: string;
-  initials: string;
-  size?: number;
-}) {
-  const [failed, setFailed] = useState(false);
-  const px = `${size}px`;
-  // Group / channel dialogs (peerId starts with "-") don't have a fan
-  // avatar — requesting one 404s AND burns a pointless MTProto call. Render
-  // initials straight away for those.
-  const isGroup = peerId.startsWith("-");
-  if (!modelId || failed || isGroup) {
-    return (
-      <div
-        className="bg-gradient-to-br from-[#00AFF0] to-[#00AFF0] rounded-full flex items-center justify-center text-white font-semibold flex-shrink-0"
-        style={{ width: px, height: px, fontSize: size * 0.3 }}
-      >
-        {initials}
-      </div>
-    );
-  }
-  return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={`/api/telegram/fan-avatar/${modelId}?peerId=${encodeURIComponent(peerId)}`}
-      alt={initials}
-      loading="lazy"
-      draggable={false}
-      onError={() => setFailed(true)}
-      className="rounded-full object-cover flex-shrink-0 bg-[#1f2937]"
-      style={{ width: px, height: px }}
-    />
   );
 }
 

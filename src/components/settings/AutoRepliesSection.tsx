@@ -27,6 +27,12 @@ type VaultPpv = {
   name: string;
   media_url: string | null;
   preview_url: string | null;
+  /** Crisp 400px JPEG captured at upload (batch 99+). For videos it's the
+   *  first-frame poster — when null (legacy row) the picker falls back to
+   *  rendering the original with <video preload="metadata"> so the tile
+   *  still shows a real, unblurred first frame instead of the blurred
+   *  preview_url that /api/ppv/thumb would otherwise serve. */
+  thumb_url?: string | null;
   /** Vault folder this PPV lives in (ppv_groups.id). null = standalone
    *  (shown on the picker's top level). Foldered items only appear once you
    *  open their folder. */
@@ -414,36 +420,46 @@ export function AutoRepliesSection() {
             </label>
             {selectedPpvs.length > 0 && (
               <div className="grid grid-cols-3 md:grid-cols-5 gap-2 mb-2">
-                {selectedPpvs.map((p) => (
-                  <div
-                    key={p.id}
-                    className="relative aspect-square rounded-md overflow-hidden bg-[#1f2937] border border-[#374151]"
-                  >
-                    {p.media_url ? (
-                      // Batch 99: thumb endpoint (~20 KB) instead of the
-                      // multi-MB original. Video tiles no longer autoplay —
-                      // showing a static poster is enough here.
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={`/api/ppv/thumb/${p.id}`}
-                        alt={p.name}
-                        loading="lazy"
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-[10px] text-[#6b7280]">
-                        {p.name}
-                      </div>
-                    )}
-                    <button
-                      onClick={() => removePpv(p.id)}
-                      aria-label="Remove"
-                      className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/70 text-white flex items-center justify-center hover:bg-red-500 transition-colors"
+                {selectedPpvs.map((p) => {
+                  const isVid = isVideoUrl(p.media_url);
+                  return (
+                    <div
+                      key={p.id}
+                      className="relative aspect-square rounded-md overflow-hidden bg-[#1f2937] border border-[#374151]"
                     >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                ))}
+                      {p.media_url ? (
+                        isVid ? (
+                          <video
+                            src={`/api/ppv/file/${p.id}?kind=original`}
+                            preload="metadata"
+                            muted
+                            playsInline
+                            className="w-full h-full object-cover pointer-events-none"
+                          />
+                        ) : (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={`/api/ppv/thumb/${p.id}`}
+                            alt={p.name}
+                            loading="lazy"
+                            className="w-full h-full object-cover"
+                          />
+                        )
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-[10px] text-[#6b7280]">
+                          {p.name}
+                        </div>
+                      )}
+                      <button
+                        onClick={() => removePpv(p.id)}
+                        aria-label="Remove"
+                        className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/70 text-white flex items-center justify-center hover:bg-red-500 transition-colors"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             )}
             <button
@@ -496,9 +512,11 @@ function isVideoUrl(url: string | null | undefined): boolean {
   return !!url && /\.(mp4|mov|m4v|webm|mkv)(\?|$)/i.test(url);
 }
 
-/** One selectable PPV tile. Poster comes from /api/ppv/thumb (~20 KB, and for
- *  video PPVs it's the captured first-frame), so videos show a real frame here
- *  too — with a play badge so they're recognisable. */
+/** One selectable PPV tile. Poster source mirrors the main Vault grid:
+ *  new uploads carry a crisp thumb_url (batch 99+) served via /api/ppv/thumb;
+ *  legacy videos with no captured poster render the original with
+ *  <video preload="metadata"> so the tile shows a real unblurred first frame
+ *  instead of the blurred preview_url that /api/ppv/thumb would fall back to. */
 function PpvPickTile({
   ppv,
   selected,
@@ -511,6 +529,12 @@ function PpvPickTile({
   onToggle: (id: string) => void;
 }) {
   const video = isVideoUrl(ppv.media_url);
+  // Videos always render <video preload="metadata"> so the tile shows a REAL
+  // first frame (crisp + unblurred). Using /api/ppv/thumb for videos here is
+  // unreliable — for legacy rows without a captured thumb it silently falls
+  // back to the blurred preview_url, which is the exact bug the user reported.
+  // The picker is small + rarely opened, so the extra ~50–200 KB (moov atom +
+  // first frames) per video tile is fine.
   return (
     <button
       onClick={() => !disabled && onToggle(ppv.id)}
@@ -520,13 +544,23 @@ function PpvPickTile({
       }`}
     >
       {ppv.media_url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={`/api/ppv/thumb/${ppv.id}`}
-          alt={ppv.name}
-          loading="lazy"
-          className="absolute inset-0 w-full h-full object-cover"
-        />
+        video ? (
+          <video
+            src={`/api/ppv/file/${ppv.id}?kind=original`}
+            preload="metadata"
+            muted
+            playsInline
+            className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+          />
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={`/api/ppv/thumb/${ppv.id}`}
+            alt={ppv.name}
+            loading="lazy"
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+        )
       ) : (
         <div className="absolute inset-0 flex items-center justify-center text-[11px] text-[#6b7280] p-2 text-center">
           {ppv.name}

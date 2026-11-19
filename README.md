@@ -1,36 +1,144 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ppvs.io
 
-## Getting Started
+ppvs.io — платформа для агентств, которые управляют аккаунтами авторов и командой чаттеров, ведут переписки с фанатами через Telegram и отправляют платный контент (PPV) и ссылки на чаевые. Приложение объединяет рабочее место для переписки, медиатеку, аналитику, платежные сценарии и административную панель.
 
-First, run the development server:
+> Документ описывает код и конфигурацию этого репозитория. Некоторые интеграции зависят от настроек конкретного окружения; см. разделы «Переменные окружения» и «Известные ограничения».
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## Возможности
+
+- **Роли и доступ:** владелец агентства управляет авторами, чаттерами и выручкой; чаттер работает с назначенными авторами; администратор платформы проверяет агентства и контент.
+- **Рабочее место чата (`/chatter`):** диалоги и сообщения Telegram, статусы присутствия и прочтения, быстрые ответы, отложенная отправка, заметки и профиль фаната.
+- **Авторы и команда (`/dashboard`, `/team`):** подключение Telegram-аккаунтов, приглашение чаттеров и назначение им авторов.
+- **PPV и Vault (`/vault`, вкладка в dashboard):** медиатека платных материалов, группы и теги, предпросмотр, модерация и отправка материалов в переписку.
+- **Оплата и доставка:** платёжные страницы `/pay/[code]`, экран результата и Telegram Mini App `/mini`; после подтверждения платежа приложение может открыть оригиналы контента.
+- **Фанаты:** профиль, теги, группы, заметки, траты и история взаимодействия.
+- **Аналитика и выплаты:** метрики агентства и чаттеров, баланс и запрос выплаты; фактическая обработка выплат зависит от серверной конфигурации.
+- **Автоматизация:** автоответы, уведомления о продажах в Telegram и режим сниженной частоты обновлений.
+- **Панель платформы (`/admin`):** обзор агентств, проверка PPV и административные операции.
+
+## Технологии
+
+- Next.js **16.2.6**, App Router, React 19 и TypeScript.
+- Supabase: PostgreSQL, Auth, Storage и серверный клиент для административных запросов.
+- Telegram MTProto через пакет `telegram` (gramJS); для отдельных уведомлений используются Telegram-боты.
+- Tailwind CSS 4 и ESLint 9.
+- npm и `package-lock.json` для установки зависимостей.
+
+## Требования
+
+- Node.js **20.9 или новее** и npm.
+- Проект Supabase с применёнными SQL-миграциями из `supabase/migrations/`.
+- Для работы с данными нужны Supabase URL и ключи. Интеграции Telegram, платежей, автоответов и уведомлений дополнительно требуют соответствующих секретов.
+
+## Локальный запуск
+
+1. Склонируйте репозиторий и перейдите в каталог проекта.
+
+   ```bash
+   git clone <адрес-репозитория>
+   cd ppvs
+   ```
+
+2. Установите зависимости из lock-файла.
+
+   ```bash
+   npm ci
+   ```
+
+3. Создайте `.env.local` в корне проекта и заполните необходимые значения. Не коммитьте этот файл: `.gitignore` исключает `.env*`.
+
+   ```dotenv
+   NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=<supabase-anon-key>
+   SUPABASE_SERVICE_ROLE_KEY=<supabase-service-role-key>
+   ```
+
+4. Запустите сервер разработки.
+
+   ```bash
+   npm run dev
+   ```
+
+5. Откройте [http://localhost:3000](http://localhost:3000).
+
+Сервер разработки Next.js поддерживает горячее обновление. Для локальной сборки используйте `npm run build`, затем `npm run start`.
+
+### Переменные окружения
+
+Для базового доступа к приложению требуются три переменные из примера выше. Полный набор зависит от включённых интеграций:
+
+| Переменная | Назначение |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | URL проекта Supabase. |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Публичный ключ Supabase для клиентских запросов и middleware. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Привилегированный серверный ключ Supabase; никогда не передавайте его в браузер и не публикуйте. |
+| `SESSION_ENC_KEY` | Base64-кодированный ключ ровно из 32 байт для шифрования Telegram-сессий. Сгенерируйте командой `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` и храните постоянно: смена ключа без расшифровки сохранённых данных сделает их недоступными. |
+| `TELEGRAM_PROXY_IP`, `TELEGRAM_PROXY_PORT` | Необязательный прокси для MTProto-соединений Telegram. Поддерживаются также `TELEGRAM_PROXY_USER` и `TELEGRAM_PROXY_PASS`. |
+| `HTTPS_PROXY` или `HTTP_PROXY` | Необязательный HTTP CONNECT прокси для исходящих серверных HTTP-запросов. SOCKS напрямую не поддерживается. |
+| `TELEGRAM_BOT_TOKEN` | Необязательный бот для уведомлений о продажах. |
+| `TELEGRAM_PAY_BOT_TOKEN` | Токен бота, который подписывает данные Mini App; если не задан, используется `TELEGRAM_BOT_TOKEN`. |
+| `TELEGRAM_STARS_BOT_TOKEN`, `TELEGRAM_STARS_BOT_SECRET`, `STARS_PER_USD` | Настройки Telegram Stars и соответствующего webhook/пересчёта. |
+| `NEXT_PUBLIC_PAY_BOT_USERNAME`, `NEXT_PUBLIC_PAY_APP_NAME` | Необязательные имя бота и Mini App для платёжных ссылок. |
+| `ADMIN_EMAILS` | Список email администраторов платформы, разделённый запятыми. |
+| `PLATFORM_FEE_PCT` | Доля комиссии платформы; приложение использует значение по умолчанию, если переменная не задана. |
+| `FORCE_TG_KEEPALIVE` | Необязательная настройка поддержания Telegram-подключений для автоответов в разработке. |
+
+Не вставляйте реальные секреты в README, исходный код, коммиты или сообщения. Используйте локальный `.env.local` и хранилище секретов окружения развёртывания. Префикс `NEXT_PUBLIC_` означает, что значение может попасть в клиентский бандл; размещайте там только публичные настройки.
+
+## Структура проекта
+
+```text
+src/
+  app/            Страницы App Router и API route handlers
+  components/     Компоненты интерфейса: чат, dashboard, Vault и другое
+  lib/            Supabase, Telegram, платежи, авторизация и общая логика
+  types/          Общие типы TypeScript
+supabase/
+  migrations/     SQL-миграции схемы и функций базы данных
+scripts/          Вспомогательные скрипты
+tests/            Тесты Vitest
+public/           Статические ресурсы
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Псевдоним `@/` указывает на `src/`. Основные страницы: `/` (лендинг), `/login`, `/signup`, `/dashboard`, `/chatter`, `/vault`, `/team`, `/admin`, `/mini`, `/pay/[code]` и `/tip/[code]`. API-обработчики находятся в `src/app/api/`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## База данных и Supabase
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Схема, индексы, политики и функции базы данных описаны SQL-файлами в `supabase/migrations/`. Применяйте миграции к своему проекту Supabase в порядке имён файлов — например, через Supabase CLI или SQL Editor — и проверьте политики доступа и настройки Storage перед использованием приложения с реальными данными.
 
-## Learn More
+Серверные маршруты используют привилегированный Supabase-клиент для операций, которым нужен обход RLS, поэтому каждый такой маршрут должен самостоятельно проверять пользователя, роль и доступ к автору/модели. Не ослабляйте RLS ради локального запуска.
 
-To learn more about Next.js, take a look at the following resources:
+## Полезные команды
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm run dev          # сервер разработки
+npm run build        # production-сборка
+npm run start        # запуск готовой production-сборки
+npm run lint         # ESLint
+npm test             # тесты Vitest один раз
+npm run test:watch   # Vitest в watch-режиме
+npm run test:coverage # тесты с покрытием
+npx tsc --noEmit     # проверка типов TypeScript
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Развёртывание
 
-## Deploy on Vercel
+Production-запуск состоит из сборки и запуска Next.js (`npm run build`, `npm run start`) под Node.js. Перед сборкой задайте переменные окружения на сервере, настройте домен и HTTPS, примените миграции Supabase и проверьте доступность Telegram/Supabase из сети хоста. Не копируйте `.env.local` в Git или публичные артефакты.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Дополнительные заметки о конфигурации инфраструктуры находятся в [`CLOUDFLARE_SETUP.md`](CLOUDFLARE_SETUP.md) и [`PROJECT.md`](PROJECT.md). Эти документы могут описывать состояние конкретного production-окружения; сверяйте их с актуальным развёртыванием.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Известные ограничения
+
+- Некоторые платёжные сценарии, способы вывода и интеграции требуют отдельной настройки; наличие страницы в интерфейсе само по себе не означает, что ключи и webhooks подключены.
+- Telegram MTProto требует действительных настроек подключения и активной сессии автора.
+- Production-зависимости (миграции, секреты, домены, storage и callback/webhook URL) настраиваются отдельно от локального запуска.
+
+## Безопасность и Git
+
+- `.env*` и `.claude/worktrees/` исключены из Git.
+- Не добавляйте токены, пароли, ключи API, строки Telegram-сессий или персональные данные в коммиты.
+- Если секрет уже был отправлен в общий удалённый репозиторий, удаление его из истории не отзывает его: отзовите или замените секрет у поставщика.
+
+## Документация Next.js
+
+В проекте закреплена версия Next.js 16.2.6. Перед изменением маршрутизации, конфигурации или API сверяйтесь с локальными руководствами в `node_modules/next/dist/docs/`, чтобы использовать соглашения установленной версии.

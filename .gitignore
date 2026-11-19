@@ -46,3 +46,6 @@ next-env.d.ts
 
 # design reference (kept locally only — never deploy)
 /Create_prompt_design/
+
+# Local Claude worktrees
+/.claude/worktrees/
